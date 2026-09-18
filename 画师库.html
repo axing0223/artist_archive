@@ -454,28 +454,38 @@
     try{data=await write(data);volatile=false;const warnings=FolderStore.takeWarnings();status(warnings.length?message+'；'+warnings.join('；'):message,warnings.length>0);}catch(error){volatile=true;status('文件保存失败：'+error.message+'；修改暂留本页，请导出备份。',true);}finally{controls.forEach(([e,disabled])=>e.disabled=disabled);busy=false;render();}
   }
   function reset(){state.category='全部';state.tags.clear();state.query='';$('search').value='';}
-  function showImage(a,w){
-    ArtistImages.dispose('viewer');const img=$('large-image');
-    $('viewer-title').textContent=a.name;$('large-image').alt=a.name+' 的作品';
-    $('viewer-caption').textContent=w.caption||'作品预览';$('viewer-source').hidden=!w.url;if(w.url)$('viewer-source').href=w.url;
-    $('viewer').showModal();ArtistImages.bind(img,a.uid,w,'viewer','thumb',error=>$('viewer-caption').textContent=error.message);
-    loadOriginal(a,w);
-  }
-  async function loadOriginal(a,w){
-    const img=$('large-image'),local=FolderStore.imageOf(w,'large');
-    if(local&&local.kind!=='remote'){$('viewer-caption').textContent=w.caption||'原图';ArtistImages.bind(img,a.uid,w,'viewer','large',error=>$('viewer-caption').textContent=error.message);return;}
+  function openViewer({title,uid,work,caption}){
+    ArtistImages.dispose('viewer');
+    $('viewer-title').textContent=title;$('large-image').alt=title;
     $('viewer-caption').textContent='正在获取原图…';
-    try{
-      const remote=w.largeUrl||await ArtistExtension.resolve(w.id);
-      if(!remote)throw Error('这张作品没有原图地址');
-      if(!$('viewer').open)return;
-      img.onload=()=>{$('viewer-caption').textContent=(w.caption?w.caption+' · ':'')+'原图仅本次显示，不会保存到本地';};
-      ArtistImages.bind(img,a.uid,{...w,largeUrl:remote},'viewer','large',error=>{
-        $('viewer-caption').textContent='原图未取到：'+error.message+'（显示的是缩略图）';
-        ArtistImages.bind(img,a.uid,w,'viewer','thumb');
-      });
-    }catch(error){if(error.name!=='AbortError')$('viewer-caption').textContent='原图未取到：'+error.message+'（当前显示的是缩略图）';}
+    $('viewer-source').hidden=!work.url;if(work.url)$('viewer-source').href=work.url;
+    $('viewer').showModal();
+    ArtistImages.bind($('large-image'),uid,work,'viewer','thumb',()=>{});
+    loadLarge(uid,work,caption);
   }
+  async function loadLarge(uid,work,caption){
+    const img=$('large-image'),note=caption?caption+' · ':'',local=FolderStore.imageOf(work,'large');
+    $('viewer-caption').textContent=note+'正在获取原图…';
+    try{
+      let target=work;
+      if(!local||local.kind==='remote'){
+        const remote=work.largeUrl||(work.id&&ArtistExtension.connected?await ArtistExtension.resolve(work.id):null);
+        if(!remote)throw Error('这张作品没有原图地址');
+        target={...work,largeUrl:remote};
+      }
+      await ArtistImages.fetch(uid,target,'large');
+      if(!$('viewer').open)return;
+      img.onload=()=>{$('viewer-caption').textContent=note+'原图仅本次显示，不会保存到本地';};
+      ArtistImages.bind(img,uid,target,'viewer','large',error=>showMiddle(uid,work,caption,error));
+    }catch(error){if(error.name!=='AbortError')showMiddle(uid,work,caption,error);}
+  }
+  function showMiddle(uid,work,caption,error){
+    const note=caption?caption+' · ':'',middle=work.previewUrl;
+    if(!middle||middle===work.largeUrl){$('viewer-caption').textContent=note+'原图未取到：'+error.message+'（显示的是缩略图）';return;}
+    $('viewer-caption').textContent=note+'原图未取到：'+error.message+'，改用中图显示';
+    ArtistImages.bind($('large-image'),uid,{...work,largeUrl:middle},'viewer','large',e2=>{$('viewer-caption').textContent=note+'中图也未取到：'+e2.message+'（显示的是缩略图）';});
+  }
+  function showImage(a,w){openViewer({title:a.name,uid:a.uid,work:w,caption:w.caption});}
   function card(a){
     const article=el('article','artist'),info=el('div','artist-info'),top=el('div','artist-top');article.dataset.artist=a.name;
     const numbers=el('div','artist-numbers'),countLabel=el('span','work-count','作品数量：'+(a.counts?.total??'未读取')+'（'+(a.counts?.beforeTotal??'未读取')+'）');
@@ -604,14 +614,7 @@
   function clearCandidates(){for(const picker of activePickers)picker.dispose();activePickers=[];$('quick-results').replaceChildren();}
   function cancelLookup(){clearTimeout(lookupTimer);lookupController?.abort();lookupSequence++;}
   function focusQuick(){ $('quick-add').scrollIntoView({behavior:'smooth',block:'center'});$('quick-input').focus(); }
-  function previewWork(name,work,uid){
-    ArtistImages.dispose('viewer');const img=$('large-image');
-    $('viewer-title').textContent=name+' #'+work.id;$('large-image').alt=name+' #'+work.id;
-    $('viewer-caption').textContent='正在读取放大图…';$('viewer-source').hidden=!work.url;if(work.url)$('viewer-source').href=work.url;
-    $('viewer').showModal();
-    img.onload=()=>{$('viewer-caption').textContent='放大预览 · 勾选后才会保存到画师库';};
-    ArtistImages.bind(img,uid,work,'viewer','preview',error=>{$('viewer-caption').textContent='放大图未取到：'+error.message;});
-  }
+  function previewWork(name,work,uid){openViewer({title:name+' #'+work.id,uid,work,caption:'候选作品，勾选后才会保存到画师库'});}
   function showCandidates(results,p,sequence){
     clearCandidates();
     $('quick-status').textContent=results.length?`找到 ${results.length} 位候选，请核对正式标签后勾选要保存的作品。`:'未找到匹配。可以使用站内检索检查别名或主页链接。';
