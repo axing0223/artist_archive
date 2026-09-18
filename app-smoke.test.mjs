@@ -17,8 +17,9 @@ class El{
   }
   get textContent(){return this._text;}
   set textContent(value){this._text=value==null?'':String(value);this.children=[];}
-  append(...nodes){for(const node of nodes)if(node)this.children.push(node);}
-  replaceChildren(...nodes){this.children=nodes.filter(Boolean);}
+  append(...nodes){for(const node of nodes)if(node){node.parentNode=this;this.children.push(node);}}
+  replaceChildren(...nodes){this.children=nodes.filter(Boolean);for(const node of this.children)node.parentNode=this;}
+  remove(){const parent=this.parentNode;if(parent)parent.children=parent.children.filter(child=>child!==this);this.parentNode=null;}
   setAttribute(key,value){this[key]=value;}
   removeAttribute(key){delete this[key];}
   addEventListener(){}
@@ -264,6 +265,26 @@ test('批量导入可以只对本次改排序，默认跟随设置',async()=>{
   assert.equal(get('batch-order').value,'rank','改过的排序在本次对话框里保留');
   get('batch-artists').onclick();
   assert.equal(get('batch-order').value,'favcount','重新打开会重置回设置里的默认');
+});
+test('收起「从 Danbooru 添加作品」后不留下空的 work-picker 容器',async()=>{
+  const {elements,state}=await boot();
+  elements.get('add-artist').onclick();
+  const card=lastRender(state)[0],nameInput=findByPlaceholder(card,'画师名字（必填）');
+  nameInput.value='tester';nameInput.oninput();
+  const expand=findByClass(card,'artist-expand'),hosts=()=>expand.children.filter(child=>String(child.className).includes('work-picker'));
+  findText(card,'展开读取').onclick();
+  await wait(20);
+  assert.equal(hosts().length,1,'展开后应有一个容器');
+  findText(card,'收起').onclick();
+  await wait(20);
+  assert.equal(hosts().length,0,'收起后容器要整个移除，不能只清空里面的内容');
+  assert.equal(expand.children.length,1,'展开区只剩标题行');
+  findText(card,'展开读取').onclick();
+  await wait(20);
+  assert.equal(hosts().length,1,'再展开仍然只有一个，不会越积越多');
+  findText(card,'收起').onclick();
+  await wait(20);
+  assert.equal(hosts().length,0);
 });
 test('展开与收起 Danbooru 读取区后，视图重新对准正在编辑的卡片',async()=>{
   const {elements,state}=await boot();

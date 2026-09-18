@@ -184,7 +184,8 @@
   }
   let editorPicker=null,editorHost=null,editorError=null;
   function setEditorError(message){if(editorError)editorError.textContent=message;}
-  function closeWorkPicker(){if(editorPicker){editorPicker.dispose();editorPicker=null;}if(editorHost){editorHost.replaceChildren();editorHost=null;}}
+  /* 收起要把容器本身从页面移除：dispose() 已经清空了它的内容，只清内容会留下一个空壳。 */
+  function closeWorkPicker(){if(editorPicker){editorPicker.dispose();editorPicker=null;}if(editorHost){editorHost.remove?.();editorHost=null;}}
   function togglePicker(expand){
     if(editorPicker){closeWorkPicker();return;}
     const tag=(draft.name||'').trim();
