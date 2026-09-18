@@ -27,7 +27,7 @@
       if(disposed)return works.length;
       if(batch.length<limit)exhausted=true;
       const fresh=batch.filter(w=>!exclude||!exclude.has(w.id));
-      works=works.concat(fresh);fresh.forEach(w=>picked.add(w.id));page++;
+      works=works.concat(fresh);page++;
       render();return works.length;
     };
     const more=btn('加载更多',async()=>{
@@ -37,7 +37,7 @@
       finally{more.disabled=false;more.textContent='加载更多';more.hidden=exhausted;}
     });
     tools.append(counter,btn('全选',()=>{works.forEach(w=>picked.add(w.id));render();}),btn('全不选',()=>{picked.clear();render();}),more);
-    const ready=loadMore().then(total=>{status.textContent=total?`找到 ${total} 张作品，点图片编号可放大查看。`:'没有可添加的新作品。';})
+    const ready=loadMore().then(total=>{status.textContent=total?`找到 ${total} 张作品：勾选要保存的，点编号可放大查看。`:'没有可添加的新作品。';})
       .catch(error=>{status.textContent='作品读取失败：'+error.message;});
     return {
       ready,

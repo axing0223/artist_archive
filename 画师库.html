@@ -17,6 +17,7 @@
 .artist-slot{min-width:0;overflow-anchor:auto}.artist-slot:empty{border:1px solid #e7ebf2;border-radius:12px;box-sizing:border-box;background:linear-gradient(100deg,#f8f9fc,#f2f4f8)}.image-failed{font-size:12px;color:#8b4b4b}.header-actions{justify-content:flex-end}.top{height:auto;min-height:68px;gap:12px;flex-wrap:wrap}.toolbar{flex-wrap:wrap}
 .candidate-previews{flex-wrap:wrap;overflow:visible;gap:10px}.pick{position:relative;display:flex;flex-direction:column;gap:4px;padding:6px;border:1px solid #e0e5f0;border-radius:8px;background:#fff;cursor:pointer}.pick input{position:absolute;top:8px;left:8px;width:18px;height:18px;margin:0;cursor:pointer}.pick img{height:120px;width:90px;object-fit:cover;border-radius:6px}.pick a{font-size:11px;color:#375af5;text-align:center}.pick:has(input:checked){border-color:#375af5;box-shadow:0 0 0 1px #375af5}.candidate-tools{display:flex;gap:10px;align-items:center;flex-wrap:wrap;flex-basis:100%;padding-top:4px}.candidate-tools .action{padding:5px 12px;font-size:12px}.candidate-tools small{color:#788496;font-size:12px}.work-state{color:#788496;font-size:12px}
 .candidate-body{flex-basis:100%;display:flex;flex-direction:column;gap:6px;min-width:0}.picker-status{color:#788496;font-size:12px}.pick-id{background:none;border:none;padding:0;color:#375af5;font-size:11px;cursor:pointer;text-decoration:underline}.pick-id:hover{color:#1f3fd0}.picker-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding-top:10px;border-top:1px solid #e7ebf2;margin-top:10px}.work-picker{display:flex;flex-direction:column;gap:8px;border:1px solid #e0e5f0;border-radius:10px;padding:14px;margin-top:12px;background:#f8faff}.work-picker[hidden]{display:none}
+#viewer{width:min(1600px,96vw);max-width:96vw;max-height:96vh}.viewer-image{padding:12px;min-height:120px;overflow:auto}.viewer-image img{max-width:100%;max-height:calc(96vh - 160px);width:auto;height:auto;min-height:0;object-fit:contain}
 </style>
 
   
@@ -382,7 +383,7 @@
       if(disposed)return works.length;
       if(batch.length<limit)exhausted=true;
       const fresh=batch.filter(w=>!exclude||!exclude.has(w.id));
-      works=works.concat(fresh);fresh.forEach(w=>picked.add(w.id));page++;
+      works=works.concat(fresh);page++;
       render();return works.length;
     };
     const more=btn('加载更多',async()=>{
@@ -392,7 +393,7 @@
       finally{more.disabled=false;more.textContent='加载更多';more.hidden=exhausted;}
     });
     tools.append(counter,btn('全选',()=>{works.forEach(w=>picked.add(w.id));render();}),btn('全不选',()=>{picked.clear();render();}),more);
-    const ready=loadMore().then(total=>{status.textContent=total?`找到 ${total} 张作品，点图片编号可放大查看。`:'没有可添加的新作品。';})
+    const ready=loadMore().then(total=>{status.textContent=total?`找到 ${total} 张作品：勾选要保存的，点编号可放大查看。`:'没有可添加的新作品。';})
       .catch(error=>{status.textContent='作品读取失败：'+error.message;});
     return {
       ready,
@@ -668,6 +669,7 @@
     $('export-data').onclick=exportData;$('import-data').onclick=()=>{if(!busy)$('import-file').click();};$('import-file').onchange=importData;
     let searchTimer;$('search').oninput=e=>{state.query=e.target.value.trim().toLowerCase();clearTimeout(searchTimer);searchTimer=setTimeout(render,150);};$('reset').onclick=()=>{reset();render();};$('close-viewer').onclick=()=>$('viewer').close();
     $('viewer').addEventListener('close',()=>ArtistImages.dispose('viewer'));$('editor').addEventListener('close',()=>{ArtistImages.dispose('editor');closeWorkPicker();draft=null;});
+    document.querySelectorAll('dialog').forEach(dialog=>dialog.addEventListener('click',event=>{if(event.target!==dialog)return;if(dialog.id==='editor')closeEditor();else dialog.close();}));
     $('cache-visible').onclick=cacheVisible;$('clear-image-cache').onclick=()=>{ArtistImages.clear();status('已释放临时图片缓存，本地图片文件未删除；当前可见图片会按需重载。');};$('extension-status').onclick=checkExtension;
     window.addEventListener('beforeunload',e=>{if(volatile||busy){e.preventDefault();e.returnValue='';}});render();document.querySelectorAll('button,input,textarea,select').forEach(b=>b.disabled=true);$('choose-folder').disabled=false;$('extension-status').disabled=false;$('choose-folder').onclick=connectFolder;checkExtension();
   }

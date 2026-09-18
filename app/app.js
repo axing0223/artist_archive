@@ -264,6 +264,7 @@
     $('export-data').onclick=exportData;$('import-data').onclick=()=>{if(!busy)$('import-file').click();};$('import-file').onchange=importData;
     let searchTimer;$('search').oninput=e=>{state.query=e.target.value.trim().toLowerCase();clearTimeout(searchTimer);searchTimer=setTimeout(render,150);};$('reset').onclick=()=>{reset();render();};$('close-viewer').onclick=()=>$('viewer').close();
     $('viewer').addEventListener('close',()=>ArtistImages.dispose('viewer'));$('editor').addEventListener('close',()=>{ArtistImages.dispose('editor');closeWorkPicker();draft=null;});
+    document.querySelectorAll('dialog').forEach(dialog=>dialog.addEventListener('click',event=>{if(event.target!==dialog)return;if(dialog.id==='editor')closeEditor();else dialog.close();}));
     $('cache-visible').onclick=cacheVisible;$('clear-image-cache').onclick=()=>{ArtistImages.clear();status('已释放临时图片缓存，本地图片文件未删除；当前可见图片会按需重载。');};$('extension-status').onclick=checkExtension;
     window.addEventListener('beforeunload',e=>{if(volatile||busy){e.preventDefault();e.returnValue='';}});render();document.querySelectorAll('button,input,textarea,select').forEach(b=>b.disabled=true);$('choose-folder').disabled=false;$('extension-status').disabled=false;$('choose-folder').onclick=connectFolder;checkExtension();
   }
