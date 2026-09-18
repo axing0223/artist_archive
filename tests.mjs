@@ -86,25 +86,27 @@ test('刷新只查询当前画师的两项数量，不请求预览图',async()=>
  const result=await details('artist_a','2026-08-01',{previews:false,fetcher:async value=>{const u=new URL(value);requests.push(u);return {ok:true,json:async()=>({counts:{posts:u.searchParams.get('tags').includes('date:')?12:20}})};}});
  assert.equal(requests.length,2);assert.ok(requests.every(u=>u.pathname==='/counts/posts.json'));assert.deepEqual(requests.map(u=>u.searchParams.get('tags')),['artist_a','artist_a date:<2026-08-01']);assert.equal(result.counts.total,20);assert.equal(result.counts.beforeTotal,12);
 });
-test('作品接口优先走扩展：带登录态才拿得到图片地址，扩展不在时退回页面直连',async()=>{
+test('作品接口优先走扩展：带登录态才拿得到图片地址，扩展不在或版本过旧时退回页面直连',async()=>{
  const {posts}=require('./app/artist-lookup.js');
  const rows=[{id:5,file_url:'https://cdn.donmai.us/original/a.jpg',preview_file_url:'https://cdn.donmai.us/180x180/a.jpg'}];
  const asked=[];
- globalThis.ArtistExtension={connected:true,api:async url=>{asked.push(url);return {ok:true,status:200,json:async()=>rows};}};
+ globalThis.ArtistExtension={connected:true,canFetchApi:true,api:async url=>{asked.push(url);return {ok:true,status:200,json:async()=>rows};}};
  try{
   const works=await posts('artist_a',{limit:3});
-  assert.equal(asked.length,1,'扩展连着时应经扩展请求');
+  assert.equal(asked.length,1,'扩展连着且支持接口通道时应经扩展请求');
   assert.match(asked[0],/^https:\/\/danbooru\.donmai\.us\/posts\.json\?/);
   assert.equal(works[0].largeUrl,'https://cdn.donmai.us/original/a.jpg');
   assert.equal(works[0].thumbUrl,'https://cdn.donmai.us/360x360/a.jpg','只有 180 缩略图时自动换成 360');
  }finally{delete globalThis.ArtistExtension;}
  let pageCalls=0;const original=globalThis.fetch;
  globalThis.fetch=async()=>{pageCalls++;return {ok:true,json:async()=>rows};};
- globalThis.ArtistExtension={connected:false,api:async()=>{throw Error('未连接时不该走扩展');}};
  try{
-  const works=await posts('artist_a',{limit:3});
-  assert.equal(pageCalls,1,'扩展不可用时退回页面直连');
-  assert.equal(works.length,1);
+  for(const bridge of [{connected:false,canFetchApi:false,api:async()=>{throw Error('不该走扩展');}},{connected:true,canFetchApi:false,api:async()=>{throw Error('版本过旧不该走扩展');}}]){
+   globalThis.ArtistExtension=bridge;
+   const works=await posts('artist_a',{limit:3});
+   assert.equal(works.length,1);
+  }
+  assert.equal(pageCalls,2,'扩展不在或版本过旧都要退回页面直连，而不是干等超时');
  }finally{globalThis.fetch=original;delete globalThis.ArtistExtension;}
 });
 test('读取画师详情时统一声明 JSON，预览地址才不会丢成 null',async()=>{

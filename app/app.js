@@ -403,7 +403,15 @@
     if($('batch-dialog').open&&!batchStop)$('batch-dialog').close();
   }
   let lookupTimer,lookupController,lookupSequence=0;
-  async function checkExtension(){try{const version=await ArtistExtension.check();$('extension-status').textContent='图片助手已连接 · '+version;$('extension-status').title='扩展取图可用';ArtistImages.clear();}catch(error){$('extension-status').textContent='图片助手未连接 · 点击重试';$('extension-status').title=error.message;status(error.message,true);}}
+  async function checkExtension(){
+    try{
+      const version=await ArtistExtension.check(),stale=!ArtistExtension.canFetchApi;
+      $('extension-status').textContent=stale?'图片助手版本过旧 · '+version+' · 点击重试':'图片助手已连接 · '+version;
+      $('extension-status').title=stale?'请重新加载扩展，否则作品列表会退回匿名直连，图片地址可能取不到':'扩展取图可用';
+      if(stale)status('扩展版本过旧（'+version+'）：读取作品列表会退回匿名直连，图片地址可能取不到。请在 chrome://extensions 重新加载扩展。',true);
+      ArtistImages.clear();
+    }catch(error){$('extension-status').textContent='图片助手未连接 · 点击重试';$('extension-status').title=error.message;status(error.message,true);}
+  }
   async function cacheWorks(id,works){
     const result=[];
     for(const w of works){

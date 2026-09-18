@@ -2,10 +2,11 @@
   'use strict';
   const origin='https://danbooru.donmai.us';
   /* 优先走扩展：它带登录 Cookie，图片地址字段只对"可见用户"返回，页面匿名直连拿不到。
-     扩展不在时退回页面直连，数量类接口照常可用。返回形状与 fetch 的 Response 一致。 */
+     扩展不在、或版本太旧不认接口通道时退回页面直连，数量类接口照常可用。
+     返回形状与 fetch 的 Response 一致（ok/status/json）。 */
   async function defaultFetcher(url,init={}){
     const bridge=root.ArtistExtension;
-    if(bridge&&bridge.connected===true&&typeof bridge.api==='function')return bridge.api(url,init?.signal);
+    if(bridge&&bridge.canFetchApi===true&&typeof bridge.api==='function')return bridge.api(url,init?.signal);
     return fetch(url,init);
   }
   function plan(value){

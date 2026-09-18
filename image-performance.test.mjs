@@ -94,8 +94,8 @@ test('连接通道只接受本扩展在本地顶层页面注入的脚本，不�
 });
 test('HTML 与隔离脚本按块取回大图，端到端返回可用 Blob 并传播服务器失败',async()=>{
   const listeners=[];const win={addEventListener:(type,fn)=>listeners.push(fn),postMessage:data=>queueMicrotask(()=>listeners.forEach(fn=>fn({source:win,data})))};win.top=win;let fail=false,chunkFail=false,resolveFail=false,apiFail=false,chunkCalls=0;
-  const context={window:win,location:{protocol:'file:',pathname:'/F:/画师库.html'},document:{querySelector:()=>true},crypto,DOMException,fetch,setTimeout,clearTimeout,chrome:{runtime:{getManifest:()=>({version:'0.3.0'}),sendMessage:async m=>{
-    if(m.type==='ping')return {ok:true,version:'0.3.0'};
+  const context={window:win,location:{protocol:'file:',pathname:'/F:/画师库.html'},document:{querySelector:()=>true},crypto,DOMException,fetch,setTimeout,clearTimeout,chrome:{runtime:{getManifest:()=>({version:'0.3.2'}),sendMessage:async m=>{
+    if(m.type==='ping')return {ok:true,version:'0.3.2'};
     if(m.type==='resolve')return resolveFail?{ok:false,error:'作品信息请求超时'}:{ok:true,url:'https://cdn.donmai.us/original/full.jpg'};
     if(m.type==='api')return apiFail?{ok:false,error:'接口请求超时'}:{ok:true,status:200,json:[{id:1,file_url:'https://cdn.donmai.us/original/a.jpg'}]};
     if(m.type==='image')return fail?{ok:false,error:'服务器拒绝请求：HTTP 403'}:{ok:true,type:'image/jpeg',bytes:4,chunks:2};
@@ -103,7 +103,8 @@ test('HTML 与隔离脚本按块取回大图，端到端返回可用 Blob 并传
     return {ok:true,index:m.index,data:m.index===0?'/9j/':'2Q=='};
   }}}};
   vm.runInNewContext(await fs.readFile('app/extension-bridge.js','utf8'),context);vm.runInNewContext(await fs.readFile('图片取图扩展/content.js','utf8'),context);
-  assert.equal(await win.ArtistExtension.check(),'0.3.0');
+  assert.equal(await win.ArtistExtension.check(),'0.3.2');
+  assert.equal(win.ArtistExtension.canFetchApi,true,'0.3.2 才带接口通道');
   const blob=await win.ArtistExtension.image('https://cdn.donmai.us/test.jpg');
   assert.equal(blob.type,'image/jpeg');assert.equal(blob.size,4);assert.equal(chunkCalls,2,'按扩展给出的分块数逐块取回');
   assert.equal(await win.ArtistExtension.resolve('12036303'),'https://cdn.donmai.us/original/full.jpg','按作品编号问出原图地址');
@@ -115,4 +116,23 @@ test('HTML 与隔离脚本按块取回大图，端到端返回可用 Blob 并传
   assert.equal((await win.ArtistExtension.api('https://danbooru.donmai.us/posts.json')).status,200,'失败后要能恢复');
   fail=true;await assert.rejects(win.ArtistExtension.image('https://cdn.donmai.us/test.jpg'),/403/);
   fail=false;chunkFail=true;await assert.rejects(win.ArtistExtension.image('https://cdn.donmai.us/test.jpg'),/过期/,'分块失败要如实报错而不是返回残缺图片');
+});
+test('扩展版本过旧时不启用接口通道，直接退回直连而不是干等到超时',async()=>{
+  const code=await fs.readFile('app/extension-bridge.js','utf8'),content=await fs.readFile('图片取图扩展/content.js','utf8');
+  const canFetch=async version=>{
+    const listeners=[],win={addEventListener:(type,fn)=>listeners.push(fn),postMessage:data=>queueMicrotask(()=>listeners.forEach(fn=>fn({source:win,data})))};win.top=win;
+    const context={window:win,location:{protocol:'file:',pathname:'/F:/画师库.html'},document:{querySelector:()=>true},crypto,setTimeout,clearTimeout,
+      chrome:{runtime:{getManifest:()=>({version}),sendMessage:async m=>m.type==='ping'?{ok:true,version}:{ok:true}}}};
+    vm.runInNewContext(code,context);vm.runInNewContext(content,context);
+    await win.ArtistExtension.check();
+    return win.ArtistExtension.canFetchApi;
+  };
+  assert.equal(await canFetch('0.3.2'),true,'0.3.2 起才有接口通道');
+  assert.equal(await canFetch('0.3.10'),true,'两位数的段号不能按字符串比较');
+  assert.equal(await canFetch('0.4.0'),true,'更新的版本照常可用');
+  assert.equal(await canFetch('0.3.1'),false,'旧扩展不认 api 类型，会静默丢弃消息');
+  assert.equal(await canFetch('0.3.0'),false);
+  assert.equal(await canFetch('0.2.9'),false);
+  assert.equal(await canFetch(''),false,'版本号读不到时按不可用处理');
+  assert.equal(await canFetch('unknown'),false);
 });
