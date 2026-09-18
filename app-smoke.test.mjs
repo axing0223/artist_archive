@@ -35,10 +35,10 @@ async function boot(){
     IntersectionObserver:IO,ResizeObserver:RO,Option,
     crypto:{randomUUID:()=>'uuid-'+Math.random().toString(36).slice(2)},
     fetch:async()=>{throw Error('测试中不应联网');},
-    URL:{createObjectURL:()=>'blob:x',revokeObjectURL(){}},Blob,setTimeout,clearTimeout,requestAnimationFrame:fn=>fn(),
+    URL:{createObjectURL:()=>'blob:x',revokeObjectURL(){}},Blob,structuredClone,setTimeout,clearTimeout,requestAnimationFrame:fn=>fn(),
     ArtistImages:{bind(){},dispose(){},setFolder(){},clear(){},dataUrl:async()=>'data:image/jpeg;base64,/9j/2Q==',fetch:async()=>new Blob([])},
     ArtistExtension:{connected:false,check:async()=>{throw Error('测试中未连接扩展');},image:async()=>{throw Error('未连接');},resolve:async()=>{throw Error('未连接');}},
-    ArtistGallery:{render(container,rows,card){state.card=card;state.renders.push(rows.map(row=>card(row)));},clear(){},pin(){},visible:()=>[]},
+    ArtistGallery:{render(container,rows,card){state.card=card;state.rows=rows;state.renders.push(rows.map(row=>card(row)));},clear(){},pin(){},visible:()=>[]},
     ArtistLookup:{plan(){throw Error('测试中不查询');},lookup:async()=>[],posts:async()=>[],details:async()=>({counts:{total:null,beforeTotal:null}})},
   };
   for(const file of ['artist-id.js','image-cache.js','image-loader.js','folder-store.js','work-picker.js','app.js'])
@@ -118,6 +118,70 @@ test('删除画师改为按钮二次确认，不再调用系统对话框',async(
   remove.onclick();
   assert.equal(remove.textContent,'再次点击确认删除','第一次点击只进入确认态');
   assert.equal(String(remove.className).includes('is-armed'),true,'确认态要有醒目样式');
+});
+const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+const findByPlaceholder=(node,placeholder)=>{if(node.placeholder===placeholder)return node;for(const child of node.children||[]){const hit=findByPlaceholder(child,placeholder);if(hit)return hit;}return null;};
+const findText=(node,label)=>{if(node._text===label)return node;for(const child of node.children||[]){const hit=findText(child,label);if(hit)return hit;}return null;};
+async function createArtist(state,elements,name){
+  elements.get('add-artist').onclick();
+  const input=findByPlaceholder(lastRender(state)[0],'画师名字（必填）');
+  input.value=name;input.oninput();
+  await findText(lastRender(state)[0],'保存').onclick();
+}
+test('新增画师：填好名字保存后进入列表，并拿到正式序号标识',async()=>{
+  const {elements,state}=await boot();
+  await createArtist(state,elements,'测试画师');
+  assert.equal(state.rows.length,1,'保存后列表里出现这位画师');
+  assert.equal(state.rows[0].name,'测试画师');
+  assert.match(state.rows[0].uid,/^\d{4}-测试画师-manual$/,'应发到正式序号，而不是临时草稿号');
+});
+test('新增画师：名字为空时拒绝保存并给出提示',async()=>{
+  const {elements,state}=await boot();
+  elements.get('add-artist').onclick();
+  const card=lastRender(state)[0];
+  await findText(card,'保存').onclick();
+  assert.match(state.rows[0].uid,/^draft-/,'空名字不该拿到正式序号，仍是草稿');
+  assert.equal(state.rows[0].name,'','草稿名字没有被填入');
+  assert.equal(findText(card,'请填写画师名字。')!==null,true,'要给出可见的错误提示');
+  assert.equal(card.className.includes('is-editing'),true,'仍停留在编辑态');
+});
+test('新增画师：与已有画师重名时拒绝保存',async()=>{
+  const {elements,state}=await boot();
+  await createArtist(state,elements,'同名');
+  elements.get('add-artist').onclick();
+  const card=lastRender(state).slice(-1)[0];
+  const input=findByPlaceholder(card,'画师名字（必填）');
+  assert.ok(input,'新草稿排在列表末尾，应能在这里找到名字输入框');
+  input.value='同名';input.oninput();
+  await findText(card,'保存').onclick();
+  assert.equal(state.rows.length,2,'不应出现第二位同名画师（原有 1 位 + 未保存的草稿）');
+  assert.equal(findText(card,'已有同名画师。')!==null,true);
+});
+test('删除画师：第一次点击只进入确认态，第二次才真的移除',async()=>{
+  const {elements,state}=await boot();
+  await createArtist(state,elements,'待删除');
+  assert.equal(state.rows.length,1);
+  findText(lastRender(state)[0],'编辑').onclick();
+  await wait(180);
+  const remove=findText(lastRender(state)[0],'删除画师');
+  assert.ok(remove,'编辑态应有删除按钮');
+  remove.onclick();
+  assert.equal(state.rows.length,1,'第一次点击不能删除');
+  assert.equal(remove.textContent,'再次点击确认删除');
+  await remove.onclick();
+  assert.equal(state.rows.length,0,'第二次点击才移除');
+});
+test('取消编辑：改动不写入数据',async()=>{
+  const {elements,state}=await boot();
+  await createArtist(state,elements,'原名字');
+  findText(lastRender(state)[0],'编辑').onclick();
+  await wait(180);
+  const input=findByPlaceholder(lastRender(state)[0],'画师名字（必填）');
+  input.value='改过的名字';input.oninput();
+  findText(lastRender(state)[0],'取消').onclick();
+  await wait(180);
+  assert.equal(state.rows.length,1);
+  assert.equal(state.rows[0].name,'原名字','取消后应保留原值');
 });
 test('编辑已有画师时，卡片渲染成编辑态而不是浏览态',async()=>{
   const {elements,state}=await boot();
