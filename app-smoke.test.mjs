@@ -25,23 +25,23 @@ class El{
   querySelectorAll(){return [];}
 }
 async function boot(){
-  const elements=new Map(),state={renders:[],queried:[],scrolled:[]};
+  const elements=new Map(),state={renders:[],queried:[],scrolled:[],mounted:[]};
   const document={getElementById:id=>{if(!elements.has(id))elements.set(id,new El());return elements.get(id);},createElement:tag=>new El(tag),
-    querySelector:selector=>{state.queried.push(selector);return {scrollIntoView:()=>state.scrolled.push(selector),classList:{add(){},remove(){}}};},
+    querySelector:selector=>{state.queried.push(selector);return {scrollIntoView:()=>state.scrolled.push(selector),classList:{add(){},remove(){}},getBoundingClientRect:()=>({top:0,height:0,left:0,width:0})};},
     querySelectorAll:()=>[],documentElement:new El('html')};
   const localStorage={store:new Map(),getItem(key){return this.store.has(key)?this.store.get(key):null;},setItem(key,value){this.store.set(key,String(value));}};
   class IO{constructor(fn){this.fn=fn;}observe(){}unobserve(){}disconnect(){}}
   class RO{observe(){}unobserve(){}disconnect(){}}
   class Option{constructor(text,value){this.textContent=text;this.value=value;}}
   const ctx={
-    window:{addEventListener(){},innerWidth:1200},document,localStorage,
+    window:{addEventListener(){},innerWidth:1200,innerHeight:800},document,localStorage,
     IntersectionObserver:IO,ResizeObserver:RO,Option,
     crypto:{randomUUID:()=>'uuid-'+Math.random().toString(36).slice(2)},
     fetch:async()=>{throw Error('测试中不应联网');},
     URL:{createObjectURL:()=>'blob:x',revokeObjectURL(){}},Blob,structuredClone,setTimeout,clearTimeout,requestAnimationFrame:fn=>fn(),
     ArtistImages:{bind(){},dispose(){},setFolder(){},clear(){},dataUrl:async()=>'data:image/jpeg;base64,/9j/2Q==',fetch:async()=>new Blob([])},
     ArtistExtension:{connected:false,check:async()=>{throw Error('测试中未连接扩展');},image:async()=>{throw Error('未连接');},resolve:async()=>{throw Error('未连接');}},
-    ArtistGallery:{render(container,rows,card){state.card=card;state.rows=rows;state.renders.push(rows.map(row=>card(row)));},clear(){},pin(){},visible:()=>[]},
+    ArtistGallery:{render(container,rows,card){state.card=card;state.rows=rows;state.renders.push(rows.map(row=>card(row)));},clear(){},pin(){},visible:()=>[],mount(uid){state.mounted.push(uid);return true;}},
     ArtistLookup:{plan(){throw Error('测试中不查询');},lookup:async()=>[],posts:async()=>[],details:async()=>({counts:{total:null,beforeTotal:null}})},
   };
   for(const file of ['artist-id.js','image-cache.js','image-loader.js','folder-store.js','work-picker.js','viewer.js','test-images.js','app.js'])
@@ -232,10 +232,15 @@ test('展开与收起 Danbooru 读取区后，视图重新对准正在编辑的�
   const card=lastRender(state)[0];
   const input=findByPlaceholder(card,'画师名字（必填）');
   input.value='tester';input.oninput();
-  state.scrolled.length=0;
+  state.scrolled.length=0;state.mounted.length=0;
   findText(card,'展开读取').onclick();
   await wait(30);
+  assert.equal(state.mounted.length>=1,true,'滚动前要先按真实高度挂载这张卡片，否则占位用的是旧高度');
   assert.equal(state.scrolled.length>=1,true,'展开后应把视图对准这张卡片');
+  assert.equal(String(state.scrolled[0]).includes(state.mounted[0]),true,'挂载的和滚动对准的必须是同一张卡片');
+  state.scrolled.length=0;
+  await wait(460);
+  assert.equal(state.scrolled.length>=1,true,'平滑滚动结束后要再校验一次，防止目标漂移');
   state.scrolled.length=0;
   findText(lastRender(state)[0],'收起').onclick();
   await wait(30);

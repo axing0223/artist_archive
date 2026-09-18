@@ -169,8 +169,19 @@
   }
   function focusEditingCard(){
     if(!draft)return;
-    const uid=draft.uid;
-    requestAnimationFrame(()=>{const slot=document.querySelector('.artist-slot[data-uid="'+uid+'"]');if(slot)slot.scrollIntoView({block:'center',behavior:'smooth'});});
+    const uid=draft.uid,find=()=>document.querySelector('.artist-slot[data-uid="'+uid+'"]');
+    requestAnimationFrame(()=>{
+      ArtistGallery.mount(uid);
+      const slot=find();if(!slot)return;
+      slot.scrollIntoView({block:'center',behavior:'smooth'});
+      /* 平滑滚动期间上下方的卡片会按需挂载与释放，文档高度一直在变，目标位置会跟着漂。
+         等滚动结束再校验一次：已经对齐就不动它，偏了才瞬时补齐，不叠第二层动画。 */
+      setTimeout(()=>{
+        const now=find();if(!now)return;
+        const rect=now.getBoundingClientRect(),drift=rect.top+rect.height/2-window.innerHeight/2;
+        if(Math.abs(drift)>8)now.scrollIntoView({block:'center',behavior:'auto'});
+      },420);
+    });
   }
   function morphAway(uid,then){
     const article=uid?document.querySelector('.artist-slot[data-uid="'+uid+'"] article'):null;
