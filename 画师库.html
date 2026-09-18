@@ -578,7 +578,14 @@
     for(const w of works){
       if(FolderStore.imageOf(w,'thumb')?.kind==='local'){result.push(w);continue;}
       try{const thumb=await ArtistImages.dataUrl(id,w,'thumb');result.push({...w,thumb,caption:w.caption?.startsWith('预览图未能')?'':w.caption});}
-      catch(error){result.push({...w,caption:'预览图未能缓存：'+error.message});}
+      catch(error){
+        const smaller=typeof w.thumbUrl==='string'&&w.thumbUrl.includes('/360x360/')?w.thumbUrl.replace('/360x360/','/180x180/'):null;
+        try{
+          if(!smaller)throw error;
+          const thumb=await ArtistImages.dataUrl(id,{...w,thumbUrl:smaller},'thumb');
+          result.push({...w,thumb,thumbUrl:smaller,caption:''});
+        }catch{result.push({...w,caption:'预览图未能缓存：'+error.message});}
+      }
     }
     return result;
   }
