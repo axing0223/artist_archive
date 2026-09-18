@@ -132,8 +132,8 @@ test('编辑态的三个操作按钮集中在同一个容器里，顺序为保�
   const findClass=(node,cls)=>{if(String(node.className).includes(cls))return node;for(const child of node.children||[]){const hit=findClass(child,cls);if(hit)return hit;}return null;};
   const actions=findClass(card,'artist-actions');
   assert.ok(actions,'编辑态卡片应有操作区');
-  assert.deepEqual(actions.children.map(child=>child.textContent),['保存','取消','删除画师'],'三个按钮要在同一个容器里依次排列');
-  assert.equal(actions.children[0].className.includes('primary-action'),true,'保存是主操作');
+  assert.deepEqual(actions.children.map(child=>child.textContent),['刷新','保存','取消','删除画师'],'四个按钮要在同一个容器里依次排列');
+  assert.equal(actions.children[1].className.includes('primary-action'),true,'保存是主操作');
 });
 test('删除画师改为按钮二次确认，不再调用系统对话框',async()=>{
   const {elements,state}=await boot();
@@ -394,6 +394,55 @@ test('收起「从 Danbooru 添加作品」后不留下空的 work-picker 容器
   findText(card,'收起').onclick();
   await wait(20);
   assert.equal(hosts().length,0);
+});
+test('编辑界面刷新当前画师：数量、正式名、笔名一起更新，保存时才落盘',async()=>{
+  const {elements,state,ctx}=await boot();
+  const renames=[],original=ctx.FolderStore.rename;
+  ctx.FolderStore.rename=(dir,from,to)=>{renames.push(from+'→'+to);return original(dir,from,to);};
+  stub(ctx,{lookup:async()=>[{id:7,name:'betanonbeet',aliases:['betabeet','bb'],pageUrl:''}],
+    details:async()=>({counts:{checkedAt:'x',total:42,beforeTotal:9},countsError:false})});
+  await createArtist(state,elements,'betabeet');
+  findText(lastRender(state)[0],'编辑').onclick();
+  await wait(180);
+  await findText(lastRender(state)[0],'刷新').onclick();
+  const card=lastRender(state)[0];
+  assert.equal(findByPlaceholder(card,'画师名字（必填）').value,'betanonbeet','名字同步成站点上的正式名');
+  assert.equal(findAllByClass(findByClass(card,'alias-picker'),'alias-choice').length,2,'笔名也一并带回来');
+  await findText(lastRender(state)[0],'保存').onclick();
+  assert.equal(state.rows[0].name,'betanonbeet');
+  assert.equal(state.rows[0].uid,'0001-betanonbeet-7','保存时标识跟着名字一起换');
+  assert.equal(state.rows[0].counts.total,42,'数量落盘');
+  assert.equal(state.rows[0].counts.beforeTotal,9);
+  assert.deepEqual(renames,['0001-betabeet-manual→0001-betanonbeet-7'],'要登记目录迁移，否则旧目录里的图片会被删掉');
+});
+test('编辑界面刷新：站点正式名会撞上库里已有画师时不跟着改',async()=>{
+  const {elements,state,ctx}=await boot();
+  const get=id=>{if(!elements.has(id))elements.set(id,new El());return elements.get(id);};
+  get('batch-artists').onclick();get('batch-names').value='old\ntaken';get('batch-works').checked=false;
+  await get('batch-form').onsubmit({preventDefault(){}});
+  stub(ctx,{lookup:async()=>[{id:9,name:'taken',aliases:[],pageUrl:''}],details:async()=>({counts:{},countsError:false})});
+  findText(lastRender(state)[0],'编辑').onclick();
+  await wait(180);
+  await findText(lastRender(state)[0],'刷新').onclick();
+  assert.equal(findByPlaceholder(lastRender(state)[0],'画师名字（必填）').value,'old','撞名时不该改名字');
+  await findText(lastRender(state)[0],'保存').onclick();
+  assert.equal(state.rows[0].name,'old','撞名时不该改名字');
+  assert.equal(state.rows[0].uid,'0001-old-9','名字不变，但刷新补上了编号，标识要跟着补');
+  assert.equal(state.rows[1].name,'taken','另一位不受影响');
+});
+test('编辑界面刷新：点取消则刷到的内容全部丢弃',async()=>{
+  const {elements,state,ctx}=await boot();
+  stub(ctx,{lookup:async()=>[{id:7,name:'betanonbeet',aliases:['betabeet'],pageUrl:''}],
+    details:async()=>({counts:{checkedAt:'x',total:42},countsError:false})});
+  await createArtist(state,elements,'betabeet');
+  findText(lastRender(state)[0],'编辑').onclick();
+  await wait(180);
+  await findText(lastRender(state)[0],'刷新').onclick();
+  findText(lastRender(state)[0],'取消').onclick();
+  await wait(180);
+  assert.equal(state.rows[0].name,'betabeet','取消后保持原样');
+  assert.equal(state.rows[0].uid,'0001-betabeet-manual');
+  assert.notEqual(state.rows[0].counts&&state.rows[0].counts.total,42,'刷新只改表单，没保存就不该落盘');
 });
 test('展开与收起 Danbooru 读取区后，视图重新对准正在编辑的卡片',async()=>{
   const {elements,state}=await boot();

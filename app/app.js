@@ -86,13 +86,20 @@
     if(Number.isSafeInteger(a.score)&&a.score>=1&&a.score<=5)article.append(el('span','score-badge score-'+a.score,String(a.score)));
     return article;
   }
-  function card(a){return draft&&draft.uid===a.uid?editingCard(a):artistCard(a);}
+  /* 认草稿有两种情况：新建时 rows 里放的就是 draft 本身；编辑已有画师时按 editingId 认，
+     不能按 draft.uid——刷新同步到正式名之后 draft.uid 会和库里存的那条不一样。 */
+  function card(a){return draft&&(a===draft||(editingId&&a.uid===editingId))?editingCard(a):artistCard(a);}
   function editingCard(a){
     const article=el('article','artist is-editing'),info=el('div','artist-info');
     const numbers=el('div','artist-numbers');numbers.append(el('span','serial',String(seqOf(draft)).padStart(4,'0')),el('span','work-count',draft.works.length+' 张图片'));info.append(numbers);
     const field=(label,node)=>{const wrap=el('label','edit-field');wrap.append(el('span','edit-label',label),node);return wrap;};
     const fieldBox=(label,node)=>{const wrap=el('div','edit-field edit-field-wide');wrap.append(el('span','edit-label',label),node);return wrap;};
-    const nameInput=el('input');nameInput.value=draft.name;nameInput.maxLength=160;nameInput.placeholder='画师名字（必填）';nameInput.oninput=()=>draft.name=nameInput.value;
+    const nameInput=el('input');nameInput.value=draft.name;nameInput.maxLength=160;nameInput.placeholder='画师名字（必填）';nameInput.oninput=()=>{
+      /* 手改名字就让旧的编号、数量、笔名作废——它们都属于上一个名字。
+         放在这里而不是保存时判断：程序自己同步到的正式名不该被当成改名（那正是刚取回的新数据）。 */
+      if(draft.name!==nameInput.value){draft.counts=null;draft.danbooruId=null;draft.aliases=[];draft.alias=null;}
+      draft.name=nameInput.value;
+    };
     const categorySelect=el('select');categorySelect.append(new Option('待判断',''),...data.categories.map(c=>new Option(c,c)));categorySelect.value=draft.category||'';categorySelect.onchange=()=>draft.category=categorySelect.value||null;
     const urlInput=el('input');urlInput.type='url';urlInput.value=draft.artistUrl||'';urlInput.placeholder='https://…';urlInput.oninput=()=>draft.artistUrl=urlInput.value;
     const tagEditor=el('div','tag-editor'),tagChoices=el('div','tag-choices'),tagRow=el('div','tag-editor-row'),tagNew=el('input');
@@ -161,7 +168,7 @@
     const noteInput=el('textarea');noteInput.rows=2;noteInput.maxLength=5000;noteInput.value=draft.note||'';noteInput.placeholder='备注';noteInput.oninput=()=>draft.note=noteInput.value;
     const grid=el('div','edit-grid');grid.append(field('画师名字',nameInput),field('主分类',categorySelect),field('画师页面链接',urlInput),scoreField,fieldBox('标签',tagEditor),aliasField);
     editorError=el('p','error');info.append(grid,field('画风描述',descInput),field('备注',noteInput),editorError);
-    const actions=el('div','artist-actions');actions.append(btn('保存',saveDraft,'action primary-action'),btn('取消',cancelEdit,'action'));
+    const actions=el('div','artist-actions');actions.append(btn('刷新',refreshCurrentArtist,'action'),btn('保存',saveDraft,'action primary-action'),btn('取消',cancelEdit,'action'));
     const remove=removeButton();if(!editingId)remove.hidden=true;actions.append(remove);info.append(actions);
     const works=el('div','works');
     draft.works.forEach((w,i)=>{const figure=el('figure','work'),thumb=btn('',()=>showImage({uid:draft.uid,name:draft.name},w),'thumb'),img=el('img');if(w.kind==='test')figure.classList.add('is-test');img.alt=draft.name+' 的作品';ArtistImages.bind(img,draft.uid,w,'editor','thumb');thumb.append(img);const caption=el('figcaption');caption.append(el('span','',w.kind==='test'?`测试风格 ${w.testSeq||1}`:'作品 '+(i+1)));caption.append(btn('移除',()=>{draft.works.splice(i,1);render();},'danger-link'));figure.append(thumb,caption);works.append(figure);});
@@ -211,7 +218,7 @@
   }
   function focusEditingCard(){
     if(!draft)return;
-    const uid=draft.uid,find=()=>document.querySelector('.artist-slot[data-uid="'+uid+'"]');
+    const uid=editingId||draft.uid,find=()=>document.querySelector('.artist-slot[data-uid="'+uid+'"]');
     requestAnimationFrame(()=>{
       ArtistGallery.mount(uid);
       const slot=find();if(!slot)return;
@@ -358,6 +365,32 @@
     }
     status(renameAllStop?`已停止：检查了 ${done} / ${targets.length} 位，${changed} 位改成最新名${failed?`，${failed} 位查询失败`:''}。`:`已检查 ${targets.length} 位画师，其中 ${changed} 位改成最新名${skipped?`，${skipped} 位没找到或会撞名`:''}${failed?`，${failed} 位查询失败`:''}。`,failed>0);
   }
+  /* 刷新当前画师：和「刷新所有画师作品数量」「把所有画师名字更新为最新」做同样的事，
+     只是只针对编辑中的这一位。结果先写进编辑表单，点保存才落盘——在编辑器里直接落盘
+     会让「取消」失去意义。 */
+  async function refreshCurrentArtist(){
+    if(busy||uploading||!draft)return;
+    const name=(draft.name||'').trim();
+    if(!name){setEditorError('先在「画师名字」里填 Danbooru 标签，再刷新。');return;}
+    setEditorError('');busy=true;status('正在刷新 '+name+' 的数据…');
+    const notes=[];let bad=false;
+    try{
+      const [hit,counts]=await Promise.all([lookupArtist(name).catch(()=>null),refreshCounts({...draft,name}).catch(()=>null)]);
+      if(counts)draft.counts=counts.counts;
+      if(!hit){notes.push('站点上没找到这位画师');bad=true;}
+      else{
+        if(hit.id!=null)draft.danbooruId=hit.id;
+        if(hit.aliases.length)draft.aliases=hit.aliases;
+        if(hit.canonical&&hit.canonical!==name){
+          const taken=data.artists.some(a=>a.uid!==editingId&&a.name.toLowerCase()===hit.canonical.toLowerCase());
+          if(taken){notes.push('站点上已改名为 '+hit.canonical+'，但库里已有同名画师，没有跟着改');bad=true;}
+          else{draft.name=hit.canonical;notes.push('站点上已改名为 '+hit.canonical+'，已跟着改');}
+        }
+      }
+    }finally{busy=false;}
+    render();
+    status(notes.length?'已刷新 '+name+'：'+notes.join('；')+'。保存后才会落盘。':'已刷新 '+name+' 的作品数量与笔名。保存后才会落盘。',bad);
+  }
   async function saveDraft(){
     if(busy||uploading)return;
     const name=(draft.name||'').trim();
@@ -365,11 +398,13 @@
     if(data.artists.some(a=>a.uid!==editingId&&a.name.toLowerCase()===name.toLowerCase())){setEditorError('已有同名画师。');return;}
     if(draft.artistUrl&&!url(draft.artistUrl)){setEditorError('画师页面链接只支持 http:// 或 https://。');return;}
     if(draft.works.some(w=>w.url&&!url(w.url))){setEditorError('作品来源链接只支持 http:// 或 https://。');return;}
-    /* 改名后旧的编号、数量、笔名都属于上一个名字，不能跟着新名字走。
-       要和已存记录比：draft.name 在输入时就被改掉了，和它自己比永远相等。 */
-    const stored=data.artists.find(a=>a.uid===editingId);
-    if(stored&&stored.name!==name){draft.counts=null;draft.danbooruId=null;draft.aliases=[];draft.alias=null;}
+    /* 旧编号、数量、笔名的作废放在名字输入框里做，这里只负责把改过的名字落到 uid 上。 */
     draft.name=name;draft.artistUrl=url(draft.artistUrl);draft.tags=unique(draft.tags);draft.basis='';draft.status='';draft.works.forEach(w=>w.url=url(w.url));
+    if(editingId){
+      const seq=ArtistId.parse(draft.uid)?.seq;
+      const uid=seq?ArtistId.create({seq,name:draft.name,danbooruId:Number.isSafeInteger(draft.danbooruId)?draft.danbooruId:null}):draft.uid;
+      if(uid!==draft.uid)reidentify(draft,draft.name,draft.danbooruId);
+    }
     const next=clone(data),i=next.artists.findIndex(a=>a.uid===editingId);
     if(i<0){draft.uid=ArtistId.issue(next.artists,{name:draft.name,danbooruId:draft.danbooruId});next.artists.push(draft);}else next.artists[i]=draft;
     next.artists.forEach((a,j)=>a.order=j+1);next.tags=unique([...next.tags,...draft.tags]);
