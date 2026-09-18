@@ -80,7 +80,7 @@ details pre{margin:0;padding:0 16px 16px;font:12px/1.7 Consolas,monospace;white-
   const CONCURRENCY=3,PER_SECOND=5,BATCH=25,WORKS=3;
 
   let dir=null,data=null,queue=[],active=[],running=false,stop=false,startedAt=0,processed=0,diagnosed=false,routeLogged=false;
-  const stats={renamed:0,images:0,failed:0};
+  const stats={renamed:0,images:0,failed:0,ok:0};
   const failures=[],ambiguous=[],imageFailures=[];
 
   const log=line=>{const p=$('log');p.textContent+=line+'\n';p.scrollTop=p.scrollHeight;};
@@ -119,18 +119,33 @@ details pre{margin:0;padding:0 16px 16px;font:12px/1.7 Consolas,monospace;white-
     $('fail-list').textContent=failures.length?failures.join('\n'):'—';
   }
 
-  /* 站点默认只回元数据，必须用 only= 显式索取；不被接受时退回逐张详情接口 */
-  const POST_ONLY='id,media_asset,preview_file_url,large_file_url,file_url';
+  /* 站点已不再返回任何图片地址，只剩 media_asset.pixel_hash。
+     先验证 pixel_hash 是否就是 CDN 文件名，验证通过才启用拼接路径。 */
+  let hashRoute=null,previewExt='webp';
   const apiJson=async url=>{const r=await fetcher(url,{credentials:'omit',headers:{Accept:'application/json'}});if(!r.ok)throw Error('HTTP '+r.status);return r.json();};
+  const cdnDir=hash=>hash.slice(0,2)+'/'+hash.slice(2,4)+'/'+hash;
+  const cdnUrl=(hash,size,ext)=>'https://cdn.donmai.us/'+size+'/'+cdnDir(hash)+'.'+ext;
+  function workFromHash(post){
+    const hash=String(post?.media_asset?.pixel_hash||''),ext=String(post?.media_asset?.file_ext||'jpg');
+    if(!/^[a-f0-9]{32}$/.test(hash))return null;
+    return {id:String(post.id),url:'https://danbooru.donmai.us/posts/'+post.id,caption:'',
+      thumbUrl:cdnUrl(hash,'360x360','jpg'),
+      previewUrl:cdnUrl(hash,'720x720',previewExt),
+      largeUrl:cdnUrl(hash,'original',ext)};
+  }
   async function fetchWorks(name){
     const url=only=>'https://danbooru.donmai.us/posts.json?'+new URLSearchParams({tags:name+' order:id_desc',limit:String(WORKS),...(only?{only}:{})});
     let rows=null;
-    try{rows=await apiJson(url(POST_ONLY));}
+    try{rows=await apiJson(url('id,media_asset'));}
     catch(error){log('  列表接口不接受 only= 参数（'+error.message+'），改用默认字段');}
     if(!Array.isArray(rows)){try{rows=await apiJson(url(null));}catch(error){throw Error('作品列表读取失败：'+error.message);}}
     const posts=rows.filter(p=>p&&Number.isSafeInteger(p.id)&&p.id>0);
     const quick=posts.map(ArtistLookup.workOf);
-    if(quick.length&&quick.every(w=>typeof w.thumbUrl==='string'))return {works:quick,via:'列表接口 only='};
+    if(quick.length&&quick.every(w=>typeof w.thumbUrl==='string'))return {works:quick,via:'列表接口自带地址'};
+    if(hashRoute===true){
+      const hashed=posts.map(workFromHash).filter(Boolean);
+      if(hashed.length===posts.length&&hashed.length)return {works:hashed,via:'列表接口 pixel_hash 拼接'};
+    }
     const works=[];
     for(const p of posts.slice(0,WORKS)){
       try{works.push(ArtistLookup.workOf(await apiJson('https://danbooru.donmai.us/posts/'+p.id+'.json')));}
@@ -139,29 +154,23 @@ details pre{margin:0;padding:0 16px 16px;font:12px/1.7 Consolas,monospace;white-
     return {works,via:'逐张详情接口'};
   }
 
-  /* 一次性诊断：直接打印原始返回，确认图片地址到底藏在哪个字段 */
+  /* 一次性诊断：验证 media_asset.pixel_hash 是否就是 CDN 文件名 */
   async function diagnose(name){
-    const probe=async(label,url,full)=>{
-      try{
-        const data=await apiJson(url),first=Array.isArray(data)?data[0]:data;
-        if(!first){log(`诊断 · ${label}：没有拿到帖子`);return null;}
-        if(full){const text=JSON.stringify(first);log(`诊断 · ${label}：${text.length>900?text.slice(0,900)+'…':text}`);}
-        else{
-          const keys=Object.keys(first);
-          log(`诊断 · ${label}：共 ${keys.length} 字段`);
-          log(`  含 url/file/media/variant/md5 的字段：${keys.filter(k=>/url|file|media|variant|md5/i.test(k)).join(', ')||'无'}`);
-          log(`  media_asset = ${first.media_asset===undefined?'无':JSON.stringify(first.media_asset).slice(0,600)}`);
-        }
-        return first;
-      }catch(error){log(`诊断 · ${label} 失败：${error.message}`);return null;}
-    };
-    const base='https://danbooru.donmai.us/posts.json?'+new URLSearchParams({tags:name+' order:id_desc',limit:'1'});
-    const first=await probe('列表默认',base,false);
-    await probe('列表 only=id,media_asset',base+'&only=id,media_asset',true);
-    if(first?.id){
-      await probe('单张默认','https://danbooru.donmai.us/posts/'+first.id+'.json',false);
-      await probe('单张 only=media_asset','https://danbooru.donmai.us/posts/'+first.id+'.json?only=media_asset',true);
-    }
+    let first=null;
+    try{
+      const rows=await apiJson('https://danbooru.donmai.us/posts.json?'+new URLSearchParams({tags:name+' order:id_desc',limit:'1'}));
+      first=Array.isArray(rows)?rows[0]:rows;
+    }catch(error){log('诊断 · 作品列表读取失败：'+error.message);}
+    const asset=first?.media_asset,hash=String(asset?.pixel_hash||'');
+    if(asset)log('诊断 · media_asset = '+JSON.stringify(asset).slice(0,400));
+    if(!/^[a-f0-9]{32}$/.test(hash)){hashRoute=false;log('诊断 · 没有可用的 pixel_hash，无法拼接 CDN 地址');return;}
+    const thumb=cdnUrl(hash,'360x360','jpg');
+    log('诊断 · 试拼缩略图：'+thumb);
+    try{await gate();await ArtistExtension.image(thumb);log('  ✓ 可下载 —— pixel_hash 就是 CDN 文件名');}
+    catch(error){hashRoute=false;log('  ✗ 不可用：'+error.message);return;}
+    try{await gate();await ArtistExtension.image(cdnUrl(hash,'720x720','webp'));log('  ✓ 预览图 .webp 可下载');previewExt='webp';}
+    catch(error){previewExt='jpg';log('  ✗ 预览图 .webp 不可用（'+error.message+'），改用 .jpg');}
+    hashRoute=true;
   }
 
   /* 单个画师：查编号 → 取数量与作品 → 下缩略图 → 改内存记录 */
@@ -220,10 +229,15 @@ details pre{margin:0;padding:0 16px 16px;font:12px/1.7 Consolas,monospace;white-
       if(stop)break;
       const slice=list.slice(i,i+size);
       await pool(slice,CONCURRENCY,async artist=>{
-        try{await syncOne(artist);}
+        try{await syncOne(artist);stats.ok++;}
         catch(error){stats.failed++;failures.push(artist.name+' → '+error.message);}
         processed++;refresh();
       });
+      if(stats.ok===0&&!stop){
+        log('⚠ 首批 '+processed+' 位全部没能取到作品地址，已停止，避免空跑 '+list.length+' 次。');
+        log('  请把上面的诊断结果发给维护者，再决定是否重试。');
+        break;
+      }
       try{
         const warnings=FolderStore.takeWarnings();
         await FolderStore.write(dir,data);
