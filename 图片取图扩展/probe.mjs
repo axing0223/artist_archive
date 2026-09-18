@@ -1,4 +1,4 @@
-const MAX_BYTES=25*1024*1024;
+const MAX_BYTES=50*1024*1024;
 const imageTypes=new Set(['image/jpeg','image/png','image/webp','image/gif','image/avif']);
 export function imageUrl(value){
   const u=new URL(value);
@@ -38,7 +38,7 @@ export async function resolvePost(value,options={}){
   const {response,signal}=await request(postUrl(value),options);
   if(!response.headers.get('content-type')?.toLowerCase().includes('application/json')){await response.body?.cancel();throw Error('作品接口没有返回 JSON，可能仍被验证页拦截。');}
   const payload=JSON.parse(await (await limitedBlob(response,2*1024*1024,signal)).text());
-  const candidate=payload.preview_file_url||payload.media_asset?.variants?.find(v=>v.type==='180x180')?.url;
-  if(!candidate)throw Error('作品接口未提供预览图地址。');
+  const candidate=payload.file_url||payload.media_asset?.variants?.find(v=>v.type==='original')?.url||payload.large_file_url||payload.preview_file_url;
+  if(!candidate)throw Error('作品接口未提供图片地址。');
   return imageUrl(candidate);
 }

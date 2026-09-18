@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "画师库 · 图片助手",
-  "version": "0.2.0",
-  "description": "为本地画师库获取 Danbooru 预览图，保留单图测试页面。",
+  "version": "0.3.0",
+  "description": "为本地画师库获取 Danbooru 缩略图与原始大图，保留单图测试页面。",
   "host_permissions": ["https://danbooru.donmai.us/*", "https://cdn.donmai.us/*"],
   "background": {"service_worker": "background.js", "type": "module"},
   "content_scripts": [{"matches": ["file:///*"], "js": ["content.js"], "run_at": "document_idle", "all_frames": false}],

@@ -1,8 +1,13 @@
 (function(root){
   'use strict';
-  const valid=s=>typeof s==='string'&&/^[a-zA-Z0-9_-]{1,100}$/.test(s);
-  const filePattern=/^预览图\/[a-f0-9]{24}\.(jpeg|png|webp|gif|avif)$/;
-  const snapshots=new WeakMap(),warnings=[];
+  const ArtistId=root.ArtistId||(typeof module!=='undefined'?require('./artist-id.js'):null);
+  const IMAGE_KINDS=['thumb','large'],FOLDER_OF={thumb:'缩略图',large:'大图'},LEGACY_FOLDER='预览图',MAX_IMAGE_BYTES=50*1024*1024;
+  const TYPES={jpeg:'image/jpeg',png:'image/png',webp:'image/webp',gif:'image/gif',avif:'image/avif'};
+  const imageNamePattern=/^[a-f0-9]{24}\.(jpeg|png|webp|gif|avif)$/;
+  const imagePathPattern=/^(?:缩略图|大图)\/[a-f0-9]{24}\.(?:jpeg|png|webp|gif|avif)$/;
+  const inlinePattern=/^data:image\/(jpeg|png|webp|gif|avif);base64,([a-zA-Z0-9+/=\s]+)$/;
+  const remotePattern=/^https:\/\/\S+$/;
+  const snapshots=new WeakMap(),legacy=new WeakMap(),warnings=[];
   const warn=message=>warnings.push(message);
   function takeWarnings(){const list=warnings.slice();warnings.length=0;return list;}
   const signature=value=>JSON.stringify(value,(_,v)=>v&&typeof v==='object'&&!Array.isArray(v)?Object.fromEntries(Object.keys(v).sort().map(k=>[k,v[k]])):v);
@@ -10,46 +15,125 @@
   const empty=()=>({version:1,tags:['可爱','唯美','暗黑','酷炫','清爽','华丽'],artists:[]});
   async function json(dir,name){return JSON.parse(await (await (await dir.getFileHandle(name)).getFile()).text());}
   async function put(dir,name,value){const f=await dir.getFileHandle(name,{create:true}),s=await f.createWritable();try{await s.write(value);await s.close();}catch(e){try{await s.abort();}catch{}throw e;}}
-  function validWork(w){return w&&((typeof w.file==='string'&&filePattern.test(w.file))||(typeof w.image==='string'&&/^(data:image\/(jpeg|png|webp|gif|avif);base64,[a-zA-Z0-9+/=\s]+|https:\/\/\S+)$/.test(w.image)));}
-  async function read(dir){
-    let index;try{index=await json(dir,'画师库.json');}catch(e){if(e.name!=='NotFoundError')throw e;for await(const entry of dir.values())throw Error('请选择现有「数据」文件夹，或一个空文件夹。');snapshots.set(dir,new Map());return empty();}
-    if(index.version!==1||!Array.isArray(index.artists)||index.artists.length>20000||index.artists.some(id=>!valid(id)))throw Error('画师库索引格式错误');
-    const data={...index,artists:new Array(index.artists.length)},records=new Map();
-    if(index.artists.length){const artists=await dir.getDirectoryHandle('画师');let cursor=0;
-      await Promise.all(Array.from({length:Math.min(8,index.artists.length)},async()=>{while(cursor<index.artists.length){const i=cursor++,id=index.artists[i],a=await json(await artists.getDirectoryHandle(id),'信息.json');if(a.uid!==id||!Array.isArray(a.works)||a.works.some(w=>!validWork(w)))throw Error('画师资料格式错误：'+id);data.artists[i]=a;records.set(id,signature(a));}}));
-    }
-    snapshots.set(dir,records);return data;
+  const extensionOf=type=>Object.keys(TYPES).find(k=>TYPES[k]===type)||'';
+  const base64Of=bytes=>{let s='';for(let i=0;i<bytes.length;i+=32768)s+=String.fromCharCode(...bytes.subarray(i,i+32768));return btoa(s);};
+  const hashOf=async bytes=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(x=>x.toString(16).padStart(2,'0')).join('').slice(0,24);
+  function blobOf(value){
+    const m=inlinePattern.exec(value);
+    if(!m)throw Error('图片来源格式错误，只接受 data: 或 https:// 链接');
+    const bytes=Uint8Array.from(atob(m[2]),c=>c.charCodeAt(0));
+    return new Blob([bytes],{type:'image/'+m[1]});
   }
-  async function readImage(dir,id,file){
-    if(!valid(id)||!filePattern.test(file))throw Error('图片路径错误');
-    const a=await dir.getDirectoryHandle('画师'),f=await a.getDirectoryHandle(id),images=await f.getDirectoryHandle('预览图'),blob=await (await images.getFileHandle(file.slice(4))).getFile();
-    if(blob.size>25*1024*1024)throw Error('图片超过 25 MB');return new Blob([blob],{type:'image/'+file.split('.').pop()});
+  const okImage=value=>value==null||(typeof value==='string'&&(imagePathPattern.test(value)||inlinePattern.test(value)||remotePattern.test(value)));
+  function validWork(w){return !!w&&typeof w==='object'&&IMAGE_KINDS.every(kind=>okImage(w[kind])&&okImage(w[kind+'Url']));}
+  function imageOf(work,size){
+    if(!work||!IMAGE_KINDS.includes(size))return null;
+    const file=work[size],url=work[size+'Url'];
+    if(typeof file==='string'&&imagePathPattern.test(file))return {kind:'local',path:file};
+    if(typeof file==='string'&&inlinePattern.test(file))return {kind:'inline',data:file};
+    if(typeof url==='string'&&remotePattern.test(url))return {kind:'remote',url};
+    if(typeof url==='string'&&inlinePattern.test(url))return {kind:'inline',data:url};
+    return null;
+  }
+  function normalizeWork(w){
+    if(IMAGE_KINDS.some(kind=>typeof w[kind]==='string'))return w;
+    const next={...w};
+    if(typeof next.file==='string')next.thumb=imagePathPattern.test(next.file.replace(/^预览图\//,'缩略图/'))?next.file.replace(/^预览图\//,'缩略图/'):null;
+    if(typeof next.image==='string'){if(inlinePattern.test(next.image)&&!inlinePattern.test(String(next.thumb||'')))next.thumb=next.image;else if(remotePattern.test(next.image))next.thumbUrl=next.image;}
+    delete next.file;delete next.image;
+    return next;
+  }
+  async function artistFolder(dir,uid,create=false){
+    const artists=await dir.getDirectoryHandle('画师',{create});
+    const stored=(legacy.get(dir)||new Map()).get(uid)||uid;
+    return artists.getDirectoryHandle(stored,{create});
+  }
+  async function saveImage(dir,uid,kind,blob){
+    if(!IMAGE_KINDS.includes(kind))throw Error('图片类型错误：'+kind);
+    if(!ArtistId.valid(uid))throw Error('画师标识格式错误');
+    if(!blob||typeof blob.arrayBuffer!=='function'||!blob.size)throw Error('图片内容为空');
+    if(blob.size>MAX_IMAGE_BYTES)throw Error('图片超过 '+(MAX_IMAGE_BYTES/1024/1024)+' MB');
+    const extension=extensionOf(blob.type);
+    if(!extension)throw Error('不支持的图片格式：'+(blob.type||'未知'));
+    const bytes=new Uint8Array(await blob.arrayBuffer()),name=(await hashOf(bytes))+'.'+extension;
+    const folder=await artistFolder(dir,uid,true),images=await folder.getDirectoryHandle(FOLDER_OF[kind],{create:true});
+    await put(images,name,bytes);
+    return FOLDER_OF[kind]+'/'+name;
+  }
+  async function readImage(dir,uid,path){
+    if(!ArtistId.valid(uid)||!imagePathPattern.test(path))throw Error('图片路径错误');
+    const [kind,name]=path.split('/'),folder=await artistFolder(dir,uid);
+    const pending=(legacy.get(dir)||new Map()).has(uid)&&kind===FOLDER_OF.thumb;
+    let blob=null;for(const candidate of pending?[LEGACY_FOLDER,kind]:[kind]){
+      try{blob=await (await (await folder.getDirectoryHandle(candidate)).getFileHandle(name)).getFile();break;}catch{}
+    }
+    if(!blob)throw Error('图片不存在：'+path);
+    if(blob.size>MAX_IMAGE_BYTES)throw Error('图片超过 '+(MAX_IMAGE_BYTES/1024/1024)+' MB');
+    return new Blob([blob],{type:TYPES[name.split('.').pop()]||'application/octet-stream'});
+  }
+  async function read(dir){
+    let index;try{index=await json(dir,'画师库.json');}catch(e){if(e.name!=='NotFoundError')throw e;for await(const entry of dir.values())throw Error('请选择现有「数据」文件夹，或一个空文件夹。');snapshots.set(dir,new Map());legacy.set(dir,new Map());return empty();}
+    if(index.version!==1||!Array.isArray(index.artists)||index.artists.length>20000||index.artists.some(id=>!ArtistId.valid(id)))throw Error('画师库索引格式错误');
+    const taken=new Set(),seqOf=new Map();
+    for(const stored of index.artists){const p=ArtistId.parse(stored);seqOf.set(stored,p?p.seq:null);if(p)taken.add(p.seq);}
+    let free=1;for(const stored of index.artists)if(seqOf.get(stored)===null){while(taken.has(free))free++;seqOf.set(stored,free);taken.add(free);}
+    const data={...index,artists:new Array(index.artists.length)},records=new Map(),moved=new Map();
+    if(index.artists.length){const artists=await dir.getDirectoryHandle('画师');let cursor=0;
+      await Promise.all(Array.from({length:Math.min(8,index.artists.length)},async()=>{while(cursor<index.artists.length){
+        const i=cursor++,stored=index.artists[i],a=await json(await artists.getDirectoryHandle(stored),'信息.json');
+        if(a.uid!==stored||!Array.isArray(a.works)||a.works.some(w=>!validWork(w)))throw Error('画师资料格式错误：'+stored);
+        const uid=ArtistId.parse(stored)?stored:ArtistId.create({seq:seqOf.get(stored),name:a.name,danbooruId:a.danbooruId});
+        if(uid!==stored)moved.set(uid,stored);
+        const artist={...a,uid,order:i+1,works:a.works.map(normalizeWork)};
+        data.artists[i]=artist;records.set(uid,signature(artist));
+      }}));
+    }
+    snapshots.set(dir,records);legacy.set(dir,moved);return data;
+  }
+  async function copyImages(source,target){
+    let entries;try{entries=source;}catch{return;}
+    for await(const entry of entries.values()){
+      if(entry.kind!=='file'||!imageNamePattern.test(entry.name))continue;
+      const file=await entry.getFile();
+      if(file.size>MAX_IMAGE_BYTES)continue;
+      await put(target,entry.name,new Uint8Array(await file.arrayBuffer()));
+    }
   }
   async function exportTo(dir,data,stream,progress=()=>{}){
     const {artists,...header}=data;await stream.write(JSON.stringify(header).slice(0,-1)+',"artists":[');
     for(let i=0;i<artists.length;i++){const {works,...meta}=artists[i];progress(i+1,artists.length);await stream.write((i?',':'')+JSON.stringify(meta).slice(0,-1)+',"works":[');
-      for(let j=0;j<works.length;j++){const copy={...works[j]};if(copy.file){const blob=await readImage(dir,meta.uid,copy.file),bytes=new Uint8Array(await blob.arrayBuffer());let s='';for(let k=0;k<bytes.length;k+=32768)s+=String.fromCharCode(...bytes.subarray(k,k+32768));copy.image='data:'+blob.type+';base64,'+btoa(s);delete copy.file;}await stream.write((j?',':'')+JSON.stringify(copy));}await stream.write(']}');
-    }await stream.write(']}');
+      for(let j=0;j<works.length;j++){const copy={...works[j]};
+        for(const kind of IMAGE_KINDS){const value=copy[kind];if(typeof value==='string'&&!value.startsWith('data:')){const blob=await readImage(dir,meta.uid,value);copy[kind]='data:'+blob.type+';base64,'+base64Of(new Uint8Array(await blob.arrayBuffer()));}}
+        await stream.write((j?',':'')+JSON.stringify(copy));}
+      await stream.write(']}');}
+    await stream.write(']}');
   }
   async function write(dir,data){
     if(data.version!==1||!Array.isArray(data.artists)||data.artists.length>20000)throw Error('画师库格式错误');
-    const ids=new Set();for(const a of data.artists){if(!valid(a.uid)||ids.has(a.uid)||!Array.isArray(a.works))throw Error('画师标识格式错误');ids.add(a.uid);if(a.works.some(w=>!validWork(w)))throw Error('图片格式错误');}
+    const ids=new Set();for(const a of data.artists){if(!ArtistId.valid(a.uid)||ids.has(a.uid)||!Array.isArray(a.works))throw Error('画师标识格式错误');ids.add(a.uid);if(a.works.some(w=>!validWork(w)))throw Error('图片格式错误');}
     let previous=[];try{previous=(await json(dir,'画师库.json')).artists;}catch(e){if(e.name!=='NotFoundError')throw e;}
-    const before=snapshots.get(dir)||new Map(),records=new Map(),artists=await dir.getDirectoryHandle('画师',{create:true}),result={...data,artists:[]},cleanup=[];
+    const before=snapshots.get(dir)||new Map(),mapped=legacy.get(dir)||new Map(),moved=new Map(mapped),records=new Map(),artists=await dir.getDirectoryHandle('画师',{create:true}),result={...data,artists:[]},cleanup=[];
     for(const a of data.artists){
-      const stamp=signature(a);if(before.get(a.uid)===stamp){records.set(a.uid,stamp);result.artists.push(a);continue;}
-      const folder=await artists.getDirectoryHandle(a.uid,{create:true}),images=await folder.getDirectoryHandle('预览图',{create:true}),copy=structuredClone(a),used=new Set();
-      for(const w of copy.works){
-        if(w.file){delete w.image;used.add(w.file.slice(4));continue;}
-        const m=w.image.match(/^data:image\/(jpeg|png|webp|gif|avif);base64,([a-zA-Z0-9+/=\s]+)$/);
-        if(m){const bytes=Uint8Array.from(atob(m[2]),c=>c.charCodeAt(0));if(bytes.length>25*1024*1024)throw Error('图片超过 25 MB');const hash=[...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(x=>x.toString(16).padStart(2,'0')).join('').slice(0,24),name=hash+'.'+m[1];await put(images,name,bytes);w.file='预览图/'+name;delete w.image;used.add(name);}
+      const stamp=signature(a);
+      if(!moved.has(a.uid)&&before.get(a.uid)===stamp){records.set(a.uid,stamp);result.artists.push(a);continue;}
+      const oldUid=moved.get(a.uid);if(oldUid)mapped.delete(a.uid);
+      const folder=await artists.getDirectoryHandle(a.uid,{create:true}),copy=structuredClone(a),used={};
+      for(const kind of IMAGE_KINDS){
+        const images=await folder.getDirectoryHandle(FOLDER_OF[kind],{create:true});used[kind]=new Set();
+        if(oldUid&&kind==='thumb')try{await copyImages(await (await artists.getDirectoryHandle(oldUid)).getDirectoryHandle(LEGACY_FOLDER),images);}catch(error){warn('旧预览图迁移失败（'+error.message+'）');}
       }
-      await put(folder,'信息.json',JSON.stringify(copy,null,2));records.set(a.uid,signature(copy));result.artists.push(copy);cleanup.push({images,used});
+      for(const w of copy.works){
+        for(const kind of IMAGE_KINDS)if(typeof w[kind]==='string'&&w[kind].startsWith('data:'))w[kind]=await saveImage(dir,a.uid,kind,blobOf(w[kind]));
+        for(const kind of IMAGE_KINDS)if(typeof w[kind]==='string')used[kind].add(w[kind].split('/').pop());
+      }
+      await put(folder,'信息.json',JSON.stringify(copy,null,2));records.set(a.uid,signature(copy));result.artists.push(copy);cleanup.push({folder,used});
     }
-    await put(dir,'画师库.json',JSON.stringify({...data,artists:[...ids]},null,2));snapshots.set(dir,records);
-    for(const {images,used} of cleanup)try{for await(const entry of images.values())if(entry.kind==='file'&&/^[a-f0-9]{24}\.(jpeg|png|webp|gif|avif)$/.test(entry.name)&&!used.has(entry.name))await images.removeEntry(entry.name);}catch(error){warn('旧预览图清理失败（'+error.message+'）');}
-    for(const id of previous)if(valid(id)&&!ids.has(id))try{await artists.removeEntry(id,{recursive:true});}catch(error){warn('画师 '+id+' 的目录删除失败（'+error.message+'）');}
+    await put(dir,'画师库.json',JSON.stringify({...data,artists:[...ids]},null,2));snapshots.set(dir,records);legacy.set(dir,new Map());
+    for(const {folder,used} of cleanup)for(const kind of IMAGE_KINDS)try{const images=await folder.getDirectoryHandle(FOLDER_OF[kind]);for await(const entry of images.values())if(entry.kind==='file'&&imageNamePattern.test(entry.name)&&!used[kind].has(entry.name))await images.removeEntry(entry.name);}catch(error){warn('旧图片清理失败（'+error.message+'）');}
+    for(const id of previous)if(ArtistId.valid(id)&&!ids.has(id))try{await artists.removeEntry(id,{recursive:true});}catch(error){warn('画师 '+id+' 的目录删除失败（'+error.message+'）');}
+    for(const oldUid of moved.values())if(ArtistId.valid(oldUid)&&!ids.has(oldUid))try{await artists.removeEntry(oldUid,{recursive:true});}catch(error){warn('旧目录 '+oldUid+' 删除失败（'+error.message+'）');}
     return result;
   }
-  root.FolderStore={read,write,readImage,validWork,exportTo,remember,empty,takeWarnings};if(typeof module!=='undefined')module.exports=root.FolderStore;
+  root.FolderStore={read,write,readImage,saveImage,imageOf,validWork,exportTo,remember,empty,takeWarnings,IMAGE_KINDS,FOLDER_OF,MAX_IMAGE_BYTES};
+  if(typeof module!=='undefined')module.exports=root.FolderStore;
 })(globalThis);

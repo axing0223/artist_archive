@@ -35,6 +35,22 @@
     if(!Array.isArray(payload)&&!(payload&&Number.isSafeInteger(payload.id)&&typeof payload.name==='string'))throw Error('站点未返回画师数据，请使用站内检索核验。');
     return candidates(payload);
   }
+  const workOf=post=>{
+    const variants=Array.isArray(post.media_asset?.variants)?post.media_asset.variants:[];
+    const pick=type=>variants.find(v=>v&&v.type===type&&typeof v.url==='string')?.url;
+    const https=value=>typeof value==='string'&&value.startsWith('https://')?value:null;
+    return {id:String(post.id),url:origin+'/posts/'+post.id,caption:'',
+      thumbUrl:https(post.preview_file_url)||https(pick('180x180')),
+      largeUrl:https(post.file_url)||https(pick('original'))||https(post.large_file_url)||https(pick('720x720'))};
+  };
+  async function posts(name,{limit=20,page=1,signal,fetcher=fetch}={}){
+    const params=new URLSearchParams({tags:name+' order:id_desc',limit:String(limit),page:String(page)});
+    const response=await fetcher(origin+'/posts.json?'+params,{signal,credentials:'omit',headers:{Accept:'application/json'}});
+    if(!response.ok)throw Error(response.status===429?'请求过于频繁，请稍后重试。':'作品列表读取失败（'+response.status+'）。');
+    let payload;try{payload=await response.json();}catch{throw Error('站点未返回作品数据，请稍后重试。');}
+    if(!Array.isArray(payload))throw Error('站点未返回作品数据，请稍后重试。');
+    return payload.filter(post=>post&&Number.isSafeInteger(post.id)&&post.id>0).map(workOf);
+  }
   async function details(name,date,{fetcher=fetch,previews=true}={}){
     const get=async(endpoint,params)=>{const r=await fetcher(origin+endpoint+'?'+new URLSearchParams(params),{signal:AbortSignal.timeout(15000),credentials:'omit'});if(!r.ok)throw Error('读取受限：'+r.status);return r.json();};
     const checkedAt=new Date().toISOString();
@@ -43,9 +59,9 @@
     if(date&&/^\d{4}-\d{2}-\d{2}$/.test(date))jobs.push(count(name+' date:<'+date));
     const results=await Promise.allSettled(jobs),ok=i=>results[i]?.status==='fulfilled';
     const counts={checkedAt,total:ok(0)?results[0].value:null,beforeDate:date||null,beforeTotal:ok(2)?results[2].value:null};
-    const posts=ok(1)&&Array.isArray(results[1].value)?results[1].value:[];
-    const works=posts.map(p=>({id:String(p.id),image:p.preview_file_url||p.media_asset?.variants?.find(v=>v.type==='180x180')?.url,url:origin+'/posts/'+p.id,caption:''})).filter(w=>typeof w.image==='string'&&w.image.startsWith('https://'));
+    const rows=ok(1)&&Array.isArray(results[1].value)?results[1].value:[];
+    const works=rows.filter(post=>post&&Number.isSafeInteger(post.id)&&post.id>0).map(workOf);
     return {counts,works,previewError:!ok(1),countsError:!ok(0)||(!!date&&!ok(2))};
   }
-  const api={plan,candidates,lookup,details};root.ArtistLookup=api;if(typeof module!=='undefined')module.exports=api;
+  const api={plan,candidates,lookup,posts,details,workOf};root.ArtistLookup=api;if(typeof module!=='undefined')module.exports=api;
 })(globalThis);

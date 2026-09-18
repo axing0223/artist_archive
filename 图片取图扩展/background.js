@@ -1,16 +1,37 @@
-import {fetchImage,imageUrl} from './probe.mjs';
+import {fetchImage,resolvePost,imageUrl} from './probe.mjs';
 import {allowedSender} from './bridge-policy.mjs';
 chrome.action.onClicked.addListener(()=>chrome.tabs.create({url:chrome.runtime.getURL('test.html')}));
+const CHUNK=4*1024*1024,MAX_BYTES=50*1024*1024,KEEP=120000;
 const jobs=new Map(),queue=[];let active=0;
-function pump(){while(active<3&&queue.length){const job=queue.shift();if(job.controller.signal.aborted){jobs.delete(job.key);job.respond({ok:false,error:'已取消'});continue;}active++;run(job).finally(()=>{active--;jobs.delete(job.key);pump();});}}
-async function run(job){try{const blob=await fetchImage(job.url,{credentials:'include',signal:AbortSignal.any([job.controller.signal,AbortSignal.timeout(20000)]),maxBytes:8*1024*1024});let s='';const bytes=new Uint8Array(await blob.arrayBuffer());for(let i=0;i<bytes.length;i+=32768)s+=String.fromCharCode(...bytes.subarray(i,i+32768));job.respond({ok:true,data:'data:'+blob.type+';base64,'+btoa(s)});}catch(e){job.respond({ok:false,error:e.name==='TimeoutError'?'图片请求超时':e.message});}}
+function sweep(){const now=Date.now();for(const [key,job] of jobs)if(job.expires&&job.expires<now)jobs.delete(key);}
+function pump(){while(active<3&&queue.length){const job=queue.shift();if(job.controller.signal.aborted){jobs.delete(job.key);job.respond({ok:false,error:'已取消'});continue;}active++;run(job).finally(()=>{active--;pump();});}}
+async function run(job){
+  try{
+    const blob=await fetchImage(job.url,{credentials:'include',signal:AbortSignal.any([job.controller.signal,AbortSignal.timeout(60000)]),maxBytes:MAX_BYTES});
+    const bytes=new Uint8Array(await blob.arrayBuffer());let s='';
+    for(let i=0;i<bytes.length;i+=32768)s+=String.fromCharCode(...bytes.subarray(i,i+32768));
+    job.base64=btoa(s);job.expires=Date.now()+KEEP;
+    job.respond({ok:true,type:blob.type,bytes:bytes.length,chunks:Math.max(1,Math.ceil(job.base64.length/CHUNK))});
+  }catch(error){jobs.delete(job.key);job.respond({ok:false,error:error.name==='TimeoutError'?'图片请求超时':error.message});}
+}
 chrome.runtime.onMessage.addListener((message,sender,respond)=>{
   if(!allowedSender(sender,chrome.runtime.id)||message?.channel!=='artist-images-v1')return;
   if(message.type==='ping'){respond({ok:true,version:chrome.runtime.getManifest().version});return;}
   if(typeof message.id!=='string'||message.id.length>100)return;
   const key=sender.tab.id+':'+message.id;
-  if(message.type==='cancel'){jobs.get(key)?.controller.abort();respond({ok:true});return;}
+  if(message.type==='cancel'){jobs.get(key)?.controller.abort();jobs.delete(key);respond({ok:true});return;}
+  if(message.type==='chunk'){
+    sweep();const job=jobs.get(key);
+    if(!job||!job.base64){respond({ok:false,error:'图片数据已过期，请重新获取'});return;}
+    const index=Number(message.index);
+    if(!Number.isSafeInteger(index)||index<0){respond({ok:false,error:'分块编号无效'});return;}
+    respond({ok:true,index,data:job.base64.slice(index*CHUNK,(index+1)*CHUNK)});return;
+  }
+  if(message.type==='resolve'){
+    resolvePost(message.url).then(url=>respond({ok:true,url}),error=>respond({ok:false,error:error.name==='TimeoutError'?'作品信息请求超时':error.message}));
+    return true;
+  }
   if(message.type!=='image')return;
-  try{const url=imageUrl(message.url);if(jobs.size>=24||jobs.has(key))throw Error('图片队列已满，请稍后重试');const job={key,url,respond,controller:new AbortController()};jobs.set(key,job);queue.push(job);pump();}
+  try{sweep();const url=imageUrl(message.url);if(queue.length>=24||jobs.has(key))throw Error('图片队列已满，请稍后重试');const job={key,url,respond,controller:new AbortController()};jobs.set(key,job);queue.push(job);pump();}
   catch(e){respond({ok:false,error:e.message});}return true;
 });
