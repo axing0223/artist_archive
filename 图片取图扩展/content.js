@@ -1,5 +1,5 @@
 (() => {
-  if(window!==window.top||location.protocol!=='file:'||decodeURIComponent(location.pathname).split('/').pop()!=='画师库.html'||!document.querySelector('meta[name="artist-library"][content="v1"]'))return;
+  if(window!==window.top||location.protocol!=='file:'||!document.querySelector('meta[name="artist-library"][content="v1"]'))return;
   const reply=(id,result)=>window.postMessage({channel:'artist-images-reply-v1',id,...result},'*');
   const send=message=>chrome.runtime.sendMessage(message);
   window.addEventListener('message',async event=>{

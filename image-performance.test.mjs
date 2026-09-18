@@ -87,9 +87,10 @@ test('查看器里缩略图换成原图时做交叉淡入，中途不清空已�
   assert.equal(animations[2][1].opacity,1,'第三段是淡入');
   assert.notEqual(img.src,firstSrc,'换完才指向新图');
 });
-test('连接通道只接受本地画师库顶层页面，不接受网站或其他扩展',()=>{
+test('连接通道只接受本扩展在本地顶层页面注入的脚本，不接受网站、子框架或其他扩展',()=>{
   const s={id:'this-extension',tab:{id:1},frameId:0,url:'file:///F:/test/'+encodeURIComponent('画师库.html')};assert.equal(allowedSender(s,'this-extension'),true);
-  for(const override of [{frameId:1},{id:'other'},{url:'https://evil.example/画师库.html'},{url:'file:///F:/other.html'}])assert.equal(allowedSender({...s,...override},'this-extension'),false);
+  assert.equal(allowedSender({...s,url:'file:///F:/工具/'+encodeURIComponent('回填作品.html')},'this-extension'),true,'本地工具页也要能连上：页面身份改由 content.js 的 meta 标记把关');
+  for(const override of [{frameId:1},{id:'other'},{url:'https://evil.example/画师库.html'},{url:'https://evil.example/a.html'},{url:'http://127.0.0.1/a.html'}])assert.equal(allowedSender({...s,...override},'this-extension'),false,'只放行本扩展、顶层框架、file: 协议');
 });
 test('HTML 与隔离脚本按块取回大图，端到端返回可用 Blob 并传播服务器失败',async()=>{
   const listeners=[];const win={addEventListener:(type,fn)=>listeners.push(fn),postMessage:data=>queueMicrotask(()=>listeners.forEach(fn=>fn({source:win,data})))};win.top=win;let fail=false,chunkFail=false,resolveFail=false,chunkCalls=0;
