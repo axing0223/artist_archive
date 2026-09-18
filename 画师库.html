@@ -116,7 +116,17 @@ dialog[open]::backdrop{opacity:1}
 .score-pick.active{opacity:1;transform:translateY(-1px);box-shadow:0 3px 9px #1f2a4426}
 .score-hint{font-size:12px;color:#788496}
 .alias{display:inline-block;margin-top:7px;font-size:12px;color:#4d5769;background:#f1f3f8;border-radius:4px;padding:4px 8px;overflow-wrap:anywhere}
-.alias-choice{max-width:100%;border-radius:8px;text-align:left;overflow-wrap:anywhere}
+.alias-editor{display:grid;gap:10px;width:100%}
+.alias-picker{display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-height:30px}
+.alias-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.alias-row input{flex:1;min-width:130px}
+.alias-row button{flex-shrink:0}
+.alias-chip{display:inline-flex;align-items:center;max-width:100%;border:1px solid #e2e4eb;border-radius:8px;background:#fff}
+.alias-chip.active{border-color:var(--accent);background:#f1f4ff}
+.alias-choice{border:0;background:transparent;color:#555b68;font:inherit;font-size:13px;line-height:1.5;padding:5px 3px 5px 10px;max-width:100%;overflow-wrap:anywhere;text-align:left;cursor:pointer}
+.alias-chip.active .alias-choice{color:var(--accent)}
+.alias-drop{border:0;background:transparent;color:#a8b0bf;font:inherit;font-size:15px;line-height:1;padding:5px 8px 5px 2px;cursor:pointer}
+.alias-drop:hover{color:#b33931}
 .tag-editor-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .tag-editor-row select{flex:1;min-width:150px;width:auto}
 .tag-editor-row input{flex:1;min-width:130px}
@@ -851,7 +861,7 @@ dialog[open]::backdrop{opacity:1}
     const numbers=el('div','artist-numbers'),countLabel=el('span','work-count','作品数量：'+(a.counts?.total??'未读取')+'（'+(a.counts?.beforeTotal??'未读取')+'）');
     countLabel.title=a.counts?.beforeDate?'括号内数量使用的截至日期：'+a.counts.beforeDate+(a.counts.beforeDate!==data.cutoffDate?'；设置已变更，点击刷新后更新。':''):'括号内为截至日期数量，点击刷新读取。';
     numbers.append(el('span','serial',String(seqOf(a)).padStart(4,'0')),countLabel);top.append(numbers);info.append(top,el('h2','',a.name));
-    if(a.alias)info.append(el('span','alias','笔名：'+a.alias));
+    if(a.alias)info.append(el('span','alias',a.alias));
     if(a.basis)info.append(el('span','basis',a.basis));
     if(a.description)info.append(el('p','description',a.description));
     const meta=el('div','artist-meta');meta.append(el('span',a.category?'primary':'pending-badge',a.category||'待判断'));
@@ -908,19 +918,35 @@ dialog[open]::backdrop{opacity:1}
     };
     renderScore();
     const scoreField=el('div','edit-field');scoreField.append(el('span','edit-label','参考分数'),scorePicker);
-    const aliasPicker=el('div','alias-picker');
+    const aliasEditor=el('div','alias-editor'),aliasChoices=el('div','alias-picker'),aliasRow=el('div','alias-row'),aliasNew=el('input');
     const renderAliases=()=>{
       const nodes=(draft.aliases||[]).map(name=>{
-        const on=draft.alias===name,pick=el('button',on?'tag-choice alias-choice active':'tag-choice alias-choice',name);
+        const on=draft.alias===name,chip=el('span',on?'alias-chip active':'alias-chip');
+        const pick=el('button',on?'alias-choice active':'alias-choice',name);
         pick.type='button';pick.setAttribute('aria-pressed',String(on));
         pick.onclick=()=>{draft.alias=on?null:name;renderAliases();};
-        return pick;
+        const drop=el('button','alias-drop','×');drop.type='button';drop.setAttribute('aria-label','移除笔名 '+name);
+        drop.onclick=()=>{draft.aliases=draft.aliases.filter(x=>x!==name);if(draft.alias===name)draft.alias=null;renderAliases();};
+        chip.append(pick,drop);return chip;
       });
-      if(!nodes.length)nodes.push(el('span','tag-choices-empty','保存时会从 Danbooru 读取这位画师的笔名。'));
-      aliasPicker.replaceChildren(...nodes);
+      if(!nodes.length)nodes.push(el('span','tag-choices-empty','保存时会从 Danbooru 读取笔名，也可以在下面自己添加。'));
+      aliasChoices.replaceChildren(...nodes);
     };
+    const addAlias=value=>{
+      const name=String(value||'').trim().slice(0,60);
+      if(!name)return;
+      if(!draft.aliases.includes(name))draft.aliases=[...draft.aliases,name];
+      draft.alias=name;renderAliases();
+    };
+    aliasNew.maxLength=60;aliasNew.placeholder='输入自定义笔名后回车';aliasNew.setAttribute('aria-label','新增笔名');
+    const aliasAdd=el('button','action','添加');aliasAdd.type='button';
+    const commitAlias=()=>{addAlias(aliasNew.value);aliasNew.value='';aliasNew.focus?.();};
+    aliasAdd.onclick=commitAlias;
+    aliasNew.onkeydown=event=>{if(event.key==='Enter'){event.preventDefault();commitAlias();}};
+    aliasRow.append(aliasNew,aliasAdd);
+    aliasEditor.append(aliasChoices,aliasRow);
     renderAliases();
-    const aliasField=el('div','edit-field edit-field-wide');aliasField.append(el('span','edit-label','笔名（选用一个显示在名字下方）'),aliasPicker);
+    const aliasField=el('div','edit-field edit-field-wide');aliasField.append(el('span','edit-label','笔名（选用一个显示在名字下方，也可以自己添加）'),aliasEditor);
     const descInput=el('textarea');descInput.rows=3;descInput.maxLength=5000;descInput.value=draft.description||'';descInput.placeholder='记录画风和特点';descInput.oninput=()=>draft.description=descInput.value;
     const noteInput=el('textarea');noteInput.rows=2;noteInput.maxLength=5000;noteInput.value=draft.note||'';noteInput.placeholder='备注';noteInput.oninput=()=>draft.note=noteInput.value;
     const grid=el('div','edit-grid');grid.append(field('画师名字',nameInput),field('主分类',categorySelect),field('画师页面链接',urlInput),scoreField,fieldBox('标签',tagEditor),aliasField);
@@ -1035,7 +1061,10 @@ dialog[open]::backdrop{opacity:1}
     try{
       status('正在刷新 '+name+' 的作品数量与笔名…');
       const result=await refreshArtist(draft);
-      draft.counts=result.counts;if(result.aliases)draft.aliases=result.aliases;
+      draft.counts=result.counts;
+      /* 只在还没有笔名时采用读到的列表：否则会把你自定义添加的笔名覆盖掉，
+         删掉的也会被重新塞回来。 */
+      if(!draft.aliases.length&&result.aliases)draft.aliases=result.aliases;
       if(result.partial)note='；部分数量未取到，已保留原值';
     }
     catch(error){note='；刷新失败：'+error.message;}

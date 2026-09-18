@@ -108,7 +108,17 @@ dialog[open]::backdrop{opacity:1}
 .score-pick.active{opacity:1;transform:translateY(-1px);box-shadow:0 3px 9px #1f2a4426}
 .score-hint{font-size:12px;color:#788496}
 .alias{display:inline-block;margin-top:7px;font-size:12px;color:#4d5769;background:#f1f3f8;border-radius:4px;padding:4px 8px;overflow-wrap:anywhere}
-.alias-choice{max-width:100%;border-radius:8px;text-align:left;overflow-wrap:anywhere}
+.alias-editor{display:grid;gap:10px;width:100%}
+.alias-picker{display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-height:30px}
+.alias-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.alias-row input{flex:1;min-width:130px}
+.alias-row button{flex-shrink:0}
+.alias-chip{display:inline-flex;align-items:center;max-width:100%;border:1px solid #e2e4eb;border-radius:8px;background:#fff}
+.alias-chip.active{border-color:var(--accent);background:#f1f4ff}
+.alias-choice{border:0;background:transparent;color:#555b68;font:inherit;font-size:13px;line-height:1.5;padding:5px 3px 5px 10px;max-width:100%;overflow-wrap:anywhere;text-align:left;cursor:pointer}
+.alias-chip.active .alias-choice{color:var(--accent)}
+.alias-drop{border:0;background:transparent;color:#a8b0bf;font:inherit;font-size:15px;line-height:1;padding:5px 8px 5px 2px;cursor:pointer}
+.alias-drop:hover{color:#b33931}
 .tag-editor-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .tag-editor-row select{flex:1;min-width:150px;width:auto}
 .tag-editor-row input{flex:1;min-width:130px}

@@ -441,7 +441,7 @@ test('画师卡片：选用的笔名显示在名字下方，没选用就不显�
   assert.equal(texts(plain).includes('甲'),false,'未选用的笔名不出现在卡片上');
   const shown=state.card(bareArtist({aliases:['甲','乙'],alias:'乙'})),marks=findAllByClass(shown,'alias');
   assert.equal(marks.length,1,'选用后显示一条');
-  assert.equal(marks[0].textContent,'笔名：乙');
+  assert.equal(marks[0].textContent,'乙','只写笔名本身，不加前缀');
   const info=shown.children[0];
   assert.equal(info.children[1]._text,'tester','第二位是画师名字');
   assert.equal(String(info.children[2].className).includes('alias'),true,'笔名紧跟在名字下方');
@@ -460,7 +460,7 @@ test('保存画师时一并读取笔名，选用的笔名随保存写进资料',
   picks[1].onclick();
   picks=findAllByClass(picker,'alias-choice');
   assert.equal(picks[1]['aria-pressed'],'true');
-  assert.equal(String(picks[1].className).includes('active'),true,'选用态沿用标签的样式');
+  assert.equal(String(findAllByClass(picker,'alias-chip')[1].className).includes('active'),true,'选用的那一个要高亮');
   picks[0].onclick();
   picks=findAllByClass(picker,'alias-choice');
   assert.equal(picks[0]['aria-pressed'],'true','可以改选另一个');
@@ -470,7 +470,47 @@ test('保存画师时一并读取笔名，选用的笔名随保存写进资料',
   findAllByClass(picker,'alias-choice')[2].onclick();
   await findText(lastRender(state)[0],'保存').onclick();
   assert.equal(state.rows[0].alias,'丙','选用的笔名要写进资料');
-  assert.equal(findAllByClass(state.card(state.rows[0]),'alias')[0].textContent,'笔名：丙','卡片上要显示出来');
+  assert.equal(findAllByClass(state.card(state.rows[0]),'alias')[0].textContent,'丙','卡片上要显示出来，且不带前缀');
+});
+test('编辑卡片：可以自己添加笔名，也能移除',async()=>{
+  const {elements,state}=await boot();
+  elements.get('add-artist').onclick();
+  const editor=findByClass(lastRender(state)[0],'alias-editor');
+  assert.ok(editor,'编辑卡片里应有笔名区');
+  assert.ok(findByClass(editor,'tag-choices-empty'),'没有笔名时给出说明');
+  const [input,addButton]=findByClass(editor,'alias-row').children;
+  assert.equal(input.placeholder,'输入自定义笔名后回车');
+  input.value='  自定义笔名  ';input.onkeydown({key:'Enter',preventDefault(){}});
+  let chips=findAllByClass(editor,'alias-chip');
+  assert.equal(chips.length,1,'回车即可加入');
+  assert.equal(chips[0].children[0].textContent,'自定义笔名','首尾空格要去掉');
+  assert.equal(String(chips[0].className).includes('active'),true,'新加的直接选用');
+  assert.equal(input.value,'','加入后清空输入框');
+  input.value='自定义笔名';input.onkeydown({key:'Enter',preventDefault(){}});
+  assert.equal(findAllByClass(editor,'alias-chip').length,1,'重复笔名不重复加入');
+  input.value='第二个';addButton.onclick();
+  chips=findAllByClass(editor,'alias-chip');
+  assert.equal(chips.length,2,'「添加」按钮与回车等效');
+  chips[1].children[1].onclick();
+  chips=findAllByClass(editor,'alias-chip');
+  assert.equal(chips.length,1,'点 × 移除该笔名');
+  assert.equal(chips[0].children[1]['aria-label'],'移除笔名 自定义笔名');
+  assert.equal(chips[0].children[0]['aria-pressed'],'false','移除正在选用的那个后要同时取消选用');
+});
+test('编辑卡片：自定义笔名不会被保存时读到的列表覆盖',async()=>{
+  const {elements,state,ctx}=await boot();
+  stub(ctx,{lookup:async()=>[{id:7,name:'tester',aliases:['甲','乙'],pageUrl:''}],details:async()=>({counts:{total:null,beforeTotal:null},countsError:false})});
+  await createArtist(state,elements,'tester');
+  assert.equal(state.rows[0].aliases.length,2,'首次保存读到 Danbooru 的笔名');
+  findText(lastRender(state)[0],'编辑').onclick();
+  await wait(180);
+  const editor=findByClass(lastRender(state)[0],'alias-editor'),[input]=findByClass(editor,'alias-row').children;
+  input.value='我的叫法';input.onkeydown({key:'Enter',preventDefault(){}});
+  await findText(lastRender(state)[0],'保存').onclick();
+  const aliases=[...state.rows[0].aliases];
+  assert.equal(aliases.length,3,'自己加的笔名要保留，不能被读到的列表覆盖');
+  assert.equal(aliases.includes('我的叫法'),true);
+  assert.equal(aliases.includes('甲')&&aliases.includes('乙'),true,'Danbooru 读到的也还在');
 });
 test('编辑卡片：还没读到笔名时给出说明，不留空白',async()=>{
   const {elements,state}=await boot();

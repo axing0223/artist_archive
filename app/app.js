@@ -65,7 +65,7 @@
     const numbers=el('div','artist-numbers'),countLabel=el('span','work-count','作品数量：'+(a.counts?.total??'未读取')+'（'+(a.counts?.beforeTotal??'未读取')+'）');
     countLabel.title=a.counts?.beforeDate?'括号内数量使用的截至日期：'+a.counts.beforeDate+(a.counts.beforeDate!==data.cutoffDate?'；设置已变更，点击刷新后更新。':''):'括号内为截至日期数量，点击刷新读取。';
     numbers.append(el('span','serial',String(seqOf(a)).padStart(4,'0')),countLabel);top.append(numbers);info.append(top,el('h2','',a.name));
-    if(a.alias)info.append(el('span','alias','笔名：'+a.alias));
+    if(a.alias)info.append(el('span','alias',a.alias));
     if(a.basis)info.append(el('span','basis',a.basis));
     if(a.description)info.append(el('p','description',a.description));
     const meta=el('div','artist-meta');meta.append(el('span',a.category?'primary':'pending-badge',a.category||'待判断'));
@@ -122,19 +122,35 @@
     };
     renderScore();
     const scoreField=el('div','edit-field');scoreField.append(el('span','edit-label','参考分数'),scorePicker);
-    const aliasPicker=el('div','alias-picker');
+    const aliasEditor=el('div','alias-editor'),aliasChoices=el('div','alias-picker'),aliasRow=el('div','alias-row'),aliasNew=el('input');
     const renderAliases=()=>{
       const nodes=(draft.aliases||[]).map(name=>{
-        const on=draft.alias===name,pick=el('button',on?'tag-choice alias-choice active':'tag-choice alias-choice',name);
+        const on=draft.alias===name,chip=el('span',on?'alias-chip active':'alias-chip');
+        const pick=el('button',on?'alias-choice active':'alias-choice',name);
         pick.type='button';pick.setAttribute('aria-pressed',String(on));
         pick.onclick=()=>{draft.alias=on?null:name;renderAliases();};
-        return pick;
+        const drop=el('button','alias-drop','×');drop.type='button';drop.setAttribute('aria-label','移除笔名 '+name);
+        drop.onclick=()=>{draft.aliases=draft.aliases.filter(x=>x!==name);if(draft.alias===name)draft.alias=null;renderAliases();};
+        chip.append(pick,drop);return chip;
       });
-      if(!nodes.length)nodes.push(el('span','tag-choices-empty','保存时会从 Danbooru 读取这位画师的笔名。'));
-      aliasPicker.replaceChildren(...nodes);
+      if(!nodes.length)nodes.push(el('span','tag-choices-empty','保存时会从 Danbooru 读取笔名，也可以在下面自己添加。'));
+      aliasChoices.replaceChildren(...nodes);
     };
+    const addAlias=value=>{
+      const name=String(value||'').trim().slice(0,60);
+      if(!name)return;
+      if(!draft.aliases.includes(name))draft.aliases=[...draft.aliases,name];
+      draft.alias=name;renderAliases();
+    };
+    aliasNew.maxLength=60;aliasNew.placeholder='输入自定义笔名后回车';aliasNew.setAttribute('aria-label','新增笔名');
+    const aliasAdd=el('button','action','添加');aliasAdd.type='button';
+    const commitAlias=()=>{addAlias(aliasNew.value);aliasNew.value='';aliasNew.focus?.();};
+    aliasAdd.onclick=commitAlias;
+    aliasNew.onkeydown=event=>{if(event.key==='Enter'){event.preventDefault();commitAlias();}};
+    aliasRow.append(aliasNew,aliasAdd);
+    aliasEditor.append(aliasChoices,aliasRow);
     renderAliases();
-    const aliasField=el('div','edit-field edit-field-wide');aliasField.append(el('span','edit-label','笔名（选用一个显示在名字下方）'),aliasPicker);
+    const aliasField=el('div','edit-field edit-field-wide');aliasField.append(el('span','edit-label','笔名（选用一个显示在名字下方，也可以自己添加）'),aliasEditor);
     const descInput=el('textarea');descInput.rows=3;descInput.maxLength=5000;descInput.value=draft.description||'';descInput.placeholder='记录画风和特点';descInput.oninput=()=>draft.description=descInput.value;
     const noteInput=el('textarea');noteInput.rows=2;noteInput.maxLength=5000;noteInput.value=draft.note||'';noteInput.placeholder='备注';noteInput.oninput=()=>draft.note=noteInput.value;
     const grid=el('div','edit-grid');grid.append(field('画师名字',nameInput),field('主分类',categorySelect),field('画师页面链接',urlInput),scoreField,fieldBox('标签',tagEditor),aliasField);
@@ -249,7 +265,10 @@
     try{
       status('正在刷新 '+name+' 的作品数量与笔名…');
       const result=await refreshArtist(draft);
-      draft.counts=result.counts;if(result.aliases)draft.aliases=result.aliases;
+      draft.counts=result.counts;
+      /* 只在还没有笔名时采用读到的列表：否则会把你自定义添加的笔名覆盖掉，
+         删掉的也会被重新塞回来。 */
+      if(!draft.aliases.length&&result.aliases)draft.aliases=result.aliases;
       if(result.partial)note='；部分数量未取到，已保留原值';
     }
     catch(error){note='；刷新失败：'+error.message;}
