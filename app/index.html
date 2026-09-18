@@ -29,10 +29,12 @@
     <label class="action upload-label">选择图片<input id="test-files" type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif" multiple hidden></label>
     <p id="test-files-info" class="field-help">还没有选择图片。</p>
     <label>起始画师序号<input id="test-start" type="number" min="1" step="1" placeholder="例如 3"></label>
+    <label>测试风格序号<input id="test-seq" type="number" min="1" max="5" step="1" value="1"></label>
+    <p class="field-help">导入的图片都记为这个序号。某位画师已经有该序号时，会自动顺延到下一个空位。卡片只显示 5 格且序号 1 在最右，所以序号请填 1–5。</p>
     <div id="test-preview" class="test-preview"></div>
     <p id="test-message" class="field-help" role="status"></p>
     <h3 class="manage-heading">批量删除测试风格图片</h3>
-    <p class="field-help">勾选要清理的画师，只会移除该画师的测试风格图片，作品图不受影响。</p>
+    <p class="field-help">勾选要删除的测试风格序号，会移除所有画师中该序号的测试风格图片，作品图不受影响。</p>
     <div id="test-remove-list" class="test-preview"></div>
     <div class="picker-actions"><button id="test-remove-all" type="button" class="action">全选</button><button id="test-remove-none" type="button" class="action">全不选</button><button id="test-remove-run" type="button" class="action danger">删除所选</button></div>
   </div><div class="form-footer"><button id="test-cancel" type="button" class="action">取消</button><button id="test-run" type="button" class="action primary-action">开始导入</button></div></dialog>

@@ -119,6 +119,17 @@ test('测试风格图片固定占右侧格子，序号 1 在最右，作品从�
  assert.deepEqual(store.previewWorks({works:[]}).length,5,'空画师也要返回 5 个格子');
  assert.equal(store.previewWorks({works:[...works(1),test(1)]})[4].testSeq,1);
 });
+test('导入用的测试风格序号：默认 1，已被占用就往后顺延',()=>{
+ const test=seq=>({id:'',kind:'test',testSeq:seq});
+ assert.equal(store.nextTestSeq([],1),1);
+ assert.equal(store.nextTestSeq([{id:'1'}],1),1,'没有测试图时就用指定序号');
+ assert.equal(store.nextTestSeq([test(1)],1),2,'序号 1 已被占用就顺延');
+ assert.equal(store.nextTestSeq([test(1),test(2)],1),3);
+ assert.equal(store.nextTestSeq([test(1),test(3)],1),2,'从空缺处补位');
+ assert.equal(store.nextTestSeq([test(1),test(2)],3),3,'指定的 3 空着就直接用 3');
+ assert.equal(store.nextTestSeq([test(1)],0),2,'序号填了非法值按 1 处理再顺延');
+ assert.equal(store.nextTestSeq([{id:'',kind:'test'}],1),2,'没有序号字段的旧数据算作序号 1');
+});
 test('测试风格图片的标记与序号随保存、导出与恢复',async()=>{
  const dir=new Directory();
  await store.write(dir,{version:1,tags:[],artists:[{uid:'0001-a',name:'a',works:[{id:'1',thumb:png},{id:'',thumb:png,kind:'test',testSeq:2}]}]});

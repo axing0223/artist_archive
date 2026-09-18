@@ -249,17 +249,17 @@
   let testFiles=[];
   const testTargets=start=>data.artists.map(a=>({artist:a,seq:ArtistId.parse(a.uid)?.seq??0})).filter(item=>item.seq>=start).sort((x,y)=>x.seq-y.seq).slice(0,testFiles.length);
   function refreshTestImport(){
-    const start=Number($('test-start').value),preview=$('test-preview'),message=$('test-message');
+    const start=Number($('test-start').value),want=Number($('test-seq').value),preview=$('test-preview'),message=$('test-message');
     $('test-files-info').textContent=testFiles.length?`已选择 ${testFiles.length} 张图片。`:'还没有选择图片。';
     if(!testFiles.length||!Number.isSafeInteger(start)||start<1){preview.replaceChildren();message.textContent='';return;}
     const targets=testTargets(start);
-    preview.replaceChildren(...targets.map((item,i)=>{const row=el('div','test-row');row.append(el('span','test-seq',String(item.seq).padStart(4,'0')),el('strong','',item.artist.name),el('small','',testFiles[i].name));return row;}));
+    preview.replaceChildren(...targets.map((item,i)=>{const row=el('div','test-row');row.append(el('span','test-seq',String(item.seq).padStart(4,'0')),el('strong','',item.artist.name),el('small','',`${testFiles[i].name} → 序号 ${FolderStore.nextTestSeq(item.artist.works,want)}`));return row;}));
     const rest=testFiles.length-targets.length;
     message.textContent=targets.length?`将依次分配给 ${targets.length} 位画师${rest>0?`；后面没有更多画师，剩余 ${rest} 张会跳过`:''}。`:'这个序号之后没有画师，请检查序号。';
   }
   async function runTestImport(){
     if(busy||!testFiles.length)return;
-    const start=Number($('test-start').value),message=$('test-message');
+    const start=Number($('test-start').value),want=Number($('test-seq').value),message=$('test-message');
     if(!Number.isSafeInteger(start)||start<1){message.textContent='请填写有效的起始序号。';return;}
     const targets=testTargets(start);
     if(!targets.length){message.textContent='这个序号之后没有画师，请检查序号。';return;}
@@ -271,7 +271,7 @@
         if(!['image/jpeg','image/png','image/webp','image/gif','image/avif'].includes(file.type)||file.size>50*1024*1024)throw Error(file.name+'：只支持不超过 50 MB 的 JPG、PNG、WebP、GIF 或 AVIF。');
         const original=await readImage(file),target=next.artists.find(a=>a.uid===targets[i].artist.uid);
         if(!target)continue;
-        target.works.push({id:'',url:'',caption:'',kind:'test',testSeq:target.works.filter(w=>w.kind==='test').length+1,thumb:await thumbnail(original),large:original,thumbUrl:null,largeUrl:null});
+        target.works.push({id:'',url:'',caption:'',kind:'test',testSeq:FolderStore.nextTestSeq(target.works,want),thumb:await thumbnail(original),large:original,thumbUrl:null,largeUrl:null});
         done++;
       }
       await save(next,`已为 ${done} 位画师导入测试风格图片`);
@@ -281,27 +281,40 @@
     finally{$('test-run').disabled=false;}
   }
   function renderTestRemoval(){
-    const list=data.artists.map(artist=>({artist,tests:artist.works.filter(w=>w.kind==='test')})).filter(item=>item.tests.length),container=$('test-remove-list');
+    const counts=new Map();
+    for(const artist of data.artists)for(const work of artist.works){
+      if(work.kind!=='test')continue;
+      const seq=Number.isSafeInteger(work.testSeq)&&work.testSeq>0?work.testSeq:1;
+      if(!counts.has(seq))counts.set(seq,{artists:new Set(),count:0});
+      const item=counts.get(seq);item.artists.add(artist.uid);item.count++;
+    }
+    const container=$('test-remove-list'),list=[...counts.entries()].sort((a,b)=>a[0]-b[0]);
     if(!list.length){container.replaceChildren(el('p','field-help','当前没有测试风格图片。'));return;}
-    container.replaceChildren(...list.map(item=>{
-      const row=el('label','test-row'),box=el('input');box.type='checkbox';box.value=item.artist.uid;
-      row.append(box,el('span','test-seq',String(ArtistId.parse(item.artist.uid)?.seq??0).padStart(4,'0')),el('strong','',item.artist.name),el('small','',item.tests.length+' 张'));
+    container.replaceChildren(...list.map(([seq,item])=>{
+      const row=el('label','test-row'),box=el('input');box.type='checkbox';box.value=String(seq);
+      row.append(box,el('span','test-seq','序号 '+seq),el('small','',`${item.artists.size} 位画师共 ${item.count} 张`));
       return row;
     }));
   }
   async function runTestRemove(){
     if(busy)return;
     const boxes=[...$('test-remove-list').querySelectorAll('input[type=checkbox]')].filter(box=>box.checked),message=$('test-message');
-    if(!boxes.length){message.textContent='请先勾选要清理的画师。';return;}
-    if(!confirm(`删除所选 ${boxes.length} 位画师的测试风格图片？作品图不会受影响。`))return;
+    if(!boxes.length){message.textContent='请先勾选要删除的测试风格序号。';return;}
+    const seqs=boxes.map(box=>Number(box.value)).filter(Number.isSafeInteger);
+    if(!seqs.length)return;
+    if(!confirm(`删除所有画师中「序号 ${seqs.join('、')}」的测试风格图片？作品图不会受影响。`))return;
     const next=clone(data);let removed=0;
-    for(const box of boxes){const target=next.artists.find(a=>a.uid===box.value);if(!target)continue;const before=target.works.length;target.works=target.works.filter(w=>w.kind!=='test');removed+=before-target.works.length;}
+    for(const artist of next.artists){
+      const before=artist.works.length;
+      artist.works=artist.works.filter(work=>!(work.kind==='test'&&seqs.includes(Number.isSafeInteger(work.testSeq)&&work.testSeq>0?work.testSeq:1)));
+      removed+=before-artist.works.length;
+    }
     await save(next,`已删除 ${removed} 张测试风格图片`);
     message.textContent=`完成：删除了 ${removed} 张测试风格图片。`;
     renderTestRemoval();
   }
   function openTestImport(){
-    testFiles=[];$('test-files').value='';$('test-start').value='';$('test-preview').replaceChildren();$('test-message').textContent='';
+    testFiles=[];$('test-files').value='';$('test-start').value='';$('test-seq').value='1';$('test-preview').replaceChildren();$('test-message').textContent='';
     refreshTestImport();renderTestRemoval();$('test-import').showModal();
   }
   let lookupTimer,lookupController,lookupSequence=0;
@@ -380,7 +393,7 @@
     applyCardSize();
     data=normalize(FolderStore.empty());status('请先选择「数据」文件夹，读取或开始整理画师库。');
     $('test-import-open').onclick=openTestImport;$('close-test-import').onclick=()=>$('test-import').close();$('test-cancel').onclick=()=>$('test-import').close();
-    $('test-files').onchange=e=>{testFiles=[...e.target.files];refreshTestImport();};$('test-start').oninput=refreshTestImport;$('test-run').onclick=runTestImport;
+    $('test-files').onchange=e=>{testFiles=[...e.target.files];refreshTestImport();};$('test-start').oninput=refreshTestImport;$('test-seq').oninput=refreshTestImport;$('test-run').onclick=runTestImport;
     $('test-remove-all').onclick=()=>{for(const box of $('test-remove-list').querySelectorAll('input[type=checkbox]'))box.checked=true;};
     $('test-remove-none').onclick=()=>{for(const box of $('test-remove-list').querySelectorAll('input[type=checkbox]'))box.checked=false;};
     $('test-remove-run').onclick=runTestRemove;
