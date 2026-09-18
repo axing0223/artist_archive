@@ -52,7 +52,20 @@ a{transition:color .18s ease,opacity .18s ease}
 .artist{transition:border-color .2s ease,box-shadow .2s ease}.artist:hover{border-color:#d2dae9;box-shadow:0 8px 24px #1f2a4414}
 .candidate,.pick{transition:border-color .18s ease,box-shadow .18s ease}.candidate:hover,.pick:hover{border-color:#cbd5e8}
 img{transition:opacity .25s ease}img:not([src]){opacity:0}
-dialog[open]{animation:panel-in .18s ease}dialog[open]::backdrop{animation:fade-in .2s ease}.artist-expand{animation:panel-in .2s ease}
+dialog{opacity:0;transform:translateY(10px);transition:opacity .18s ease,transform .18s ease,display .18s ease allow-discrete,overlay .18s ease allow-discrete}
+dialog[open]{opacity:1;transform:none}
+@starting-style{dialog[open]{opacity:0;transform:translateY(10px)}}
+dialog::backdrop{opacity:0;transition:opacity .2s ease,display .2s ease allow-discrete,overlay .2s ease allow-discrete}
+dialog[open]::backdrop{opacity:1}
+@starting-style{dialog[open]::backdrop{opacity:0}}
+.artist-expand{animation:panel-in .2s ease}
 @keyframes panel-in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
-@keyframes fade-in{from{opacity:0}to{opacity:1}}.test-row{display:flex;align-items:baseline;gap:10px;font-size:13px;padding:6px 10px;border:1px solid #e6e9f0;border-radius:7px;background:#f8faff}.test-row .test-seq{font-family:ui-monospace,Consolas,monospace;color:#375af5}.test-row strong{font-size:13px}.test-row small{color:#788496;overflow-wrap:anywhere}
+@keyframes fade-in{from{opacity:0}to{opacity:1}}
+@keyframes img-in{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:none}}
+.artist{animation:panel-in .2s ease}
+#viewer{height:96vh}
+.viewer-image img{animation:img-in .25s ease}
+.pick img{transition:height .18s ease,opacity .25s ease}
+.thumb{transition:height .18s ease}
+.error{animation:fade-in .2s ease}.test-row{display:flex;align-items:baseline;gap:10px;font-size:13px;padding:6px 10px;border:1px solid #e6e9f0;border-radius:7px;background:#f8faff}.test-row .test-seq{font-family:ui-monospace,Consolas,monospace;color:#375af5}.test-row strong{font-size:13px}.test-row small{color:#788496;overflow-wrap:anywhere}
 #viewer{width:min(1600px,96vw);max-width:96vw;max-height:96vh}.viewer-image{padding:12px;min-height:120px;overflow:auto}.viewer-image img{max-width:100%;max-height:calc(96vh - 160px);width:auto;height:auto;min-height:0;object-fit:contain}
