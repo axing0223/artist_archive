@@ -12,7 +12,7 @@ class Directory{
  async getDirectoryHandle(name,{create=false}={}){if(!this.items.has(name)&&create)this.items.set(name,new Directory(name));const item=this.items.get(name);if(!item||item.kind!=='directory')throw new DOMException('不存在','NotFoundError');return item;}
  async getFileHandle(name,{create=false}={}){if(!this.items.has(name)&&create)this.items.set(name,new FileHandle(name));const item=this.items.get(name);if(!item||item.kind!=='file')throw new DOMException('不存在','NotFoundError');return item;}
  async *values(){yield* this.items.values();}
- async removeEntry(name){this.items.delete(name);}
+ async removeEntry(name){if(!this.items.has(name))throw new DOMException('找不到','NotFoundError');this.items.delete(name);}
 }
 const put=async(dir,name,bytes)=>{const handle=await dir.getFileHandle(name,{create:true}),writable=await handle.createWritable();await writable.write(bytes);await writable.close();};
 const png='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l9sAAAAASUVORK5CYII=';
@@ -34,6 +34,34 @@ test('缩略图与原图分别落进 缩略图/ 大图/，imageOf 本地优先�
  await assert.rejects(()=>store.saveImage(dir,'0001-a-1','large',new Blob([],{type:'image/jpeg'})),/空/);
  await assert.rejects(()=>store.saveImage(dir,'0001-a-1','large',new Blob([Uint8Array.from([1])],{type:'image/tiff'})),/不支持/);
  await assert.rejects(()=>store.saveImage(dir,'../evil','thumb',new Blob([Uint8Array.from([1])],{type:'image/jpeg'})),/标识/);
+});
+test('索引里有、盘上没有的画师目录只跳过并记警告，不让整个库打不开',async()=>{
+ const dir=new Directory(),artists=new Directory('画师');
+ dir.items.set('画师',artists);
+ for(const uid of ['0001-a-1','0002-b-2','0003-c-3']){
+  const folder=new Directory(uid);folder.items.set('信息.json',new FileHandle('信息.json',JSON.stringify({uid,name:uid,works:[]})));artists.items.set(uid,folder);
+ }
+ artists.items.delete('0002-b-2');
+ dir.items.set('画师库.json',new FileHandle('画师库.json',JSON.stringify({version:1,tags:[],artists:['0001-a-1','0002-b-2','0003-c-3']})));
+ store.takeWarnings();
+ const data=await store.read(dir);
+ assert.deepEqual(data.artists.map(a=>a.uid),['0001-a-1','0003-c-3'],'缺的那位跳过，其余照常读出');
+ assert.deepEqual(data.artists.map(a=>a.order),[1,2],'跳过后序号要重新排连续');
+ const warnings=store.takeWarnings();
+ assert.equal(warnings.length,1);assert.match(warnings[0],/0002-b-2/,'要如实报出缺了谁');
+});
+test('批量改标识时旧目录只删一次，不产生「找不到」的假警告',async()=>{
+ const dir=new Directory();
+ await store.write(dir,store.empty());store.takeWarnings();
+ const created=await store.read(dir);
+ created.artists=['0001-a-manual','0002-b-manual','0003-c-manual'].map((uid,i)=>({uid,name:'n'+i,works:[]}));
+ await store.write(dir,created);
+ const next=await store.read(dir);
+ next.artists.forEach((a,i)=>{const to=a.uid.replace('-manual','-'+(i+1));store.rename(dir,a.uid,to);a.uid=to;});
+ await store.write(dir,next);
+ assert.deepEqual(store.takeWarnings(),[],'旧目录只该删一次；第二段再删会报「找不到」，那不是失败');
+ const artists=await dir.getDirectoryHandle('画师');
+ assert.deepEqual([...artists.items.keys()],['0001-a-1','0002-b-2','0003-c-3'],'只剩新目录');
 });
 test('uid 变更时把旧目录的缩略图与大图搬到新目录，再删掉旧目录',async()=>{
  const dir=new Directory();

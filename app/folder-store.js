@@ -104,16 +104,21 @@
     const taken=new Set(),seqOf=new Map();
     for(const stored of index.artists){const p=ArtistId.parse(stored);seqOf.set(stored,p?p.seq:null);if(p)taken.add(p.seq);}
     let free=1;for(const stored of index.artists)if(seqOf.get(stored)===null){while(taken.has(free))free++;seqOf.set(stored,free);taken.add(free);}
-    const data={...index,artists:new Array(index.artists.length)},records=new Map(),moved=new Map();
+    const data={...index,artists:[]},records=new Map(),moved=new Map(),slots=new Array(index.artists.length).fill(null);
     if(index.artists.length){const artists=await dir.getDirectoryHandle('画师');let cursor=0;
       await Promise.all(Array.from({length:Math.min(8,index.artists.length)},async()=>{while(cursor<index.artists.length){
-        const i=cursor++,stored=index.artists[i],a=await json(await artists.getDirectoryHandle(stored),'信息.json');
+        const i=cursor++,stored=index.artists[i];let a=null;
+        /* 索引里有、盘上没有的画师不能拖垮整个加载：跳过并记一条警告。
+           否则只要有一位目录缺失，整个画师库就再也打不开。 */
+        try{a=await json(await artists.getDirectoryHandle(stored),'信息.json');}
+        catch(error){if(error.name!=='NotFoundError')throw error;warn('画师目录缺失，已跳过：'+stored);continue;}
         if(a.uid!==stored||!Array.isArray(a.works)||a.works.some(w=>!validWork(w)))throw Error('画师资料格式错误：'+stored);
         const uid=ArtistId.parse(stored)?stored:ArtistId.create({seq:seqOf.get(stored),name:a.name,danbooruId:a.danbooruId});
         if(uid!==stored)moved.set(uid,stored);
         const artist={...a,uid,order:i+1,works:a.works.map(normalizeWork)};
-        data.artists[i]=artist;records.set(uid,signature(artist));
+        slots[i]=artist;records.set(uid,signature(artist));
       }}));
+      data.artists=slots.filter(Boolean).map((artist,i)=>({...artist,order:i+1}));
     }
     snapshots.set(dir,records);legacy.set(dir,moved);return data;
   }

@@ -66,7 +66,7 @@
     if(busy)return;
     if(!window.showDirectoryPicker){status('当前浏览器不支持文件夹读写，请使用最新版 Chrome 或 Edge 打开本 HTML。',true);return;}
     if(volatile){status('请先导出备份保留尚未保存的修改，再重新打开网页切换文件夹。',true);return;}
-    try{const chosen=await window.showDirectoryPicker({id:'artist-library',mode:'readwrite'});status('正在读取画师资料（图片按需加载）…');const loaded=normalize(await FolderStore.read(chosen),true);cancelLookup();clearCandidates();folder=chosen;data=loaded;FolderStore.remember(chosen,loaded);ArtistImages.setFolder(chosen);reset();render();document.querySelectorAll('button,input,textarea,select').forEach(e=>e.disabled=false);$('folder-name').textContent='当前文件夹：'+folder.name;status('已连接文件夹 · 图片滚动到附近才加载');}
+    try{const chosen=await window.showDirectoryPicker({id:'artist-library',mode:'readwrite'});status('正在读取画师资料（图片按需加载）…');const loaded=normalize(await FolderStore.read(chosen),true);cancelLookup();clearCandidates();folder=chosen;data=loaded;FolderStore.remember(chosen,loaded);ArtistImages.setFolder(chosen);reset();render();document.querySelectorAll('button,input,textarea,select').forEach(e=>e.disabled=false);$('folder-name').textContent='当前文件夹：'+folder.name;const warnings=FolderStore.takeWarnings();status(warnings.length?'已连接文件夹，但有 '+warnings.length+' 处问题：'+warnings.join('；'):'已连接文件夹 · 图片滚动到附近才加载',warnings.length>0);}
     catch(error){if(error.name!=='AbortError')status('文件夹打开失败：'+error.message,true);}
   }
   async function save(next,message='已保存到数据文件夹'){
