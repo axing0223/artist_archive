@@ -12,6 +12,9 @@
   function takeWarnings(){const list=warnings.slice();warnings.length=0;return list;}
   const signature=value=>JSON.stringify(value,(_,v)=>v&&typeof v==='object'&&!Array.isArray(v)?Object.fromEntries(Object.keys(v).sort().map(k=>[k,v[k]])):v);
   function remember(dir,data){snapshots.set(dir,new Map(data.artists.map(a=>[a.uid,signature(a)])));}
+  /* 登记一次 uid 变更（改名、补编号）。下一次 write 会把旧目录里的图片搬到新目录再删旧目录；
+     不登记的话新目录是空的，而旧目录照样会被清理，图片就丢了。 */
+  function rename(dir,from,to){if(!dir||!from||!to||from===to)return;const map=legacy.get(dir)||new Map();map.set(to,from);legacy.set(dir,map);}
   const empty=()=>({version:1,cutoffDate:'2026-07-01',saveLargeImages:false,tags:['可爱','唯美','暗黑','酷炫','清爽','华丽'],artists:[]});
   async function json(dir,name){return JSON.parse(await (await (await dir.getFileHandle(name)).getFile()).text());}
   async function put(dir,name,value){const f=await dir.getFileHandle(name,{create:true}),s=await f.createWritable();try{await s.write(value);await s.close();}catch(e){try{await s.abort();}catch{}throw e;}}
@@ -144,7 +147,13 @@
       const folder=await artists.getDirectoryHandle(a.uid,{create:true}),copy=structuredClone(a),used={};
       for(const kind of IMAGE_KINDS){
         const images=await folder.getDirectoryHandle(FOLDER_OF[kind],{create:true});used[kind]=new Set();
-        if(oldUid&&kind==='thumb')try{await copyImages(await (await artists.getDirectoryHandle(oldUid)).getDirectoryHandle(LEGACY_FOLDER),images);}catch(error){warn('旧预览图迁移失败（'+error.message+'）');}
+        /* uid 变了（改名或补编号）时要把旧目录的图片搬过来，否则稍后旧目录会被删掉，
+           图片就没了。缩略图可能还在旧版的「预览图」目录里，所以两处都找。 */
+        if(oldUid){
+          const from=await artists.getDirectoryHandle(oldUid),sources=kind==='thumb'?[FOLDER_OF[kind],LEGACY_FOLDER]:[FOLDER_OF[kind]];
+          for(const name of sources)try{await copyImages(await from.getDirectoryHandle(name),images);}
+          catch(error){if(error.name!=='NotFoundError')warn('旧图片迁移失败（'+error.message+'）');}
+        }
       }
       for(const w of copy.works){
         for(const kind of IMAGE_KINDS)if(typeof w[kind]==='string'&&w[kind].startsWith('data:'))w[kind]=await saveImage(dir,a.uid,kind,blobOf(w[kind]));
@@ -158,6 +167,6 @@
     for(const oldUid of moved.values())if(ArtistId.valid(oldUid)&&!ids.has(oldUid))try{await artists.removeEntry(oldUid,{recursive:true});}catch(error){warn('旧目录 '+oldUid+' 删除失败（'+error.message+'）');}
     return result;
   }
-  root.FolderStore={read,write,readImage,saveImage,imageOf,previewWorks,nextTestSeq,validWork,exportTo,remember,empty,takeWarnings,IMAGE_KINDS,SIZES,FOLDER_OF,MAX_IMAGE_BYTES};
+  root.FolderStore={read,write,readImage,saveImage,imageOf,previewWorks,nextTestSeq,validWork,exportTo,remember,rename,empty,takeWarnings,IMAGE_KINDS,SIZES,FOLDER_OF,MAX_IMAGE_BYTES};
   if(typeof module!=='undefined')module.exports=root.FolderStore;
 })(globalThis);

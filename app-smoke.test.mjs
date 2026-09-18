@@ -292,6 +292,49 @@ test('刷新所有画师：中途停下来的部分会保留',async()=>{
   assert.ok(state.rows.some(artist=>artist.counts),'停下来之前刷到的部分要保留');
   assert.equal(String(get('refresh-all').className).includes('is-armed'),false,'停止后按钮要复位');
 });
+test('导入画师时若站点已有正式名，名字与标识一起改过去并登记目录迁移',async()=>{
+  const {elements,state,ctx}=await boot();
+  const renames=[],original=ctx.FolderStore.rename;
+  ctx.FolderStore.rename=(dir,from,to)=>{renames.push(from+'→'+to);return original(dir,from,to);};
+  stub(ctx,{lookup:async()=>[{id:7,name:'betanonbeet',aliases:['betabeet'],pageUrl:''}],details:async()=>({counts:{checkedAt:'x',total:1},works:[],countsError:false})});
+  const get=id=>{if(!elements.has(id))elements.set(id,new El());return elements.get(id);};
+  get('batch-artists').onclick();get('batch-names').value='betabeet';get('batch-works').checked=true;
+  await get('batch-form').onsubmit({preventDefault(){}});
+  assert.equal(state.rows[0].name,'betanonbeet','要改用站点上的正式名');
+  assert.equal(state.rows[0].uid,'0001-betanonbeet-7','标识里的名字也要跟着换');
+  assert.deepEqual(renames,['0001-betabeet-manual→0001-betanonbeet-7'],'必须登记目录迁移，否则 write 会删掉旧目录里的图片');
+  assert.deepEqual([...state.rows[0].aliases],['betabeet'],'旧名也留在笔名里');
+});
+test('全库更新画师名字：只改站点上确实改过名的那些',async()=>{
+  const {elements,state,ctx}=await boot();
+  const renames=[],original=ctx.FolderStore.rename;
+  ctx.FolderStore.rename=(dir,from,to)=>{renames.push(from+'→'+to);return original(dir,from,to);};
+  stub(ctx,{lookup:async plan=>{const name=plan.query;return name==='old'?[{id:5,name:'new',aliases:['old'],pageUrl:''}]:[{id:6,name,aliases:[],pageUrl:''}];},
+    details:async()=>({counts:{checkedAt:'x',total:1},works:[],countsError:false})});
+  const get=id=>{if(!elements.has(id))elements.set(id,new El());return elements.get(id);};
+  get('batch-artists').onclick();get('batch-names').value='old\nkeep';get('batch-works').checked=false;
+  await get('batch-form').onsubmit({preventDefault(){}});
+  assert.equal(state.rows.length,2,'两位画师，导入时不查站点');
+  await get('rename-all').onclick();
+  assert.equal(state.rows[0].name,'new','改过名的跟着改');
+  assert.equal(state.rows[0].uid,'0001-new-5');
+  assert.equal(state.rows[1].name,'keep','没改过名的不动');
+  assert.equal(state.rows[1].uid,'0002-keep-manual','标识也不该变');
+  assert.deepEqual(renames,['0001-old-manual→0001-new-5'],'只登记真正改名的那一位');
+  assert.equal(get('rename-all').textContent,'开始更新','结束后按钮复位');
+});
+test('全库更新画师名字：撞名时跳过，不制造重名',async()=>{
+  const {elements,state,ctx}=await boot();
+  stub(ctx,{lookup:async plan=>plan.query==='dup'?[{id:9,name:'taken',aliases:[],pageUrl:''}]:[{id:8,name:plan.query,aliases:[],pageUrl:''}],
+    details:async()=>({counts:{},countsError:false})});
+  const get=id=>{if(!elements.has(id))elements.set(id,new El());return elements.get(id);};
+  get('batch-artists').onclick();get('batch-names').value='taken\ndup';get('batch-works').checked=false;
+  await get('batch-form').onsubmit({preventDefault(){}});
+  await get('rename-all').onclick();
+  assert.equal(state.rows[0].name,'taken');
+  assert.equal(state.rows[1].name,'dup','改名会撞上已有画师时要跳过');
+  assert.equal(state.rows[1].uid,'0002-dup-manual');
+});
 test('导入画师时读一次笔名，保存时不再查询',async()=>{
   const {elements,state,ctx}=await boot();
   let lookups=0,details=0;

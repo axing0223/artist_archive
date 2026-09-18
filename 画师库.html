@@ -170,6 +170,7 @@ dialog[open]::backdrop{opacity:1}
     <div class="setting-row"><div><strong>数据截至日期</strong><p class="field-help">统计「截至日期数量」时使用的日期，默认 2026-07-01。更改后已读取的数量保持不变，要点对应画师卡片上的「刷新」才会更新。</p></div><input id="history-date" type="date" value="2026-07-01" required></div>
     <div class="setting-row"><div><strong>采集作品的排序</strong><p class="field-help">批量导入、识别候选与回填工具都按这个顺序取每位画师的作品。收藏最多、评分最高与综合热度依赖站点的排序元标签，而排序元标签没有索引，作品特别多的画师可能超时失败；最新发布走编号索引，最稳。</p></div><select id="work-order" aria-label="采集作品的排序"></select></div>
     <div class="setting-row"><div><strong>刷新所有画师作品数量</strong><p class="field-help">逐个读取每位画师的作品总数与截至日期前数量。按每 25 位写盘一次，画师很多时会持续较久；中途可以停下来，已经刷新的部分会保留。保存画师本身不再联网，需要更新数量时用这里。</p></div><button id="refresh-all" class="action" type="button">开始刷新</button></div>
+    <div class="setting-row"><div><strong>把所有画师名字更新为最新</strong><p class="field-help">逐个到 Danbooru 核对每位画师的当前正式名（画师改名后旧名会留在站点的其他名字里）。改名的同时会把画师目录一起改名，里面的缩略图与大图会搬过去。按每 25 位写盘一次，中途可以停下来。</p></div><button id="rename-all" class="action" type="button">开始更新</button></div>
     <div class="setting-row"><div><strong>保存大图</strong><p class="field-help">开启后，点开作品预览时会把这件作品的原图保存进画师目录的「大图」文件夹，之后预览直接读本地、不再联网，也能离线查看。关闭时原图只在本次预览中临时加载，关掉即释放。</p></div><label class="switch"><input id="save-large" type="checkbox"><span></span></label></div>
     <div class="setting-row"><div><strong>预览图尺寸</strong><p class="field-help">调整主页面每位画师的作品预览图大小，每行显示几位画师会跟着自动变化；设置会记住。识别画师与编辑页的作品列表另有各自的「预览大小」滑动条。</p></div><div class="size-control"><input id="card-size" type="range" min="140" max="360" step="20" value="220"><span id="card-size-value">220</span></div></div>
   </div></dialog>
@@ -232,7 +233,7 @@ dialog[open]::backdrop{opacity:1}
     if(bridge&&bridge.canFetchApi===true&&typeof bridge.api==='function')return bridge.api(url,init?.signal);
     return fetch(url,init);
   }
-  function plan(value){
+  function plan(value,{match='any'}={}){
     const input=String(value).trim();
     if(!input)throw Error('请输入画师标签或主页 URL。');
     if(input.length>1200)throw Error('输入过长，请使用画师标签或简短的主页链接。');
@@ -251,7 +252,9 @@ dialog[open]::backdrop{opacity:1}
     else query=input.replace(/^@/,'').replace(/\s+/g,'_');
     if(kind==='id'&&(!Number.isSafeInteger(Number(id))||Number(id)<1))throw Error('请输入有效的 Danbooru 画师编号。');
     const params=new URLSearchParams({limit:'12'});
-    params.set(kind==='id'?'search[id]':'search[any_name_or_url_matches]',kind==='id'?id:query);
+    /* any_name_matches 明确覆盖 name / group_name / other_name，用来按旧名找改名后的画师；
+       any_name_or_url_matches 兼做 URL 检索，仍是默认。 */
+    params.set(kind==='id'?'search[id]':(match==='name'?'search[any_name_matches]':'search[any_name_or_url_matches]'),kind==='id'?id:query);
     return {input,query,kind,siteUrl:origin+'/artists?'+params,apiUrl:kind==='id'?origin+'/artists/'+id+'.json':origin+'/artists.json?'+params};
   }
   function candidates(payload){
@@ -313,6 +316,9 @@ dialog[open]::backdrop{opacity:1}
   function takeWarnings(){const list=warnings.slice();warnings.length=0;return list;}
   const signature=value=>JSON.stringify(value,(_,v)=>v&&typeof v==='object'&&!Array.isArray(v)?Object.fromEntries(Object.keys(v).sort().map(k=>[k,v[k]])):v);
   function remember(dir,data){snapshots.set(dir,new Map(data.artists.map(a=>[a.uid,signature(a)])));}
+  /* 登记一次 uid 变更（改名、补编号）。下一次 write 会把旧目录里的图片搬到新目录再删旧目录；
+     不登记的话新目录是空的，而旧目录照样会被清理，图片就丢了。 */
+  function rename(dir,from,to){if(!dir||!from||!to||from===to)return;const map=legacy.get(dir)||new Map();map.set(to,from);legacy.set(dir,map);}
   const empty=()=>({version:1,cutoffDate:'2026-07-01',saveLargeImages:false,tags:['可爱','唯美','暗黑','酷炫','清爽','华丽'],artists:[]});
   async function json(dir,name){return JSON.parse(await (await (await dir.getFileHandle(name)).getFile()).text());}
   async function put(dir,name,value){const f=await dir.getFileHandle(name,{create:true}),s=await f.createWritable();try{await s.write(value);await s.close();}catch(e){try{await s.abort();}catch{}throw e;}}
@@ -445,7 +451,13 @@ dialog[open]::backdrop{opacity:1}
       const folder=await artists.getDirectoryHandle(a.uid,{create:true}),copy=structuredClone(a),used={};
       for(const kind of IMAGE_KINDS){
         const images=await folder.getDirectoryHandle(FOLDER_OF[kind],{create:true});used[kind]=new Set();
-        if(oldUid&&kind==='thumb')try{await copyImages(await (await artists.getDirectoryHandle(oldUid)).getDirectoryHandle(LEGACY_FOLDER),images);}catch(error){warn('旧预览图迁移失败（'+error.message+'）');}
+        /* uid 变了（改名或补编号）时要把旧目录的图片搬过来，否则稍后旧目录会被删掉，
+           图片就没了。缩略图可能还在旧版的「预览图」目录里，所以两处都找。 */
+        if(oldUid){
+          const from=await artists.getDirectoryHandle(oldUid),sources=kind==='thumb'?[FOLDER_OF[kind],LEGACY_FOLDER]:[FOLDER_OF[kind]];
+          for(const name of sources)try{await copyImages(await from.getDirectoryHandle(name),images);}
+          catch(error){if(error.name!=='NotFoundError')warn('旧图片迁移失败（'+error.message+'）');}
+        }
       }
       for(const w of copy.works){
         for(const kind of IMAGE_KINDS)if(typeof w[kind]==='string'&&w[kind].startsWith('data:'))w[kind]=await saveImage(dir,a.uid,kind,blobOf(w[kind]));
@@ -459,7 +471,7 @@ dialog[open]::backdrop{opacity:1}
     for(const oldUid of moved.values())if(ArtistId.valid(oldUid)&&!ids.has(oldUid))try{await artists.removeEntry(oldUid,{recursive:true});}catch(error){warn('旧目录 '+oldUid+' 删除失败（'+error.message+'）');}
     return result;
   }
-  root.FolderStore={read,write,readImage,saveImage,imageOf,previewWorks,nextTestSeq,validWork,exportTo,remember,empty,takeWarnings,IMAGE_KINDS,SIZES,FOLDER_OF,MAX_IMAGE_BYTES};
+  root.FolderStore={read,write,readImage,saveImage,imageOf,previewWorks,nextTestSeq,validWork,exportTo,remember,rename,empty,takeWarnings,IMAGE_KINDS,SIZES,FOLDER_OF,MAX_IMAGE_BYTES};
   if(typeof module!=='undefined')module.exports=root.FolderStore;
 })(globalThis);
 </script><script>(() => {
@@ -1084,6 +1096,22 @@ dialog[open]::backdrop{opacity:1}
     const list=Array.isArray(found)?found:[],exact=list.filter(c=>c.name&&c.name.toLowerCase()===name.toLowerCase());
     return exact.length===1?exact[0]:(list.length===1?list[0]:null);
   };
+  /* 用库里存的名字去站点查这位画师。旧名可能只留在站点的 other_names 里，
+     所以先用明确覆盖 other name 的 any_name_matches，查不到再退回默认的综合搜索。 */
+  async function lookupArtist(name){
+    let hit=pickCandidate(await ArtistLookup.lookup(ArtistLookup.plan(name,{match:'name'})),name);
+    if(!hit)hit=pickCandidate(await ArtistLookup.lookup(ArtistLookup.plan(name)),name);
+    if(!hit)return null;
+    const canonical=typeof hit.name==='string'&&hit.name.trim()?hit.name.trim():null;
+    return {id:hit.id,canonical,aliases:hit.aliases||[]};
+  }
+  /* 按名字与编号重算 uid；变了就登记目录迁移。不登记的话 write 会删掉旧目录，
+     里面的缩略图与大图会一起没有。返回是否换了标识。 */
+  function reidentify(artist,name,danbooruId){
+    const parsed=ArtistId.parse(artist.uid),uid=ArtistId.create({seq:parsed?parsed.seq:artist.order,name,danbooruId:danbooruId??null});
+    if(uid===artist.uid)return false;
+    FolderStore.rename(folder,artist.uid,uid);artist.uid=uid;return true;
+  }
   /* 读一次作品数量（含截至日期前数量）。失败项保留原值，不覆盖成 null。
      笔名不在这里读：它在「识别添加」和「批量导入」时随画师编号一起取回，只取一次，
      保存时再查一遍纯属浪费一次完整往返。 */
@@ -1127,6 +1155,53 @@ dialog[open]::backdrop{opacity:1}
       button.classList.remove('is-armed');button.classList.remove('danger');button.textContent='开始刷新';
     }
     status(refreshAllStop?`已停止：刷新了 ${done} / ${targets.length} 位画师的作品数量${failed?`，${failed} 位读取失败`:''}。`:`已刷新 ${targets.length} 位画师的作品数量${failed?`，其中 ${failed} 位读取失败`:''}。`,failed>0);
+  }
+  const RENAME_CHUNK=25,RENAME_CONCURRENCY=3;
+  let renamingAll=false,renameAllStop=false;
+  /* 全库把画师名更新为站点上的最新名。按批写盘，中途可停。 */
+  async function renameAllArtists(){
+    if(busy||renamingAll)return;
+    const targets=data.artists.map(a=>({uid:a.uid,name:a.name}));
+    if(!targets.length){status('画师库还是空的，先添加画师。',true);return;}
+    const button=$('rename-all');
+    let done=0,changed=0,skipped=0,failed=0;
+    const paint=()=>{button.textContent=`停止更新（${done} / ${targets.length}）`;};
+    renamingAll=true;renameAllStop=false;
+    button.classList.add('danger');button.classList.add('is-armed');paint();
+    try{
+      for(let i=0;i<targets.length;i+=RENAME_CHUNK){
+        if(renameAllStop)break;
+        const slice=targets.slice(i,i+RENAME_CHUNK),next=clone(data);
+        /* 重名检查与登记在同一段同步代码里完成，三个并发之间不会同时放行同一个新名字 */
+        const takenNames=new Set(next.artists.map(a=>a.name.toLowerCase()));
+        let cursor=0;
+        await Promise.all(Array.from({length:Math.min(RENAME_CONCURRENCY,slice.length)},async()=>{
+          while(cursor<slice.length&&!renameAllStop){
+            const item=slice[cursor++],target=next.artists.find(a=>a.uid===item.uid);
+            if(!target)continue;
+            try{
+              const hit=await lookupArtist(item.name);
+              const canonical=hit&&hit.canonical;
+              if(!canonical||canonical===target.name)skipped++;
+              else if(takenNames.has(canonical.toLowerCase()))skipped++;
+              else{
+                takenNames.delete(target.name.toLowerCase());takenNames.add(canonical.toLowerCase());
+                reidentify(target,canonical,hit.id);
+                target.name=canonical;
+                if(hit.id!=null)target.danbooruId=hit.id;
+                changed++;
+              }
+            }catch{failed++;}
+            done++;paint();
+          }
+        }));
+        await save(next,`正在更新画师名字 ${done} / ${targets.length}…`);
+      }
+    }finally{
+      renamingAll=false;
+      button.classList.remove('is-armed');button.classList.remove('danger');button.textContent='开始更新';
+    }
+    status(renameAllStop?`已停止：检查了 ${done} / ${targets.length} 位，${changed} 位改成最新名${failed?`，${failed} 位查询失败`:''}。`:`已检查 ${targets.length} 位画师，其中 ${changed} 位改成最新名${skipped?`，${skipped} 位没找到或会撞名`:''}${failed?`，${failed} 位查询失败`:''}。`,failed>0);
   }
   async function saveDraft(){
     if(busy||uploading)return;
@@ -1299,13 +1374,18 @@ dialog[open]::backdrop{opacity:1}
         try{
           const detail=await ArtistLookup.details(name,next.cutoffDate,{previews:true,order});
           if(detail.countsError)throw Error('作品数量读取失败');
-          let id=null,aliases=null;
-          try{const hit=pickCandidate(await ArtistLookup.lookup(ArtistLookup.plan(name)),name);if(hit){id=hit.id;if(hit.aliases.length)aliases=hit.aliases;}}catch{}
-          const parsed=ArtistId.parse(artist.uid);
-          if(id!==null){artist.danbooruId=id;artist.uid=ArtistId.create({seq:parsed?parsed.seq:artist.order,name,danbooruId:id});renamed++;}
+          let hit=null;
+          try{hit=await lookupArtist(name);}catch{}
+          /* 站点上已有正式名、且不和库里别的画师撞名，就跟着改过去 */
+          const taken=new Set(next.artists.filter(a=>a!==artist).map(a=>a.name.toLowerCase()));
+          const canonical=hit&&hit.canonical&&hit.canonical!==name&&!taken.has(hit.canonical.toLowerCase())?hit.canonical:name;
+          const danbooruId=hit&&hit.id!=null?hit.id:(Number.isSafeInteger(artist.danbooruId)?artist.danbooruId:null);
+          if(reidentify(artist,canonical,danbooruId))renamed++;
+          if(canonical!==artist.name)artist.name=canonical;
+          if(danbooruId!=null)artist.danbooruId=danbooruId;
+          if(hit&&hit.aliases.length)artist.aliases=hit.aliases;
           const works=await cacheWorks(artist.uid,detail.works.slice(0,BATCH_WORKS));
           images+=works.filter(w=>typeof w.thumb==='string'&&w.thumb.startsWith('data:')).length;
-          if(aliases)artist.aliases=aliases;
           artist.counts={...detail.counts};artist.works=works;
         }catch(error){failed++;if(batchFailed.length<5)batchFailed.push(name+'：'+error.message);}
         report();
@@ -1439,6 +1519,7 @@ dialog[open]::backdrop{opacity:1}
     $('manage-tags').onclick=()=>{if(!busy){manageFilter.category='';manageFilter.tag='';$('category-search').value='';$('tag-search').value='';showManageTab('category');listCategories();listTags();$('tag-manager').showModal();}};$('close-tags').onclick=()=>$('tag-manager').close();
     $('tab-category').onclick=()=>showManageTab('category');$('tab-tag').onclick=()=>showManageTab('tag');
     $('refresh-all').onclick=()=>{if(refreshingAll){refreshAllStop=true;return null;}return refreshAllCounts();};
+    $('rename-all').onclick=()=>{if(renamingAll){renameAllStop=true;return null;}return renameAllArtists();};
     $('category-search').oninput=e=>{manageFilter.category=e.target.value.trim().toLowerCase();listCategories();};
     $('tag-search').oninput=e=>{manageFilter.tag=e.target.value.trim().toLowerCase();listTags();};
     $('category-form').onsubmit=async e=>{e.preventDefault();if(busy)return;const name=$('new-category').value.trim();if(!name)return;if(data.categories.includes(name)){alert('这个分类已存在。');return;}const next=clone(data);next.categories.push(name);await save(next);$('new-category').value='';listCategories();};$('tag-form').onsubmit=async e=>{e.preventDefault();if(busy)return;const t=$('new-tag').value.trim();if(!t)return;if(data.tags.includes(t)){alert('这个标签已存在。');return;}const next=clone(data);next.tags.push(t);await save(next);$('new-tag').value='';listTags();};

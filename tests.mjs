@@ -35,6 +35,40 @@ test('缩略图与原图分别落进 缩略图/ 大图/，imageOf 本地优先�
  await assert.rejects(()=>store.saveImage(dir,'0001-a-1','large',new Blob([Uint8Array.from([1])],{type:'image/tiff'})),/不支持/);
  await assert.rejects(()=>store.saveImage(dir,'../evil','thumb',new Blob([Uint8Array.from([1])],{type:'image/jpeg'})),/标识/);
 });
+test('uid 变更时把旧目录的缩略图与大图搬到新目录，再删掉旧目录',async()=>{
+ const dir=new Directory();
+ await store.write(dir,store.empty());
+ const thumb=await store.saveImage(dir,'0001-old-1','thumb',new Blob([Uint8Array.from([1,2,3])],{type:'image/jpeg'}));
+ const large=await store.saveImage(dir,'0001-old-1','large',new Blob([Uint8Array.from([4,5,6,7])],{type:'image/jpeg'}));
+ const first=await store.read(dir);
+ first.artists=[{uid:'0001-old-1',name:'old',works:[{id:'1',thumb,large}]}];
+ await store.write(dir,first);
+ const artists=await dir.getDirectoryHandle('画师');
+ assert.equal(artists.items.has('0001-old-1'),true,'先有一位旧名字的画师');
+
+ const next=await store.read(dir);
+ store.rename(dir,'0001-old-1','0001-new-2');
+ next.artists[0].uid='0001-new-2';next.artists[0].name='new';
+ await store.write(dir,next);
+
+ assert.equal(artists.items.has('0001-new-2'),true,'新目录要建出来');
+ assert.equal(artists.items.has('0001-old-1'),false,'旧目录要清掉');
+ assert.deepEqual(await bytesOf(await store.readImage(dir,'0001-new-2',thumb)),Uint8Array.from([1,2,3]),'缩略图必须跟着搬，否则改名就把图弄丢了');
+ assert.deepEqual(await bytesOf(await store.readImage(dir,'0001-new-2',large)),Uint8Array.from([4,5,6,7]),'大图也要搬');
+ assert.deepEqual(store.takeWarnings(),[],'迁移不该产生警告');
+});
+test('没登记 uid 变更时，新目录里不会有旧图片',async()=>{
+ const dir=new Directory();
+ await store.write(dir,store.empty());
+ const thumb=await store.saveImage(dir,'0002-old-1','thumb',new Blob([Uint8Array.from([9])],{type:'image/jpeg'}));
+ const first=await store.read(dir);
+ first.artists=[{uid:'0002-old-1',name:'old',works:[{id:'1',thumb}]}];
+ await store.write(dir,first);
+ const next=await store.read(dir);
+ next.artists[0].uid='0002-new-2';
+ await store.write(dir,next);
+ await assert.rejects(()=>store.readImage(dir,'0002-new-2',thumb),/不存在/,'不登记就等于承认图片会丢——所以改 uid 前必须先 rename()');
+});
 test('保存、图片往返、改名、数量及清理',async()=>{
  const dir=new Directory();assert.equal((await store.read(dir)).artists.length,0);
  const library={version:1,tags:['自定义'],artists:[{uid:'0001-artist-123',name:'artist',counts:{total:20},works:[{id:'1',thumb:png}]}]};

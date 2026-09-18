@@ -11,7 +11,7 @@
     if(bridge&&bridge.canFetchApi===true&&typeof bridge.api==='function')return bridge.api(url,init?.signal);
     return fetch(url,init);
   }
-  function plan(value){
+  function plan(value,{match='any'}={}){
     const input=String(value).trim();
     if(!input)throw Error('请输入画师标签或主页 URL。');
     if(input.length>1200)throw Error('输入过长，请使用画师标签或简短的主页链接。');
@@ -30,7 +30,9 @@
     else query=input.replace(/^@/,'').replace(/\s+/g,'_');
     if(kind==='id'&&(!Number.isSafeInteger(Number(id))||Number(id)<1))throw Error('请输入有效的 Danbooru 画师编号。');
     const params=new URLSearchParams({limit:'12'});
-    params.set(kind==='id'?'search[id]':'search[any_name_or_url_matches]',kind==='id'?id:query);
+    /* any_name_matches 明确覆盖 name / group_name / other_name，用来按旧名找改名后的画师；
+       any_name_or_url_matches 兼做 URL 检索，仍是默认。 */
+    params.set(kind==='id'?'search[id]':(match==='name'?'search[any_name_matches]':'search[any_name_or_url_matches]'),kind==='id'?id:query);
     return {input,query,kind,siteUrl:origin+'/artists?'+params,apiUrl:kind==='id'?origin+'/artists/'+id+'.json':origin+'/artists.json?'+params};
   }
   function candidates(payload){

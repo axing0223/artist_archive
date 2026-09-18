@@ -251,6 +251,22 @@
     const list=Array.isArray(found)?found:[],exact=list.filter(c=>c.name&&c.name.toLowerCase()===name.toLowerCase());
     return exact.length===1?exact[0]:(list.length===1?list[0]:null);
   };
+  /* 用库里存的名字去站点查这位画师。旧名可能只留在站点的 other_names 里，
+     所以先用明确覆盖 other name 的 any_name_matches，查不到再退回默认的综合搜索。 */
+  async function lookupArtist(name){
+    let hit=pickCandidate(await ArtistLookup.lookup(ArtistLookup.plan(name,{match:'name'})),name);
+    if(!hit)hit=pickCandidate(await ArtistLookup.lookup(ArtistLookup.plan(name)),name);
+    if(!hit)return null;
+    const canonical=typeof hit.name==='string'&&hit.name.trim()?hit.name.trim():null;
+    return {id:hit.id,canonical,aliases:hit.aliases||[]};
+  }
+  /* 按名字与编号重算 uid；变了就登记目录迁移。不登记的话 write 会删掉旧目录，
+     里面的缩略图与大图会一起没有。返回是否换了标识。 */
+  function reidentify(artist,name,danbooruId){
+    const parsed=ArtistId.parse(artist.uid),uid=ArtistId.create({seq:parsed?parsed.seq:artist.order,name,danbooruId:danbooruId??null});
+    if(uid===artist.uid)return false;
+    FolderStore.rename(folder,artist.uid,uid);artist.uid=uid;return true;
+  }
   /* 读一次作品数量（含截至日期前数量）。失败项保留原值，不覆盖成 null。
      笔名不在这里读：它在「识别添加」和「批量导入」时随画师编号一起取回，只取一次，
      保存时再查一遍纯属浪费一次完整往返。 */
@@ -294,6 +310,53 @@
       button.classList.remove('is-armed');button.classList.remove('danger');button.textContent='开始刷新';
     }
     status(refreshAllStop?`已停止：刷新了 ${done} / ${targets.length} 位画师的作品数量${failed?`，${failed} 位读取失败`:''}。`:`已刷新 ${targets.length} 位画师的作品数量${failed?`，其中 ${failed} 位读取失败`:''}。`,failed>0);
+  }
+  const RENAME_CHUNK=25,RENAME_CONCURRENCY=3;
+  let renamingAll=false,renameAllStop=false;
+  /* 全库把画师名更新为站点上的最新名。按批写盘，中途可停。 */
+  async function renameAllArtists(){
+    if(busy||renamingAll)return;
+    const targets=data.artists.map(a=>({uid:a.uid,name:a.name}));
+    if(!targets.length){status('画师库还是空的，先添加画师。',true);return;}
+    const button=$('rename-all');
+    let done=0,changed=0,skipped=0,failed=0;
+    const paint=()=>{button.textContent=`停止更新（${done} / ${targets.length}）`;};
+    renamingAll=true;renameAllStop=false;
+    button.classList.add('danger');button.classList.add('is-armed');paint();
+    try{
+      for(let i=0;i<targets.length;i+=RENAME_CHUNK){
+        if(renameAllStop)break;
+        const slice=targets.slice(i,i+RENAME_CHUNK),next=clone(data);
+        /* 重名检查与登记在同一段同步代码里完成，三个并发之间不会同时放行同一个新名字 */
+        const takenNames=new Set(next.artists.map(a=>a.name.toLowerCase()));
+        let cursor=0;
+        await Promise.all(Array.from({length:Math.min(RENAME_CONCURRENCY,slice.length)},async()=>{
+          while(cursor<slice.length&&!renameAllStop){
+            const item=slice[cursor++],target=next.artists.find(a=>a.uid===item.uid);
+            if(!target)continue;
+            try{
+              const hit=await lookupArtist(item.name);
+              const canonical=hit&&hit.canonical;
+              if(!canonical||canonical===target.name)skipped++;
+              else if(takenNames.has(canonical.toLowerCase()))skipped++;
+              else{
+                takenNames.delete(target.name.toLowerCase());takenNames.add(canonical.toLowerCase());
+                reidentify(target,canonical,hit.id);
+                target.name=canonical;
+                if(hit.id!=null)target.danbooruId=hit.id;
+                changed++;
+              }
+            }catch{failed++;}
+            done++;paint();
+          }
+        }));
+        await save(next,`正在更新画师名字 ${done} / ${targets.length}…`);
+      }
+    }finally{
+      renamingAll=false;
+      button.classList.remove('is-armed');button.classList.remove('danger');button.textContent='开始更新';
+    }
+    status(renameAllStop?`已停止：检查了 ${done} / ${targets.length} 位，${changed} 位改成最新名${failed?`，${failed} 位查询失败`:''}。`:`已检查 ${targets.length} 位画师，其中 ${changed} 位改成最新名${skipped?`，${skipped} 位没找到或会撞名`:''}${failed?`，${failed} 位查询失败`:''}。`,failed>0);
   }
   async function saveDraft(){
     if(busy||uploading)return;
@@ -466,13 +529,18 @@
         try{
           const detail=await ArtistLookup.details(name,next.cutoffDate,{previews:true,order});
           if(detail.countsError)throw Error('作品数量读取失败');
-          let id=null,aliases=null;
-          try{const hit=pickCandidate(await ArtistLookup.lookup(ArtistLookup.plan(name)),name);if(hit){id=hit.id;if(hit.aliases.length)aliases=hit.aliases;}}catch{}
-          const parsed=ArtistId.parse(artist.uid);
-          if(id!==null){artist.danbooruId=id;artist.uid=ArtistId.create({seq:parsed?parsed.seq:artist.order,name,danbooruId:id});renamed++;}
+          let hit=null;
+          try{hit=await lookupArtist(name);}catch{}
+          /* 站点上已有正式名、且不和库里别的画师撞名，就跟着改过去 */
+          const taken=new Set(next.artists.filter(a=>a!==artist).map(a=>a.name.toLowerCase()));
+          const canonical=hit&&hit.canonical&&hit.canonical!==name&&!taken.has(hit.canonical.toLowerCase())?hit.canonical:name;
+          const danbooruId=hit&&hit.id!=null?hit.id:(Number.isSafeInteger(artist.danbooruId)?artist.danbooruId:null);
+          if(reidentify(artist,canonical,danbooruId))renamed++;
+          if(canonical!==artist.name)artist.name=canonical;
+          if(danbooruId!=null)artist.danbooruId=danbooruId;
+          if(hit&&hit.aliases.length)artist.aliases=hit.aliases;
           const works=await cacheWorks(artist.uid,detail.works.slice(0,BATCH_WORKS));
           images+=works.filter(w=>typeof w.thumb==='string'&&w.thumb.startsWith('data:')).length;
-          if(aliases)artist.aliases=aliases;
           artist.counts={...detail.counts};artist.works=works;
         }catch(error){failed++;if(batchFailed.length<5)batchFailed.push(name+'：'+error.message);}
         report();
@@ -606,6 +674,7 @@
     $('manage-tags').onclick=()=>{if(!busy){manageFilter.category='';manageFilter.tag='';$('category-search').value='';$('tag-search').value='';showManageTab('category');listCategories();listTags();$('tag-manager').showModal();}};$('close-tags').onclick=()=>$('tag-manager').close();
     $('tab-category').onclick=()=>showManageTab('category');$('tab-tag').onclick=()=>showManageTab('tag');
     $('refresh-all').onclick=()=>{if(refreshingAll){refreshAllStop=true;return null;}return refreshAllCounts();};
+    $('rename-all').onclick=()=>{if(renamingAll){renameAllStop=true;return null;}return renameAllArtists();};
     $('category-search').oninput=e=>{manageFilter.category=e.target.value.trim().toLowerCase();listCategories();};
     $('tag-search').oninput=e=>{manageFilter.tag=e.target.value.trim().toLowerCase();listTags();};
     $('category-form').onsubmit=async e=>{e.preventDefault();if(busy)return;const name=$('new-category').value.trim();if(!name)return;if(data.categories.includes(name)){alert('这个分类已存在。');return;}const next=clone(data);next.categories.push(name);await save(next);$('new-category').value='';listCategories();};$('tag-form').onsubmit=async e=>{e.preventDefault();if(busy)return;const t=$('new-tag').value.trim();if(!t)return;if(data.tags.includes(t)){alert('这个标签已存在。');return;}const next=clone(data);next.tags.push(t);await save(next);$('new-tag').value='';listTags();};
