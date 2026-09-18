@@ -14,6 +14,11 @@
   const httpsValue=v=>typeof v==='string'&&v.startsWith('https://')?v:null;
   const seqOf=a=>ArtistId.parse(a.uid)?.seq??a.order;
   const state={category:'全部',tags:new Set(),query:''};
+  const PREF_KEY='artist-library.thumb-height';
+  const prefs={thumbHeight:120,listeners:new Set(),
+    setThumbHeight(value){this.thumbHeight=value;try{localStorage.setItem(PREF_KEY,String(value));}catch{}for(const fn of this.listeners)fn(value);},
+    subscribe(fn){this.listeners.add(fn);},unsubscribe(fn){this.listeners.delete(fn);}};
+  try{const stored=Number(localStorage.getItem(PREF_KEY));if(Number.isFinite(stored)&&stored>=70&&stored<=220)prefs.thumbHeight=stored;}catch{}
   let data,folder,draft,editingId,busy=false,uploading=false,volatile=false;
   function normalize(raw,backup=false){
     if(!raw||!Array.isArray(raw.artists)||(backup&&raw.version!==1))throw Error('不是此网页导出的备份。');
@@ -30,7 +35,7 @@
       const c=a.counts||{},number=n=>Number.isSafeInteger(n)&&n>=0?n:null;
       return {uid:id,order:i+1,name,category:a.category||null,tags:unique(a.tags||[]).map(t=>t.slice(0,40)),danbooruId,counts:{total:number(c.total),checkedAt:text(c.checkedAt,40),beforeDate:text(c.beforeDate,10),beforeTotal:number(c.beforeTotal)},artistUrl:url(a.artistUrl),description:text(a.description),note:text(a.note),basis:text(a.basis,100),status:text(a.status,100),works};
     });
-    return {version:1,cutoffDate:/^\d{4}-\d{2}-\d{2}$/.test(raw.cutoffDate)?raw.cutoffDate:'2026-07-01',date:text(raw.date,40),method:text(raw.method,12000),tags:unique([...(Array.isArray(raw.tags)?raw.tags:defaults),...artists.flatMap(a=>a.tags)]).map(t=>t.slice(0,40)),artists};
+    return {version:1,cutoffDate:/^\d{4}-\d{2}-\d{2}$/.test(raw.cutoffDate)?raw.cutoffDate:'2026-07-01',saveLargeImages:raw.saveLargeImages===true,date:text(raw.date,40),method:text(raw.method,12000),tags:unique([...(Array.isArray(raw.tags)?raw.tags:defaults),...artists.flatMap(a=>a.tags)]).map(t=>t.slice(0,40)),artists};
   }
   function status(t,error=false){$('storage-status').textContent=t;$('storage-status').classList.toggle('error',error);}
   async function write(value){if(!folder)throw Error('请先选择数据文件夹');return normalize(await FolderStore.write(folder,value));}
@@ -47,30 +52,41 @@
     try{data=await write(data);volatile=false;const warnings=FolderStore.takeWarnings();status(warnings.length?message+'；'+warnings.join('；'):message,warnings.length>0);}catch(error){volatile=true;status('文件保存失败：'+error.message+'；修改暂留本页，请导出备份。',true);}finally{controls.forEach(([e,disabled])=>e.disabled=disabled);busy=false;render();}
   }
   function reset(){state.category='全部';state.tags.clear();state.query='';$('search').value='';}
-  function openViewer({title,uid,work,caption}){
+  function openViewer({title,uid,work,caption,persist=false}){
     ArtistImages.dispose('viewer');
     $('viewer-title').textContent=title;$('large-image').alt=title;
     $('viewer-caption').textContent='正在获取原图…';
     $('viewer-source').hidden=!work.url;if(work.url)$('viewer-source').href=work.url;
     $('viewer').showModal();
     ArtistImages.bind($('large-image'),uid,work,'viewer','thumb',()=>{});
-    loadLarge(uid,work,caption);
+    loadLarge(uid,work,caption,persist);
   }
-  async function loadLarge(uid,work,caption){
+  async function loadLarge(uid,work,caption,persist){
     const img=$('large-image'),note=caption?caption+' · ':'',local=FolderStore.imageOf(work,'large');
     $('viewer-caption').textContent=note+'正在获取原图…';
     try{
-      let target=work;
+      let target=work,remote=null,kept=false;
       if(!local||local.kind==='remote'){
-        const remote=work.largeUrl||(work.id&&ArtistExtension.connected?await ArtistExtension.resolve(work.id):null);
+        remote=work.largeUrl||(work.id&&ArtistExtension.connected?await ArtistExtension.resolve(work.id):null);
         if(!remote)throw Error('这张作品没有原图地址');
         target={...work,largeUrl:remote};
       }
-      await ArtistImages.fetch(uid,target,'large');
+      const blob=await ArtistImages.fetch(uid,target,'large');
+      if(persist&&data.saveLargeImages&&folder&&remote&&!local)kept=await keepLarge(uid,work,blob,remote);
       if(!$('viewer').open)return;
-      img.onload=()=>{$('viewer-caption').textContent=note+'原图仅本次显示，不会保存到本地';};
+      img.onload=()=>{$('viewer-caption').textContent=note+(kept?'原图已保存到本地':'原图仅本次显示，不会保存到本地');};
       ArtistImages.bind(img,uid,target,'viewer','large',error=>showMiddle(uid,work,caption,error));
     }catch(error){if(error.name!=='AbortError')showMiddle(uid,work,caption,error);}
+  }
+  async function keepLarge(uid,work,blob,remote){
+    try{
+      const path=await FolderStore.saveImage(folder,uid,'large',blob);
+      const next=clone(data),target=next.artists.find(x=>x.uid===uid),index=target?target.works.findIndex(x=>x.id===work.id):-1;
+      if(index<0)return false;
+      target.works[index]={...target.works[index],large:path,largeUrl:remote};
+      await save(next,'原图已保存到本地，之后预览直接读本地');
+      return true;
+    }catch(error){status('原图保存失败：'+error.message,true);return false;}
   }
   function showMiddle(uid,work,caption,error){
     const note=caption?caption+' · ':'',middle=work.previewUrl;
@@ -78,7 +94,7 @@
     $('viewer-caption').textContent=note+'原图未取到：'+error.message+'，改用中图显示';
     ArtistImages.bind($('large-image'),uid,{...work,largeUrl:middle},'viewer','large',e2=>{$('viewer-caption').textContent=note+'中图也未取到：'+e2.message+'（显示的是缩略图）';});
   }
-  function showImage(a,w){openViewer({title:a.name,uid:a.uid,work:w,caption:w.caption});}
+  function showImage(a,w){openViewer({title:a.name,uid:a.uid,work:w,caption:w.caption,persist:true});}
   function card(a){
     const article=el('article','artist'),info=el('div','artist-info'),top=el('div','artist-top');article.dataset.artist=a.name;
     const numbers=el('div','artist-numbers'),countLabel=el('span','work-count','作品数量：'+(a.counts?.total??'未读取')+'（'+(a.counts?.beforeTotal??'未读取')+'）');
@@ -98,7 +114,7 @@
   }
   function render(){
     $('history-date').value=data.cutoffDate;
-    $('choose-date').textContent='数据截至日期：'+data.cutoffDate;
+    $('save-large').checked=data.saveLargeImages===true;
     $('categories').replaceChildren(...['全部',...categories,'待判断'].map(c=>{const n=data.artists.filter(a=>c==='全部'||(c==='待判断'?!a.category:a.category===c)).length;const b=btn(c,()=>{state.category=c;render();},c===state.category?'active':'');b.setAttribute('aria-pressed',String(c===state.category));b.append(el('span','n',n));return b;}));
     $('tags').replaceChildren(...data.tags.map(t=>{const b=btn(t,()=>{state.tags.has(t)?state.tags.delete(t):state.tags.add(t);render();},state.tags.has(t)?'active':'');b.setAttribute('aria-pressed',String(state.tags.has(t)));return b;}));
     const rows=data.artists.filter(a=>(state.category==='全部'||(state.category==='待判断'?!a.category:a.category===state.category))&&[...state.tags].every(t=>a.tags.includes(t))&&a.name.toLowerCase().includes(state.query));
@@ -124,7 +140,7 @@
     if(!tag){$('editor-error').textContent='先在「画师名字」里填 Danbooru 标签，再用它去找作品。';return;}
     $('editor-error').textContent='';panel.hidden=false;panel.replaceChildren();
     const exclude=new Set(draft.works.map(w=>w.id).filter(Boolean));
-    editorPicker=WorkPicker.mount(panel,{uid:draft.uid,tag,exclude,onPreview:work=>previewWork(draft.name,work,draft.uid)});
+    editorPicker=WorkPicker.mount(panel,{uid:draft.uid,tag,exclude,zoom:prefs,onPreview:work=>previewWork(draft.name,work,draft.uid)});
     const action=btn('添加所选到作品列表',async()=>{
       const chosen=editorPicker.selected();
       if(!chosen.length){$('editor-error').textContent='请先勾选要添加的作品。';return;}
@@ -217,7 +233,7 @@
       const countLine=el('small','','作品数量：读取中…');detail.append(countLine);
       const body=el('div','candidate-body');detail.append(body);
       const previewUid='preview-'+artist.id;
-      const picker=WorkPicker.mount(body,{uid:previewUid,tag:artist.name,onPreview:work=>previewWork(artist.name,work,previewUid)});activePickers.push(picker);
+      const picker=WorkPicker.mount(body,{uid:previewUid,tag:artist.name,zoom:prefs,onPreview:work=>previewWork(artist.name,work,previewUid)});activePickers.push(picker);
       ArtistLookup.details(artist.name,'',{previews:false}).then(result=>{if(sequence===lookupSequence)countLine.textContent='作品数量：'+(result.counts.total??'读取失败');}).catch(()=>{if(sequence===lookupSequence)countLine.textContent='作品数量：读取失败';});
       const exists=()=>data.artists.some(a=>a.danbooruId===artist.id||a.name.toLowerCase()===artist.name.toLowerCase());
       const add=btn(exists()?'已在画师库中':'添加此画师',async()=>{
@@ -259,7 +275,8 @@
   }
   async function init(){
     data=normalize(FolderStore.empty());status('请先选择「数据」文件夹，读取或开始整理画师库。');
-    $('choose-date').onclick=()=>$('date-dialog').showModal();$('close-date').onclick=()=>$('date-dialog').close();
+    $('settings-open').onclick=()=>{$('history-date').value=data.cutoffDate;$('save-large').checked=data.saveLargeImages===true;$('settings').showModal();};$('close-settings').onclick=()=>$('settings').close();
+    $('save-large').onchange=async()=>{const next=clone(data);next.saveLargeImages=$('save-large').checked;await save(next,next.saveLargeImages?'已开启「保存大图」：预览作品时会保存原图':'已关闭「保存大图」：预览作品时不再保存原图');};
     $('history-date').onchange=async()=>{const date=$('history-date').value;if(!/^\d{4}-\d{2}-\d{2}$/.test(date)){ $('history-date').value=data.cutoffDate;return;}const next=clone(data);next.cutoffDate=date;await save(next,'已保存截至日期；点击画师旁的刷新后，该画师数量才会更新。');};
     $('artist-category').append(new Option('待判断',''),...categories.map(c=>new Option(c,c)));
     $('add-artist').onclick=focusQuick;$('quick-form').onsubmit=e=>{e.preventDefault();detectArtist();};$('quick-input').oninput=quickChanged;$('quick-input').oncompositionend=quickChanged;

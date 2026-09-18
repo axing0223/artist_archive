@@ -2,11 +2,17 @@
   'use strict';
   const el=(tag,cls,text)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n;};
   const btn=(text,fn,cls='action')=>{const b=el('button',cls,text);b.type='button';b.onclick=fn;return b;};
-  const LIMIT=20;
-  function mount(container,{uid,tag,exclude,onPreview=()=>{},limit=LIMIT}={}){
+  const LIMIT=20,DEFAULT_ZOOM={thumbHeight:120,setThumbHeight(){},subscribe(){},unsubscribe(){}};
+  function mount(container,{uid,tag,exclude,onPreview=()=>{},zoom=DEFAULT_ZOOM,limit=LIMIT}={}){
     const group='picker:'+uid;
     const status=el('small','picker-status','正在读取作品…'),grid=el('div','candidate-previews'),tools=el('div','candidate-tools'),counter=el('small','');
-    container.append(status,grid,tools);
+    const zoomBar=el('div','picker-zoom'),range=el('input');
+    range.type='range';range.min='70';range.max='220';range.step='10';range.value=String(zoom.thumbHeight);range.title='调整作品预览的大小';
+    range.oninput=()=>zoom.setThumbHeight(Number(range.value));
+    zoomBar.append(el('small','','预览大小'),range);
+    container.append(status,zoomBar,grid,tools);
+    const applyZoom=value=>{const size=value||zoom.thumbHeight;grid.style.setProperty('--pick-size',size+'px');range.value=String(size);};
+    zoom.subscribe(applyZoom);applyZoom();
     const picked=new Set();
     let works=[],page=1,exhausted=false,disposed=false;
     const skipped=()=>exclude&&exclude.size?` · 库中已有的 ${exclude.size} 张不会再列出`:'';
@@ -42,7 +48,7 @@
     return {
       ready,
       selected(){return works.filter(w=>picked.has(w.id));},
-      dispose(){disposed=true;ArtistImages.dispose(group);container.replaceChildren();},
+      dispose(){disposed=true;zoom.unsubscribe(applyZoom);ArtistImages.dispose(group);container.replaceChildren();},
     };
   }
   root.WorkPicker={mount};

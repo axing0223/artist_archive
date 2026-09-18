@@ -12,7 +12,7 @@
   function takeWarnings(){const list=warnings.slice();warnings.length=0;return list;}
   const signature=value=>JSON.stringify(value,(_,v)=>v&&typeof v==='object'&&!Array.isArray(v)?Object.fromEntries(Object.keys(v).sort().map(k=>[k,v[k]])):v);
   function remember(dir,data){snapshots.set(dir,new Map(data.artists.map(a=>[a.uid,signature(a)])));}
-  const empty=()=>({version:1,tags:['可爱','唯美','暗黑','酷炫','清爽','华丽'],artists:[]});
+  const empty=()=>({version:1,cutoffDate:'2026-07-01',saveLargeImages:false,tags:['可爱','唯美','暗黑','酷炫','清爽','华丽'],artists:[]});
   async function json(dir,name){return JSON.parse(await (await (await dir.getFileHandle(name)).getFile()).text());}
   async function put(dir,name,value){const f=await dir.getFileHandle(name,{create:true}),s=await f.createWritable();try{await s.write(value);await s.close();}catch(e){try{await s.abort();}catch{}throw e;}}
   const extensionOf=type=>Object.keys(TYPES).find(k=>TYPES[k]===type)||'';
