@@ -40,7 +40,7 @@
       ids.add(id);issued.push({uid:id});
       const works=a.works.map(w=>{if(!FolderStore.validWork(w))throw Error(name+' 的图片格式或本地路径无效。');return {id:text(String(w.id??''),100),url:url(w.url),caption:text(w.caption),thumb:imageValue(w.thumb),thumbUrl:httpsValue(w.thumbUrl),previewUrl:httpsValue(w.previewUrl),large:imageValue(w.large),largeUrl:httpsValue(w.largeUrl),...(w.kind==='test'?{kind:'test',testSeq:Number.isSafeInteger(w.testSeq)&&w.testSeq>0?w.testSeq:1}:{})};});
       const c=a.counts||{},number=n=>Number.isSafeInteger(n)&&n>=0?n:null;
-      return {uid:id,order:i+1,name,category:a.category||null,tags:unique(a.tags||[]).map(t=>t.slice(0,40)),danbooruId,counts:{total:number(c.total),checkedAt:text(c.checkedAt,40),beforeDate:text(c.beforeDate,10),beforeTotal:number(c.beforeTotal)},artistUrl:url(a.artistUrl),description:text(a.description),note:text(a.note),basis:text(a.basis,100),status:text(a.status,100),works};
+      return {uid:id,order:i+1,name,category:a.category||null,score:Number.isSafeInteger(a.score)&&a.score>=1&&a.score<=5?a.score:null,tags:unique(a.tags||[]).map(t=>t.slice(0,40)),danbooruId,counts:{total:number(c.total),checkedAt:text(c.checkedAt,40),beforeDate:text(c.beforeDate,10),beforeTotal:number(c.beforeTotal)},artistUrl:url(a.artistUrl),description:text(a.description),note:text(a.note),basis:text(a.basis,100),status:text(a.status,100),works};
     });
     return {version:1,categories:categoryList,cutoffDate:/^\d{4}-\d{2}-\d{2}$/.test(raw.cutoffDate)?raw.cutoffDate:'2026-07-01',saveLargeImages:raw.saveLargeImages===true,date:text(raw.date,40),method:text(raw.method,12000),tags:unique([...(Array.isArray(raw.tags)?raw.tags:defaults),...artists.flatMap(a=>a.tags)]).map(t=>t.slice(0,40)),artists};
   }
@@ -79,7 +79,9 @@
       if(!w){works.append(el('div','work work-empty'));return;}
       const figure=el('figure','work'),b=btn('',()=>showImage(a,w),'thumb'),img=el('img');if(w.kind==='test')figure.classList.add('is-test');b.setAttribute('aria-label',`查看 ${a.name} 的${w.kind==='test'?'测试风格图片':'作品 '+(i+1)}`);img.alt=a.name+' 的作品';ArtistImages.bind(img,a.uid,w,'card:'+a.uid,'thumb');b.append(img);const caption=el('figcaption');caption.append(el('span','',w.kind==='test'?`测试风格 ${w.testSeq||1}`:w.id?'#'+w.id:'作品 '+(i+1)));if(w.url)caption.append(link('来源 ↗',w.url));figure.append(b,caption);works.append(figure);});
     if(a.note)works.append(el('p','sample-note',a.note));
-    article.append(info,works);return article;
+    article.append(info,works);
+    if(Number.isSafeInteger(a.score)&&a.score>=1&&a.score<=5)article.append(el('span','score-badge score-'+a.score,a.score+' 分'));
+    return article;
   }
   function card(a){return draft&&draft.uid===a.uid?editingCard(a):artistCard(a);}
   function editingCard(a){
@@ -110,9 +112,22 @@
     tagRow.append(tagNew,tagAdd);
     tagEditor.append(tagChoices,tagRow);
     renderTagEditor();
+    const scorePicker=el('div','score-picker');
+    const renderScore=()=>{
+      const nodes=[1,2,3,4,5].map(n=>{
+        const on=draft.score===n,pick=el('button',on?'score-pick score-'+n+' active':'score-pick score-'+n,String(n));
+        pick.type='button';pick.setAttribute('aria-pressed',String(on));pick.setAttribute('aria-label',n+' 分');
+        pick.onclick=()=>{draft.score=on?null:n;renderScore();};
+        return pick;
+      });
+      nodes.push(el('span','score-hint',draft.score?draft.score+' 分':'未评分，点数字打分'));
+      scorePicker.replaceChildren(...nodes);
+    };
+    renderScore();
+    const scoreField=el('div','edit-field');scoreField.append(el('span','edit-label','参考分数'),scorePicker);
     const descInput=el('textarea');descInput.rows=3;descInput.maxLength=5000;descInput.value=draft.description||'';descInput.placeholder='记录画风和特点';descInput.oninput=()=>draft.description=descInput.value;
     const noteInput=el('textarea');noteInput.rows=2;noteInput.maxLength=5000;noteInput.value=draft.note||'';noteInput.placeholder='备注';noteInput.oninput=()=>draft.note=noteInput.value;
-    const grid=el('div','edit-grid');grid.append(field('画师名字',nameInput),field('主分类',categorySelect),field('画师页面链接',urlInput),fieldBox('标签',tagEditor));
+    const grid=el('div','edit-grid');grid.append(field('画师名字',nameInput),field('主分类',categorySelect),field('画师页面链接',urlInput),scoreField,fieldBox('标签',tagEditor));
     editorError=el('p','error');info.append(grid,field('画风描述',descInput),field('备注',noteInput),editorError);
     const actions=el('div','artist-actions');actions.append(btn('保存',saveDraft,'action primary-action'),btn('取消',cancelEdit,'action'));
     const remove=removeButton();if(!editingId)remove.hidden=true;actions.append(remove);info.append(actions);
@@ -172,7 +187,7 @@
     const previous=editingId;
     closeEditor();
     editingId=a?.uid||null;
-    draft=a?clone(a):{uid:uid(),name:'',category:null,tags:[],artistUrl:'',description:'',note:'',works:[]};
+    draft=a?clone(a):{uid:uid(),name:'',category:null,score:null,tags:[],artistUrl:'',description:'',note:'',works:[]};
     if(editingId)ArtistGallery.pin(editingId,true);
     morphAway(previous||editingId,()=>{render();focusEditingCard();});
   }

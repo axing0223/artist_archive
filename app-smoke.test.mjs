@@ -408,6 +408,52 @@ test('管理标签：筛选状态下不提供拖动把手，避免顺序歧义',
   search.value='';search.oninput({target:search});
   assert.ok(findByClass(list.children[0],'manage-handle'),'清空筛选后把手回来');
 });
+const bareArtist=extra=>({uid:'0001-tester-1',order:1,name:'tester',category:null,score:null,tags:[],danbooruId:null,counts:{},artistUrl:'',description:'',note:'',basis:'',status:'',works:[{id:'1',thumb:null}],...extra});
+test('画师卡片：打了分才在左上角显示角标，1-5 各有对应底板',async()=>{
+  const {state}=await boot();
+  const plain=state.card(bareArtist());
+  assert.equal(findAllByClass(plain,'score-badge').length,0,'未评分不显示角标');
+  assert.equal(plain.children.length,2,'没打分时卡片仍然只有信息区与作品区');
+  for(const score of [1,2,3,4,5]){
+    const card=state.card(bareArtist({score})),badges=findAllByClass(card,'score-badge');
+    assert.equal(badges.length,1,'分数 '+score+' 应有且只有一个角标');
+    assert.equal(String(badges[0].className).includes('score-'+score),true,'分数 '+score+' 要用对应的底板');
+    assert.equal(badges[0].textContent,score+' 分');
+    assert.equal(card.children.length,3,'有角标时多出一个元素，且不挤占信息区');
+  }
+});
+test('画师卡片：越界或非法分数不会渲染出没有底板的角标',async()=>{
+  const {state}=await boot();
+  for(const bad of [0,6,9,-1,null,undefined,'3',3.5,NaN])assert.equal(findAllByClass(state.card(bareArtist({score:bad})),'score-badge').length,0,'score='+String(bad)+' 不应渲染角标');
+});
+test('编辑卡片：1-5 分按钮，点一下选中，再点同一个取消打分',async()=>{
+  const {elements,state}=await boot();
+  elements.get('add-artist').onclick();
+  const card=lastRender(state)[0],picker=findByClass(card,'score-picker');
+  assert.ok(picker,'编辑卡片里应有分数选择器');
+  let picks=findAllByClass(picker,'score-pick');
+  assert.equal(picks.length,5,'一共 1 到 5 分');
+  assert.equal(picks.map(pick=>pick.textContent).join(''),'12345');
+  assert.equal(picks.every(pick=>pick['aria-pressed']==='false'),true,'默认未评分');
+  picks[4].onclick();
+  picks=findAllByClass(picker,'score-pick');
+  assert.equal(picks[4]['aria-pressed'],'true','点了 5 分');
+  assert.equal(String(picks[4].className).includes('active'),true);
+  assert.equal(String(picks[4].className).includes('score-5'),true,'按钮用对应底板做预览');
+  assert.equal(picks.every((pick,i)=>i===4||pick['aria-pressed']==='false'),true,'其他分数不受影响');
+  picks[4].onclick();
+  assert.equal(findAllByClass(picker,'score-pick')[4]['aria-pressed'],'false','再点同一个取消打分');
+});
+test('编辑卡片：打的分随保存写进画师资料',async()=>{
+  const {elements,state}=await boot();
+  elements.get('add-artist').onclick();
+  const card=lastRender(state)[0],nameInput=findByPlaceholder(card,'画师名字（必填）');
+  nameInput.value='打分的画师';nameInput.oninput();
+  findAllByClass(findByClass(card,'score-picker'),'score-pick')[2].onclick();
+  await findText(lastRender(state)[0],'保存').onclick();
+  assert.equal(state.rows[0].score,3,'选中的 3 分要写进资料');
+  assert.equal(findAllByClass(state.card(state.rows[0]),'score-badge').length,1,'保存后卡片上出现角标');
+});
 test('批量导入：默认勾选采集，为每位新画师写入作品数量与最新 3 张作品',async()=>{
   const {elements,state,ctx}=await boot();
   stub(ctx,{lookup:async()=>[{id:196870,name:'iuui',aliases:[],pageUrl:'https://danbooru.donmai.us/artists/196870'}],
