@@ -106,6 +106,13 @@ test('识别区按页取作品，每张都带缩略图与原图地址，无效�
  await assert.rejects(posts('a',{fetcher:async()=>({ok:false,status:429})}),/频繁/);
  await assert.rejects(posts('a',{fetcher:async()=>({ok:true,json:async()=>({})})}),/未返回作品/);
 });
+test('主分类列表随数据保存与读取，画师可引用自定义分类',async()=>{
+ const dir=new Directory();
+ await store.write(dir,{version:1,categories:['厚涂向','像素风'],tags:[],artists:[{uid:'0001-a',name:'a',category:'像素风',works:[]}]});
+ const restored=await store.read(dir);
+ assert.deepEqual(restored.categories,['厚涂向','像素风']);
+ assert.equal(restored.artists[0].category,'像素风');
+});
 test('修改全局截至日期会保存设置但不会改写既有数量',async()=>{
  const dir=new Directory();const library={version:1,cutoffDate:'2026-07-01',tags:[],artists:[{uid:'0001-test',name:'artist',counts:{total:20,beforeTotal:12,beforeDate:'2026-07-01'},works:[]}]};
  await store.write(dir,library);library.cutoffDate='2026-08-01';await store.write(dir,library);const restored=await store.read(dir);assert.equal(restored.cutoffDate,'2026-08-01');assert.deepEqual(restored.artists[0].counts,{total:20,beforeTotal:12,beforeDate:'2026-07-01'});
