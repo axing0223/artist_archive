@@ -10,7 +10,7 @@
     range.type='range';range.min='70';range.max='220';range.step='10';range.value=String(zoom.thumbHeight);range.title='调整作品预览的大小';
     range.oninput=()=>zoom.setThumbHeight(Number(range.value));
     zoomBar.append(el('small','','预览大小'),range);
-    container.append(status,zoomBar,grid,tools);
+    container.append(status,grid,tools);
     const applyZoom=value=>{const size=value||zoom.thumbHeight;grid.style.setProperty('--pick-size',size+'px');range.value=String(size);};
     zoom.subscribe(applyZoom);applyZoom();
     const picked=new Set();
@@ -42,11 +42,12 @@
       catch(error){status.textContent='读取失败：'+error.message;}
       finally{more.disabled=false;more.textContent='加载更多';more.hidden=exhausted;}
     });
-    tools.append(counter,btn('全选',()=>{works.forEach(w=>picked.add(w.id));render();}),btn('全不选',()=>{picked.clear();render();}),more);
+    tools.append(zoomBar,counter,btn('全选',()=>{works.forEach(w=>picked.add(w.id));render();}),btn('全不选',()=>{picked.clear();render();}),more);
     const ready=loadMore().then(total=>{status.textContent=total?`找到 ${total} 张作品：勾选要保存的，点编号可放大查看。`:'没有可添加的新作品。';})
       .catch(error=>{status.textContent='作品读取失败：'+error.message;});
     return {
       ready,
+      tools,
       selected(){return works.filter(w=>picked.has(w.id));},
       dispose(){disposed=true;zoom.unsubscribe(applyZoom);ArtistImages.dispose(group);container.replaceChildren();},
     };

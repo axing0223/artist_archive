@@ -406,7 +406,7 @@
           await save(next,`已添加 ${artist.name} · ${saved.length} 张预览图`);
           if(sequence===lookupSequence){cancelLookup();$('quick-input').value='';clearCandidates();$('quick-site').hidden=true;$('quick-status').textContent=`已添加 ${artist.name}。可继续输入下一位；如列表被筛选，可按名字搜索。`;$('quick-input').focus();}
         }catch(error){add.disabled=false;add.textContent='添加此画师';$('quick-status').textContent='添加失败：'+error.message;}
-      },'action primary-action');add.disabled=exists();row.append(detail,add);$('quick-results').append(row);
+      },'action primary-action');add.disabled=exists();picker.tools.append(add);row.append(detail);$('quick-results').append(row);
     }
   }
   async function detectArtist(){
