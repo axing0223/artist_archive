@@ -37,6 +37,7 @@ a.action{display:inline-flex;align-items:center;text-decoration:none}
 .primary-action:hover{background:#2d4bd6;border-color:#2d4bd6;box-shadow:0 4px 12px #375af53d}
 .edit-button:hover{background:#e2e8ff}
 .danger:hover{background:#fbebe9;border-color:#e6b2ae}
+.danger.is-armed,.danger.is-armed:hover{background:#d9483c;border-color:#d9483c;color:#fff}
 .categories button:hover{background:#e7eaf2}
 .tags button:hover{border-color:#c8d2e4;color:#3b4252}
 .reset:hover{color:var(--accent)}.danger-link:hover{color:#8f2f28}

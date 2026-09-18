@@ -5,7 +5,12 @@ import vm from 'node:vm';
 class El{
   constructor(tag='div'){
     this.tagName=tag;this.children=[];this.className='';this._text='';this.dataset={};this.props={};
-    this.style={setProperty:(k,v)=>{this.props[k]=v;}};this.classList={add:()=>{},remove:()=>{},toggle:()=>{}};
+    this.style={setProperty:(k,v)=>{this.props[k]=v;}};
+    this.classList={
+      add:cls=>{const list=String(this.className).split(/\s+/).filter(Boolean);if(!list.includes(cls))this.className=[...list,cls].join(' ');},
+      remove:cls=>{this.className=String(this.className).split(/\s+/).filter(name=>name&&name!==cls).join(' ');},
+      toggle:()=>{},
+    };
     this.hidden=false;this.value='';this.type='';this.checked=false;this.title='';this.placeholder='';this.href='';this.disabled=false;
     this.onclick=null;this.oninput=null;this.onchange=null;this.onerror=null;this.onload=null;
   }
@@ -102,6 +107,17 @@ test('编辑态的三个操作按钮集中在同一个容器里，顺序为保�
   assert.ok(actions,'编辑态卡片应有操作区');
   assert.deepEqual(actions.children.map(child=>child.textContent),['保存','取消','删除画师'],'三个按钮要在同一个容器里依次排列');
   assert.equal(actions.children[0].className.includes('primary-action'),true,'保存是主操作');
+});
+test('删除画师改为按钮二次确认，不再调用系统对话框',async()=>{
+  const {elements,state}=await boot();
+  elements.get('add-artist').onclick();
+  const card=lastRender(state)[0];
+  const find=(node,label)=>{for(const child of node.children||[]){if(child._text===label)return child;const hit=find(child,label);if(hit)return hit;}return null;};
+  const remove=find(card,'删除画师');
+  assert.ok(remove,'编辑态应有删除按钮');
+  remove.onclick();
+  assert.equal(remove.textContent,'再次点击确认删除','第一次点击只进入确认态');
+  assert.equal(String(remove.className).includes('is-armed'),true,'确认态要有醒目样式');
 });
 test('编辑已有画师时，卡片渲染成编辑态而不是浏览态',async()=>{
   const {elements,state}=await boot();

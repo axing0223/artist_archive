@@ -164,7 +164,7 @@
     const grid=el('div','edit-grid');grid.append(field('画师名字',nameInput),field('主分类',categorySelect),field('画师页面链接',urlInput),field('标签',tagsInput));
     editorError=el('p','error');info.append(grid,field('画风描述',descInput),field('备注',noteInput),editorError);
     const actions=el('div','artist-actions');actions.append(btn('保存',saveDraft,'action primary-action'),btn('取消',cancelEdit,'action'));
-    const remove=btn('删除画师',removeArtist,'danger');if(!editingId)remove.hidden=true;actions.append(remove);info.append(actions);
+    const remove=removeButton();if(!editingId)remove.hidden=true;actions.append(remove);info.append(actions);
     const works=el('div','works');
     draft.works.forEach((w,i)=>{const figure=el('figure','work'),thumb=btn('',()=>showImage({uid:draft.uid,name:draft.name},w),'thumb'),img=el('img');if(w.kind==='test')figure.classList.add('is-test');img.alt=draft.name+' 的作品';ArtistImages.bind(img,draft.uid,w,'editor','thumb');thumb.append(img);const caption=el('figcaption');caption.append(el('span','',w.kind==='test'?`测试风格 ${w.testSeq||1}`:'作品 '+(i+1)));caption.append(btn('移除',()=>{draft.works.splice(i,1);render();},'danger-link'));figure.append(thumb,caption);works.append(figure);});
     const uploadLabel=el('label','action upload-label','＋ 上传本地图片'),uploadInput=el('input');uploadInput.type='file';uploadInput.accept='image/jpeg,image/png,image/webp,image/gif,image/avif';uploadInput.multiple=true;uploadInput.hidden=true;uploadInput.onchange=upload;uploadLabel.append(uploadInput);
@@ -243,12 +243,25 @@
     await save(next);
   }
   async function removeArtist(){
-    if(busy||uploading)return;
-    if(!confirm(`删除画师「${draft.name}」及其在此画师库内的图片？`))return;
+    if(busy||uploading||!draft)return;
     const next=clone(data);next.artists=next.artists.filter(a=>a.uid!==editingId);next.artists.forEach((a,i)=>a.order=i+1);
     await new Promise(resolve=>morphAway(editingId,resolve));
     closeEditor();
     await save(next,'已删除画师');
+  }
+  function removeButton(){
+    let armed=false,timer=null;
+    const button=btn('删除画师',async()=>{
+      if(busy||uploading)return;
+      if(!armed){
+        armed=true;button.textContent='再次点击确认删除';button.classList.add('is-armed');
+        timer=setTimeout(()=>{armed=false;button.textContent='删除画师';button.classList.remove('is-armed');},4000);
+        return;
+      }
+      clearTimeout(timer);
+      await removeArtist();
+    },'danger');
+    return button;
   }
   const readImage=file=>new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(Error('图片读取失败。'));reader.readAsDataURL(file);});
   const thumbnail=dataUrl=>new Promise((resolve,reject)=>{const img=new Image();img.onload=()=>{try{const scale=Math.min(1,400/Math.max(img.width,img.height)),c=document.createElement('canvas');c.width=Math.max(1,Math.round(img.width*scale));c.height=Math.max(1,Math.round(img.height*scale));const ctx=c.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height);ctx.drawImage(img,0,0,c.width,c.height);resolve(c.toDataURL('image/jpeg',.8));}catch{reject(Error('图片处理失败。'));}};img.onerror=()=>reject(Error('图片读取失败。'));img.src=dataUrl;});
