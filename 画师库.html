@@ -653,7 +653,7 @@
     $('library-summary').textContent=`${data.artists.length} 位画师 · ${data.artists.reduce((n,a)=>n+a.works.length,0)} 张作品 · 由你自由整理`;$('sample-date').textContent=data.date?'初始样本日期：'+data.date:'';
     $('method').textContent='每位画师的信息、缩略图和原图保存在 数据/画师/序号-名字-编号 的独立目录中。主页面只加载缩略图，点开作品时才获取原图并存到本地。修改自动写入文件。Esc 直接关闭编辑页，未保存编辑不保留。数量是 Danbooru 中当前可查询的作品数；日期数量按上传时间筛选，不能还原历史时刻的删帖、改标签状态。日期边界采用站点时区。备份也可以直接复制整个数据文件夹。';
   }
-  let editorPicker=null,editorHost=null;
+  let editorPicker=null,editorHost=null,editorError=null;
   function setEditorError(message){if(editorError)editorError.textContent=message;}
   function closeWorkPicker(){if(editorPicker){editorPicker.dispose();editorPicker=null;}if(editorHost){editorHost.replaceChildren();editorHost=null;}}
   function togglePicker(expand){
