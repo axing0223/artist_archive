@@ -1,6 +1,13 @@
 (function(root){
   'use strict';
   const origin='https://danbooru.donmai.us';
+  /* 优先走扩展：它带登录 Cookie，图片地址字段只对"可见用户"返回，页面匿名直连拿不到。
+     扩展不在时退回页面直连，数量类接口照常可用。返回形状与 fetch 的 Response 一致。 */
+  async function defaultFetcher(url,init={}){
+    const bridge=root.ArtistExtension;
+    if(bridge&&bridge.connected===true&&typeof bridge.api==='function')return bridge.api(url,init?.signal);
+    return fetch(url,init);
+  }
   function plan(value){
     const input=String(value).trim();
     if(!input)throw Error('请输入画师标签或主页 URL。');
@@ -27,7 +34,7 @@
     const rows=Array.isArray(payload)?payload:[payload];const seen=new Set();
     return rows.filter(a=>a&&Number.isSafeInteger(a.id)&&a.id>0&&typeof a.name==='string'&&a.name.trim()&&!a.is_deleted&&!seen.has(a.id)&&seen.add(a.id)).slice(0,12).map(a=>({id:a.id,name:a.name,aliases:Array.isArray(a.other_names)?a.other_names.filter(x=>typeof x==='string').slice(0,5):[],pageUrl:origin+'/artists/'+a.id}));
   }
-  async function lookup(p,{signal,fetcher=fetch}={}){
+  async function lookup(p,{signal,fetcher=defaultFetcher}={}){
     const response=await fetcher(p.apiUrl,{signal,credentials:'omit',headers:{Accept:'application/json'}});
     if(response.status===404)return [];
     if(!response.ok)throw Error(response.status===429?'请求过于频繁，请稍后重试。':'Danbooru 暂时未允许访问（'+response.status+'）。请使用站内检索核验。');
@@ -46,7 +53,7 @@
       previewUrl:https(pick('720x720'))||https(pick('360x360')),
       largeUrl:https(post.file_url)||https(pick('original'))||https(post.large_file_url)||https(pick('720x720'))};
   };
-  async function posts(name,{limit=20,page=1,signal,fetcher=fetch}={}){
+  async function posts(name,{limit=20,page=1,signal,fetcher=defaultFetcher}={}){
     const params=new URLSearchParams({tags:name+' order:id_desc',limit:String(limit),page:String(page)});
     const response=await fetcher(origin+'/posts.json?'+params,{signal,credentials:'omit',headers:{Accept:'application/json'}});
     if(!response.ok)throw Error(response.status===429?'请求过于频繁，请稍后重试。':'作品列表读取失败（'+response.status+'）。');
@@ -54,7 +61,7 @@
     if(!Array.isArray(payload))throw Error('站点未返回作品数据，请稍后重试。');
     return payload.filter(post=>post&&Number.isSafeInteger(post.id)&&post.id>0).map(workOf);
   }
-  async function details(name,date,{fetcher=fetch,previews=true}={}){
+  async function details(name,date,{fetcher=defaultFetcher,previews=true}={}){
     const get=async(endpoint,params)=>{const r=await fetcher(origin+endpoint+'?'+new URLSearchParams(params),{signal:AbortSignal.timeout(15000),credentials:'omit',headers:{Accept:'application/json'}});if(!r.ok)throw Error('读取受限：'+r.status);return r.json();};
     const checkedAt=new Date().toISOString();
     const count=async(tags)=>{const j=await get('/counts/posts.json',{tags,estimate_count:'false'});const n=j?.counts?.posts;if(!Number.isSafeInteger(n)||n<0)throw Error('数量未返回');return n;};

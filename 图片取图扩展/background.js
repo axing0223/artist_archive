@@ -1,4 +1,4 @@
-import {fetchImage,resolvePost,imageUrl} from './probe.mjs';
+import {fetchImage,resolvePost,fetchApi,imageUrl} from './probe.mjs';
 import {allowedSender} from './bridge-policy.mjs';
 chrome.action.onClicked.addListener(()=>chrome.tabs.create({url:chrome.runtime.getURL('test.html')}));
 const CHUNK=4*1024*1024,MAX_BYTES=50*1024*1024,KEEP=120000;
@@ -29,6 +29,10 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
   }
   if(message.type==='resolve'){
     resolvePost(message.url).then(url=>respond({ok:true,url}),error=>respond({ok:false,error:error.name==='TimeoutError'?'作品信息请求超时':error.message}));
+    return true;
+  }
+  if(message.type==='api'){
+    fetchApi(message.url).then(result=>respond({ok:true,status:result.status,json:result.json}),error=>respond({ok:false,error:error.name==='TimeoutError'?'接口请求超时':error.message}));
     return true;
   }
   if(message.type!=='image')return;

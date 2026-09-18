@@ -93,10 +93,11 @@ test('连接通道只接受本扩展在本地顶层页面注入的脚本，不�
   for(const override of [{frameId:1},{id:'other'},{url:'https://evil.example/画师库.html'},{url:'https://evil.example/a.html'},{url:'http://127.0.0.1/a.html'}])assert.equal(allowedSender({...s,...override},'this-extension'),false,'只放行本扩展、顶层框架、file: 协议');
 });
 test('HTML 与隔离脚本按块取回大图，端到端返回可用 Blob 并传播服务器失败',async()=>{
-  const listeners=[];const win={addEventListener:(type,fn)=>listeners.push(fn),postMessage:data=>queueMicrotask(()=>listeners.forEach(fn=>fn({source:win,data})))};win.top=win;let fail=false,chunkFail=false,resolveFail=false,chunkCalls=0;
+  const listeners=[];const win={addEventListener:(type,fn)=>listeners.push(fn),postMessage:data=>queueMicrotask(()=>listeners.forEach(fn=>fn({source:win,data})))};win.top=win;let fail=false,chunkFail=false,resolveFail=false,apiFail=false,chunkCalls=0;
   const context={window:win,location:{protocol:'file:',pathname:'/F:/画师库.html'},document:{querySelector:()=>true},crypto,DOMException,fetch,setTimeout,clearTimeout,chrome:{runtime:{getManifest:()=>({version:'0.3.0'}),sendMessage:async m=>{
     if(m.type==='ping')return {ok:true,version:'0.3.0'};
     if(m.type==='resolve')return resolveFail?{ok:false,error:'作品信息请求超时'}:{ok:true,url:'https://cdn.donmai.us/original/full.jpg'};
+    if(m.type==='api')return apiFail?{ok:false,error:'接口请求超时'}:{ok:true,status:200,json:[{id:1,file_url:'https://cdn.donmai.us/original/a.jpg'}]};
     if(m.type==='image')return fail?{ok:false,error:'服务器拒绝请求：HTTP 403'}:{ok:true,type:'image/jpeg',bytes:4,chunks:2};
     chunkCalls++;if(chunkFail)return {ok:false,error:'图片数据已过期，请重新获取'};
     return {ok:true,index:m.index,data:m.index===0?'/9j/':'2Q=='};
@@ -107,6 +108,11 @@ test('HTML 与隔离脚本按块取回大图，端到端返回可用 Blob 并传
   assert.equal(blob.type,'image/jpeg');assert.equal(blob.size,4);assert.equal(chunkCalls,2,'按扩展给出的分块数逐块取回');
   assert.equal(await win.ArtistExtension.resolve('12036303'),'https://cdn.donmai.us/original/full.jpg','按作品编号问出原图地址');
   resolveFail=true;await assert.rejects(win.ArtistExtension.resolve('12036303'),/超时/,'解析失败要如实抛出');resolveFail=false;
+  const api=await win.ArtistExtension.api('https://danbooru.donmai.us/posts.json?tags=a');
+  assert.equal(api.ok,true);assert.equal(api.status,200);
+  assert.equal((await api.json())[0].file_url,'https://cdn.donmai.us/original/a.jpg','经扩展取回的接口数据要带图片地址');
+  apiFail=true;await assert.rejects(win.ArtistExtension.api('https://danbooru.donmai.us/posts.json'),/超时/,'接口失败要如实抛出');apiFail=false;
+  assert.equal((await win.ArtistExtension.api('https://danbooru.donmai.us/posts.json')).status,200,'失败后要能恢复');
   fail=true;await assert.rejects(win.ArtistExtension.image('https://cdn.donmai.us/test.jpg'),/403/);
   fail=false;chunkFail=true;await assert.rejects(win.ArtistExtension.image('https://cdn.donmai.us/test.jpg'),/过期/,'分块失败要如实报错而不是返回残缺图片');
 });

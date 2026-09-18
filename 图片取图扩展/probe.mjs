@@ -10,6 +10,27 @@ export function postUrl(value){
   if(!match||!Number.isSafeInteger(Number(match[1])))throw Error('请输入有效作品编号或 Danbooru 作品页面链接。');
   return 'https://danbooru.donmai.us/posts/'+match[1]+'.json';
 }
+export function apiUrl(value){
+  const u=new URL(String(value));
+  if(u.protocol!=='https:'||u.hostname!=='danbooru.donmai.us'||u.port||u.username||u.password)throw Error('接口地址仅支持 https://danbooru.donmai.us/，不能含账号、密码或自定义端口。');
+  if(!u.pathname.endsWith('.json'))throw Error('接口地址必须以 .json 结尾。');
+  u.hash='';return u.href;
+}
+/* 带登录态取接口数据：图片地址字段只对"可见用户"返回，匿名请求拿不到 */
+export async function fetchApi(value,{fetcher=fetch,signal=AbortSignal.timeout(20000)}={}){
+  const response=await fetcher(apiUrl(value),{credentials:'include',signal,cache:'no-store',redirect:'error'});
+  const declared=Number(response.headers.get('content-length'));
+  if(declared>8*1024*1024){await response.body?.cancel();throw Error('接口返回超过大小限制。');}
+  const type=(response.headers.get('content-type')||'').toLowerCase();
+  if(!type.includes('application/json')){
+    await response.body?.cancel();
+    if(response.status===429)throw Error('请求过于频繁，请稍后重试。');
+    throw Error('接口没有返回 JSON（HTTP '+response.status+'），可能仍被验证页拦截。');
+  }
+  const text=await response.text();
+  if(!text.trim())return {status:response.status,json:null};
+  try{return {status:response.status,json:JSON.parse(text)};}catch{throw Error('接口返回的内容不是 JSON。');}
+}
 const mb=n=>(n/1048576).toFixed(1);
 async function limitedBlob(response,limit,signal){
   const declared=Number(response.headers.get('content-length'));

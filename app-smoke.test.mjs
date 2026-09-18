@@ -78,6 +78,15 @@ test('浏览态卡片：artist-info 左下「编辑」右下「画师页面」�
   assert.equal(texts.includes('刷新'),false,'刷新按钮已移除，改由保存时自动刷新');
   assert.equal(texts.some(t=>String(t).includes('张图片 · 卡片预览')),false,'作品下方的张数说明应已移除');
 });
+test('画师卡片：没写画风描述时不显示默认提示文字',async()=>{
+  const {state}=await boot();
+  const texts=node=>{const out=[];const walk=n=>{if(n._text)out.push(n._text);for(const child of n.children||[])walk(child);};walk(node);return out;};
+  const empty=state.card(bareArtist());
+  assert.equal(findAllByClass(empty,'description').length,0,'空描述不该渲染出 p 元素');
+  assert.equal(texts(empty).includes('点击编辑，记录画风和特点。'),false,'空描述不再用占位文字');
+  const filled=state.card(bareArtist({description:'厚涂风格，偏爱冷色。'}));
+  assert.equal(texts(filled).includes('厚涂风格，偏爱冷色。'),true,'有描述时照常显示');
+});
 test('画师卡片：主分类与标签搬出信息区，放进顶部标签条',async()=>{
   const {state}=await boot();
   const card=state.card(bareArtist({category:'二次元',tags:['厚涂','黑白']}));
