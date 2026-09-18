@@ -62,6 +62,31 @@ test('编辑中的卡片被钉住后滚出视野也不释放，取消钉住即�
   observers[0].fn([{target:gallery.children[0],isIntersecting:false}]);
   assert.equal(window.ArtistGallery.visible().length,0,'取消钉住后正常释放');
 });
+test('查看器里缩略图换成原图时做交叉淡入，中途不清空已显示的图',async()=>{
+  const observers=[],animations=[],revoked=[];
+  class IO{constructor(fn){this.fn=fn;observers.push(this);}observe(){}unobserve(){}}
+  const window={};
+  const context={window,ImageResources:{ByteCache,Queue},IntersectionObserver:IO,AbortController,DOMException,Date,Map,fetch,URL:{createObjectURL:()=>'blob:'+animations.length,revokeObjectURL:url=>revoked.push(url)},FolderStore:{imageOf:store.imageOf,readImage:async()=>new Blob(['bytes'])},ArtistExtension:{image:async()=>new Blob(['remote'])}};
+  vm.runInNewContext(await fs.readFile('app/image-loader.js','utf8'),context);
+  const api=window.ArtistImages,img={classList:{add(){},remove(){}},src:'',removeAttribute(){this.src='';},animate(keyframes){animations.push(keyframes);return {finished:Promise.resolve(),cancel(){}};}};
+  api.setFolder({});
+  const thumb='缩略图/'+'a'.repeat(24)+'.png',large='大图/'+'b'.repeat(24)+'.png';
+  api.bind(img,'0001-a',{thumb},'viewer','thumb');
+  observers[0].fn([{target:img,isIntersecting:true}]);
+  await new Promise(r=>setImmediate(r));
+  assert.equal(animations.length,1,'首次显示只有淡入');
+  assert.equal(animations[0][0].opacity,0);
+  const firstSrc=img.src;
+  assert.ok(firstSrc,'缩略图已上屏');
+  api.bind(img,'0001-a',{thumb,large},'viewer','large');
+  assert.equal(img.src,firstSrc,'换目标时不能清空正在显示的图，否则中间会闪一下空白');
+  observers[0].fn([{target:img,isIntersecting:true}]);
+  await new Promise(r=>setImmediate(r));
+  assert.equal(animations.length,3,'换图时先淡出再淡入');
+  assert.equal(animations[1][1].opacity,0,'第二段是淡出');
+  assert.equal(animations[2][1].opacity,1,'第三段是淡入');
+  assert.notEqual(img.src,firstSrc,'换完才指向新图');
+});
 test('连接通道只接受本地画师库顶层页面，不接受网站或其他扩展',()=>{
   const s={id:'this-extension',tab:{id:1},frameId:0,url:'file:///F:/test/'+encodeURIComponent('画师库.html')};assert.equal(allowedSender(s,'this-extension'),true);
   for(const override of [{frameId:1},{id:'other'},{url:'https://evil.example/画师库.html'},{url:'file:///F:/other.html'}])assert.equal(allowedSender({...s,...override},'this-extension'),false);

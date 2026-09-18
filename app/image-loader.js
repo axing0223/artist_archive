@@ -17,13 +17,24 @@
   }
   function release(record){record.controller?.abort();record.controller=null;if(record.objectUrl)URL.revokeObjectURL(record.objectUrl);record.objectUrl=null;record.img.removeAttribute('src');}
   async function show(record){if(record.controller||record.objectUrl)return;const controller=new AbortController();record.controller=controller;record.img.classList.remove('image-failed');
-    try{const blob=await fetchBlob(record.uid,record.work,record.size,controller.signal);if(record.controller!==controller||!bindings.has(record.img))return;record.objectUrl=URL.createObjectURL(blob);record.img.src=record.objectUrl;record.img.title='';}
+    try{const blob=await fetchBlob(record.uid,record.work,record.size,controller.signal);if(record.controller!==controller||!bindings.has(record.img))return;
+      const img=record.img;
+      if(img.src&&img.animate){
+        const out=img.animate([{opacity:1},{opacity:0}],{duration:130,easing:'ease-in',fill:'forwards'});
+        await out.finished.catch(()=>{});out.cancel();
+        if(record.controller!==controller||!bindings.has(img))return;
+      }
+      record.objectUrl=URL.createObjectURL(blob);img.src=record.objectUrl;img.title='';
+      img.animate?.([{opacity:0},{opacity:1}],{duration:240,easing:'ease-out'});
+    }
     catch(error){if(error.name!=='AbortError'&&record.controller===controller){record.img.classList.add('image-failed');record.img.title=error.message;record.img.alt='图片未加载：'+error.message;record.error?.(error);}}
   }
   const observer=new IntersectionObserver(entries=>{for(const entry of entries){const r=bindings.get(entry.target);if(!r)continue;if(entry.isIntersecting)show(r);else release(r);}},{rootMargin:'300px'});
   function bind(img,uid,work,group,size='thumb',error){
     if(typeof size==='function'){error=size;size='thumb';}
-    unbind(img);const record={img,uid,work,group,size,error};bindings.set(img,record);img.decoding='async';img.onerror=()=>{if(record.objectUrl){img.classList.add('image-failed');img.title='图片内容无法解码';}};observer.observe(img);
+    const existing=bindings.get(img);
+    if(existing){observer.unobserve(img);existing.controller?.abort();if(existing.objectUrl)URL.revokeObjectURL(existing.objectUrl);bindings.delete(img);}
+    const record={img,uid,work,group,size,error};bindings.set(img,record);img.decoding='async';img.onerror=()=>{if(record.objectUrl){img.classList.add('image-failed');img.title='图片内容无法解码';}};observer.observe(img);
   }
   function unbind(img){const r=bindings.get(img);if(r){observer.unobserve(img);release(r);bindings.delete(img);}}
   function dispose(group){for(const [img,r] of bindings)if(r.group===group)unbind(img);}
