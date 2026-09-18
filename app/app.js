@@ -4,8 +4,8 @@
   const defaults=['可爱','唯美','暗黑','酷炫','清爽','华丽'];
   /* 作品采集排序。收藏最多最贴近"多少人真的喜欢"；最新发布走编号索引，永远不会超时，
      其余三种依赖站点的排序元标签，而排序元标签没有索引，作品特别多的画师可能超时。 */
-  const WORK_ORDERS=['favcount','score','rank','id_desc'];
-  const WORK_ORDER_LABELS={favcount:'收藏最多（热度）',score:'评分最高',rank:'综合热度（评分 + 新鲜度）',id_desc:'最新发布'};
+  const WORK_ORDERS=['favcount','score','id_desc'];
+  const WORK_ORDER_LABELS={favcount:'收藏最多（热度）',score:'评分最高',id_desc:'最新发布'};
   const DEFAULT_WORK_ORDER='favcount';
   const WORK_ORDER_OPTIONS=WORK_ORDERS.map(value=>({value,label:WORK_ORDER_LABELS[value]}));
   const $=id=>document.getElementById(id), clone=v=>structuredClone(v);

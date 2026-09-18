@@ -235,7 +235,7 @@ test('设置里可以切换采集排序，编辑卡片按它取作品',async()=>
   const asked=[];
   ctx.ArtistLookup={...ctx.ArtistLookup,plan:value=>({query:String(value)}),posts:async(tag,options)=>{asked.push({tag,...options});return [];}};
   const select=elements.get('work-order');
-  assert.equal(select.children.map(option=>option.value).join(','),'favcount,score,rank,id_desc','四档排序，收藏最多排第一');
+  assert.equal(select.children.map(option=>option.value).join(','),'favcount,score,id_desc','三档排序，收藏最多排第一');
   assert.equal(select.value,'favcount','默认按收藏最多采集');
   select.value='score';select.onchange();
   await wait(20);
@@ -360,7 +360,7 @@ test('批量导入可以只对本次改排序，默认跟随设置',async()=>{
   stub(ctx,{lookup:async()=>[],details:async(name,date,options)=>{asked.push(options.order);return {counts:{checkedAt:'x',total:1},works:[],countsError:false};}});
   const get=id=>{if(!elements.has(id))elements.set(id,new El());return elements.get(id);};
   const select=get('batch-order');
-  assert.equal(select.children.map(option=>option.value).join(','),'favcount,score,rank,id_desc','四档排序，收藏最多排第一');
+  assert.equal(select.children.map(option=>option.value).join(','),'favcount,score,id_desc','三档排序，收藏最多排第一');
   const submit=async names=>{get('batch-names').value=names;get('batch-works').checked=true;await get('batch-form').onsubmit({preventDefault(){}});};
   get('batch-artists').onclick();
   assert.equal(select.value,'favcount','打开时默认用设置里的排序');
@@ -368,10 +368,10 @@ test('批量导入可以只对本次改排序，默认跟随设置',async()=>{
   assert.deepEqual(asked,['favcount'],'默认跟随设置');
   asked.length=0;
   get('batch-artists').onclick();
-  select.value='rank';
+  select.value='score';
   await submit('乙画师');
-  assert.deepEqual(asked,['rank'],'这一次可以单独换排序');
-  assert.equal(get('batch-order').value,'rank','改过的排序在本次对话框里保留');
+  assert.deepEqual(asked,['score'],'这一次可以单独换排序');
+  assert.equal(get('batch-order').value,'score','改过的排序在本次对话框里保留');
   get('batch-artists').onclick();
   assert.equal(get('batch-order').value,'favcount','重新打开会重置回设置里的默认');
 });
