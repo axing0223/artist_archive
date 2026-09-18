@@ -56,20 +56,15 @@
   }
   async function loadOriginal(a,w){
     const img=$('large-image'),local=FolderStore.imageOf(w,'large');
-    if(local?.kind==='local'){$('viewer-caption').textContent=w.caption||'本地原图';ArtistImages.bind(img,a.uid,w,'viewer','large',error=>$('viewer-caption').textContent=error.message);return;}
+    if(local&&local.kind!=='remote'){$('viewer-caption').textContent=w.caption||'原图';ArtistImages.bind(img,a.uid,w,'viewer','large',error=>$('viewer-caption').textContent=error.message);return;}
     $('viewer-caption').textContent='正在获取原图…';
     try{
       const remote=w.largeUrl||await ArtistExtension.resolve(w.id);
       if(!remote)throw Error('这张作品没有原图地址');
-      const blob=await ArtistImages.fetch(a.uid,{...w,largeUrl:remote},'large');
-      if(!folder)throw Error('请先选择数据文件夹');
-      const path=await FolderStore.saveImage(folder,a.uid,'large',blob);
-      const next=clone(data),target=next.artists.find(x=>x.uid===a.uid),index=target?target.works.findIndex(x=>x.id===w.id):-1;
-      if(index<0)throw Error('作品已不在画师库中');
-      target.works[index]={...target.works[index],large:path,largeUrl:remote};
-      await save(next,'原图已保存到本地');
-      if($('viewer').open){ArtistImages.dispose('viewer');ArtistImages.bind(img,a.uid,target.works[index],'viewer','large',error=>$('viewer-caption').textContent=error.message);$('viewer-caption').textContent=target.works[index].caption||'原图已保存到本地';}
-    }catch(error){if(error.name!=='AbortError')$('viewer-caption').textContent='原图未取到：'+error.message+'（当前显示的是预览图）';}
+      if(!$('viewer').open)return;
+      img.onload=()=>{$('viewer-caption').textContent=(w.caption?w.caption+' · ':'')+'原图仅本次显示，不会保存到本地';};
+      ArtistImages.bind(img,a.uid,{...w,largeUrl:remote},'viewer','large',error=>$('viewer-caption').textContent='原图未取到：'+error.message+'（当前显示的是缩略图）');
+    }catch(error){if(error.name!=='AbortError')$('viewer-caption').textContent='原图未取到：'+error.message+'（当前显示的是缩略图）';}
   }
   function card(a){
     const article=el('article','artist'),info=el('div','artist-info'),top=el('div','artist-top');article.dataset.artist=a.name;
@@ -102,7 +97,7 @@
     $('editor-tags').replaceChildren(...unique([...data.tags,...draft.tags]).map(t=>{const l=el('label','tag-choice'),c=el('input');c.type='checkbox';c.checked=draft.tags.includes(t);c.onchange=()=>{draft.tags=c.checked?unique([...draft.tags,t]):draft.tags.filter(x=>x!==t);};l.append(c,el('span','',t));return l;}));
   }
   function workEditor(){
-    ArtistImages.dispose('editor');$('editor-works').replaceChildren(...draft.works.map((w,i)=>{const row=el('div','work-editor'),img=el('img'),fields=el('div','work-fields');img.alt='作品 '+(i+1);ArtistImages.bind(img,draft.uid,w,'editor','thumb');const local=FolderStore.imageOf(w,'large')?.kind==='local';fields.append(el('small','work-state',local?'原图已存本地':'点开作品时获取原图'));for(const [key,title,type] of [['url','作品来源链接','url'],['caption','图片说明','text']]){const label=el('label','',title),input=el('input');input.type=type;input.value=w[key]||'';input.maxLength=5000;input.oninput=()=>w[key]=input.value;label.append(input);fields.append(label);}row.append(img,fields,btn('移除',()=>{draft.works.splice(i,1);workEditor();},'danger'));return row;}));
+    ArtistImages.dispose('editor');$('editor-works').replaceChildren(...draft.works.map((w,i)=>{const row=el('div','work-editor'),img=el('img'),fields=el('div','work-fields');img.alt='作品 '+(i+1);ArtistImages.bind(img,draft.uid,w,'editor','thumb');const local=FolderStore.imageOf(w,'large')?.kind==='local';fields.append(el('small','work-state',local?'已存原图':'点开时临时加载原图，不保存'));for(const [key,title,type] of [['url','作品来源链接','url'],['caption','图片说明','text']]){const label=el('label','',title),input=el('input');input.type=type;input.value=w[key]||'';input.maxLength=5000;input.oninput=()=>w[key]=input.value;label.append(input);fields.append(label);}row.append(img,fields,btn('移除',()=>{draft.works.splice(i,1);workEditor();},'danger'));return row;}));
   }
   function edit(a){
     if(busy)return;editingId=a?.uid||null;draft=a?clone(a):{uid:uid(),name:'',category:null,tags:[],artistUrl:'',description:'',note:'',works:[]};

@@ -90,7 +90,7 @@ test('识别区按页取作品，每张都带缩略图与原图地址，无效�
  const {posts}=require('./app/artist-lookup.js');const requests=[];
  const rows=[
   {id:3,preview_file_url:'https://cdn.donmai.us/180x180/a.jpg',file_url:'https://cdn.donmai.us/original/a.jpg',media_asset:{variants:[{type:'720x720',url:'https://cdn.donmai.us/720x720/a.jpg'}]}},
-  {id:2,media_asset:{variants:[{type:'180x180',url:'https://cdn.donmai.us/180x180/b.jpg'},{type:'original',url:'https://cdn.donmai.us/original/b.jpg'}]}},
+  {id:2,media_asset:{variants:[{type:'360x360',url:'https://cdn.donmai.us/360x360/b.jpg'},{type:'original',url:'https://cdn.donmai.us/original/b.jpg'}]}},
   {id:1,large_file_url:'https://cdn.donmai.us/sample/c.jpg'},
   {id:0},null
  ];
@@ -99,8 +99,8 @@ test('识别区按页取作品，每张都带缩略图与原图地址，无效�
  assert.equal(requests[0].searchParams.get('tags'),'artist_a order:id_desc');
  assert.equal(requests[0].searchParams.get('limit'),'20');assert.equal(requests[0].searchParams.get('page'),'2');
  assert.equal(works.length,3,'编号非法的条目被丢弃');
- assert.deepEqual(works[0],{id:'3',url:'https://danbooru.donmai.us/posts/3',caption:'',thumbUrl:'https://cdn.donmai.us/180x180/a.jpg',previewUrl:'https://cdn.donmai.us/720x720/a.jpg',largeUrl:'https://cdn.donmai.us/original/a.jpg'});
- assert.deepEqual(works[1],{id:'2',url:'https://danbooru.donmai.us/posts/2',caption:'',thumbUrl:'https://cdn.donmai.us/180x180/b.jpg',previewUrl:null,largeUrl:'https://cdn.donmai.us/original/b.jpg'},'没有中图时留空');
+ assert.deepEqual(works[0],{id:'3',url:'https://danbooru.donmai.us/posts/3',caption:'',thumbUrl:'https://cdn.donmai.us/360x360/a.jpg',previewUrl:'https://cdn.donmai.us/720x720/a.jpg',largeUrl:'https://cdn.donmai.us/original/a.jpg'},'只有 180 缩略图时自动换成 360 尺寸');
+ assert.deepEqual(works[1],{id:'2',url:'https://danbooru.donmai.us/posts/2',caption:'',thumbUrl:'https://cdn.donmai.us/360x360/b.jpg',previewUrl:'https://cdn.donmai.us/360x360/b.jpg',largeUrl:'https://cdn.donmai.us/original/b.jpg'},'接口直接给出 360 时用它');
  assert.equal(works[2].largeUrl,'https://cdn.donmai.us/sample/c.jpg','没有原图地址时回退到 large_file_url');
  assert.equal(works[2].thumbUrl,null);
  await assert.rejects(posts('a',{fetcher:async()=>({ok:false,status:429})}),/频繁/);

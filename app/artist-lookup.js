@@ -39,8 +39,10 @@
     const variants=Array.isArray(post.media_asset?.variants)?post.media_asset.variants:[];
     const pick=type=>variants.find(v=>v&&v.type===type&&typeof v.url==='string')?.url;
     const https=value=>typeof value==='string'&&value.startsWith('https://')?value:null;
+    const small=https(post.preview_file_url)||https(pick('180x180'));
+    const thumbUrl=https(pick('360x360'))||(small?small.replace('/180x180/','/360x360/'):null)||small;
     return {id:String(post.id),url:origin+'/posts/'+post.id,caption:'',
-      thumbUrl:https(post.preview_file_url)||https(pick('180x180')),
+      thumbUrl,
       previewUrl:https(pick('720x720'))||https(pick('360x360')),
       largeUrl:https(post.file_url)||https(pick('original'))||https(post.large_file_url)||https(pick('720x720'))};
   };
