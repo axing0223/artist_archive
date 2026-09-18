@@ -42,7 +42,7 @@ async function boot(){
     ArtistGallery:{render(container,rows,card){state.card=card;state.rows=rows;state.renders.push(rows.map(row=>card(row)));},clear(){},pin(){},visible:()=>[]},
     ArtistLookup:{plan(){throw Error('测试中不查询');},lookup:async()=>[],posts:async()=>[],details:async()=>({counts:{total:null,beforeTotal:null}})},
   };
-  for(const file of ['artist-id.js','image-cache.js','image-loader.js','folder-store.js','work-picker.js','test-images.js','app.js'])
+  for(const file of ['artist-id.js','image-cache.js','image-loader.js','folder-store.js','work-picker.js','viewer.js','test-images.js','app.js'])
     vm.runInNewContext(await fs.readFile('app/'+file,'utf8'),ctx);
   return {elements,state};
 }
