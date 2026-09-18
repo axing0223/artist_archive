@@ -26,7 +26,7 @@ class El{
   querySelectorAll(){return [];}
 }
 async function boot(){
-  const elements=new Map(),state={renders:[],queried:[],scrolled:[],mounted:[]};
+  const elements=new Map(),state={renders:[],queried:[],scrolled:[],mounted:[],copied:[]};
   const document={getElementById:id=>{if(!elements.has(id))elements.set(id,new El());return elements.get(id);},createElement:tag=>new El(tag),
     querySelector:selector=>{state.queried.push(selector);return {scrollIntoView:()=>state.scrolled.push(selector),classList:{add(){},remove(){}},getBoundingClientRect:()=>({top:0,height:0,left:0,width:0})};},
     querySelectorAll:()=>[],documentElement:new El('html')};
@@ -39,7 +39,7 @@ async function boot(){
 class FileUrl extends URL{}
 FileUrl.createObjectURL=()=>'blob:x';FileUrl.revokeObjectURL=()=>{};
   const ctx={
-    window:{addEventListener(){},innerWidth:1200,innerHeight:800},document,localStorage,
+    window:{addEventListener(){},innerWidth:1200,innerHeight:800},document,localStorage,navigator:{clipboard:{writeText:async text=>{state.copied.push(text);}}},
     IntersectionObserver:IO,ResizeObserver:RO,Option,
     crypto:{randomUUID:()=>'uuid-'+Math.random().toString(36).slice(2)},
     fetch:async()=>{throw Error('测试中不应联网');},
@@ -132,8 +132,8 @@ test('编辑态的三个操作按钮集中在同一个容器里，顺序为保�
   const findClass=(node,cls)=>{if(String(node.className).includes(cls))return node;for(const child of node.children||[]){const hit=findClass(child,cls);if(hit)return hit;}return null;};
   const actions=findClass(card,'artist-actions');
   assert.ok(actions,'编辑态卡片应有操作区');
-  assert.deepEqual(actions.children.map(child=>child.textContent),['刷新','保存','取消','删除画师'],'四个按钮要在同一个容器里依次排列');
-  assert.equal(actions.children[1].className.includes('primary-action'),true,'保存是主操作');
+  assert.deepEqual(actions.children.map(child=>child.textContent),['保存','取消','刷新','删除画师'],'四个按钮要在同一个容器里依次排列');
+  assert.equal(actions.children[0].className.includes('primary-action'),true,'保存是主操作');
 });
 test('删除画师改为按钮二次确认，不再调用系统对话框',async()=>{
   const {elements,state}=await boot();
@@ -264,7 +264,7 @@ test('保存画师是纯本地的：不发任何网络请求',async()=>{
   assert.equal(state.rows[0].name,'tester');
   assert.ok(elapsed<80,'不联网的保存应当是即时的，实测 '+elapsed+'ms');
 });
-test('刷新所有画师作品数量：逐个读取并按批写盘',async()=>{
+test('刷新所有画师数据：核对正式名并刷新数量',async()=>{
   const {elements,state,ctx}=await boot();
   const asked=[];
   stub(ctx,{lookup:async()=>[],details:async name=>{asked.push(name);return {counts:{checkedAt:'x',total:asked.length*10,beforeDate:'2026-07-01',beforeTotal:1},countsError:false};}});
@@ -273,24 +273,24 @@ test('刷新所有画师作品数量：逐个读取并按批写盘',async()=>{
   await get('batch-form').onsubmit({preventDefault(){}});
   assert.equal(state.rows.length,3,'先建出三位没有数量的画师');
   assert.equal(state.rows.every(artist=>!artist.counts),true,'没勾采集时不写数量');
-  await get('refresh-all').onclick();
+  await get('sync-all').onclick();
   assert.equal(asked.length,3,'三位都要刷');
   assert.equal(state.rows.every(artist=>artist.counts&&artist.counts.total>0),true,'数量写进资料');
-  assert.equal(get('refresh-all').textContent,'开始刷新','结束后按钮回到初始文案');
-  assert.equal(String(get('refresh-all').className).includes('is-armed'),false,'结束后不再是停止态');
+  assert.equal(get('sync-all').textContent,'开始刷新','结束后按钮回到初始文案');
+  assert.equal(String(get('sync-all').className).includes('is-armed'),false,'结束后不再是停止态');
 });
-test('刷新所有画师：中途停下来的部分会保留',async()=>{
+test('刷新所有画师数据：中途停下来的部分会保留',async()=>{
   const {elements,state,ctx}=await boot();
   let calls=0;
-  const button=()=>{if(!elements.has('refresh-all'))elements.set('refresh-all',new El());return elements.get('refresh-all');};
+  const button=()=>{if(!elements.has('sync-all'))elements.set('sync-all',new El());return elements.get('sync-all');};
   stub(ctx,{lookup:async()=>[],details:async()=>{calls++;if(calls===2)button().onclick();return {counts:{checkedAt:'x',total:5},countsError:false};}});
   const get=id=>{if(!elements.has(id))elements.set(id,new El());return elements.get(id);};
   get('batch-artists').onclick();get('batch-names').value='甲\n乙\n丙\n丁';get('batch-works').checked=false;
   await get('batch-form').onsubmit({preventDefault(){}});
-  await get('refresh-all').onclick();
+  await get('sync-all').onclick();
   assert.ok(calls<4,'中途停止后不该再继续请求后面的画师，实际请求 '+calls+' 次');
   assert.ok(state.rows.some(artist=>artist.counts),'停下来之前刷到的部分要保留');
-  assert.equal(String(get('refresh-all').className).includes('is-armed'),false,'停止后按钮要复位');
+  assert.equal(String(get('sync-all').className).includes('is-armed'),false,'停止后按钮要复位');
 });
 test('导入画师时若站点已有正式名，名字与标识一起改过去并登记目录迁移',async()=>{
   const {elements,state,ctx}=await boot();
@@ -305,7 +305,7 @@ test('导入画师时若站点已有正式名，名字与标识一起改过去�
   assert.deepEqual(renames,['0001-betabeet-manual→0001-betanonbeet-7'],'必须登记目录迁移，否则 write 会删掉旧目录里的图片');
   assert.deepEqual([...state.rows[0].aliases],['betabeet'],'旧名也留在笔名里');
 });
-test('全库更新画师名字：只改站点上确实改过名的那些',async()=>{
+test('刷新所有画师数据：只改站点上确实改过名的那些',async()=>{
   const {elements,state,ctx}=await boot();
   const renames=[],original=ctx.FolderStore.rename;
   ctx.FolderStore.rename=(dir,from,to)=>{renames.push(from+'→'+to);return original(dir,from,to);};
@@ -315,22 +315,22 @@ test('全库更新画师名字：只改站点上确实改过名的那些',async(
   get('batch-artists').onclick();get('batch-names').value='old\nkeep';get('batch-works').checked=false;
   await get('batch-form').onsubmit({preventDefault(){}});
   assert.equal(state.rows.length,2,'两位画师，导入时不查站点');
-  await get('rename-all').onclick();
+  await get('sync-all').onclick();
   assert.equal(state.rows[0].name,'new','改过名的跟着改');
   assert.equal(state.rows[0].uid,'0001-new-5');
   assert.equal(state.rows[1].name,'keep','没改过名的不动');
   assert.equal(state.rows[1].uid,'0002-keep-manual','标识也不该变');
   assert.deepEqual(renames,['0001-old-manual→0001-new-5'],'只登记真正改名的那一位');
-  assert.equal(get('rename-all').textContent,'开始更新','结束后按钮复位');
+  assert.equal(get('sync-all').textContent,'开始刷新','结束后按钮复位');
 });
-test('全库更新画师名字：撞名时跳过，不制造重名',async()=>{
+test('刷新所有画师数据：撞名时跳过，不制造重名',async()=>{
   const {elements,state,ctx}=await boot();
   stub(ctx,{lookup:async plan=>plan.query==='dup'?[{id:9,name:'taken',aliases:[],pageUrl:''}]:[{id:8,name:plan.query,aliases:[],pageUrl:''}],
     details:async()=>({counts:{},countsError:false})});
   const get=id=>{if(!elements.has(id))elements.set(id,new El());return elements.get(id);};
   get('batch-artists').onclick();get('batch-names').value='taken\ndup';get('batch-works').checked=false;
   await get('batch-form').onsubmit({preventDefault(){}});
-  await get('rename-all').onclick();
+  await get('sync-all').onclick();
   assert.equal(state.rows[0].name,'taken');
   assert.equal(state.rows[1].name,'dup','改名会撞上已有画师时要跳过');
   assert.equal(state.rows[1].uid,'0002-dup-manual');
@@ -443,6 +443,48 @@ test('编辑界面刷新：点取消则刷到的内容全部丢弃',async()=>{
   assert.equal(state.rows[0].name,'betabeet','取消后保持原样');
   assert.equal(state.rows[0].uid,'0001-betabeet-manual');
   assert.notEqual(state.rows[0].counts&&state.rows[0].counts.total,42,'刷新只改表单，没保存就不该落盘');
+});
+test('画师卡片：点画师名即可复制 tag',async()=>{
+  const {state}=await boot();
+  const card=state.card(bareArtist({name:'modare'})),nameButton=findByClass(card,'artist-name');
+  assert.ok(nameButton,'画师名要可点击');
+  assert.equal(nameButton.textContent,'modare');
+  assert.equal(nameButton.title,'点击复制画师 tag');
+  await nameButton.onclick();
+  assert.deepEqual(state.copied,['modare'],'复制的是画师 tag，不是序号也不是编号');
+});
+test('筛选列表：分数精确匹配、可多选，未评分单独一项',async()=>{
+  const {elements,state}=await boot();
+  const get=id=>{if(!elements.has(id))elements.set(id,new El());return elements.get(id);};
+  get('batch-artists').onclick();get('batch-names').value='甲\n乙';get('batch-works').checked=false;
+  await get('batch-form').onsubmit({preventDefault(){}});
+  findText(lastRender(state)[0],'编辑').onclick();
+  await wait(180);
+  findAllByClass(findByClass(lastRender(state)[0],'score-picker'),'score-pick')[4].onclick();
+  await findText(lastRender(state)[0],'保存').onclick();
+  const picks=get('scores').children,visible=()=>state.renders[state.renders.length-1].length;
+  assert.equal(picks.length,6,'1 到 5 分，加一个未评分');
+  assert.equal(picks.slice(0,5).map(b=>b.textContent).join(''),'12345');
+  assert.equal(picks[5].textContent,'未评分');
+  assert.equal(picks.every(b=>b['aria-pressed']==='false'),true,'默认不按分数筛');
+  picks[5].onclick();
+  assert.equal(visible(),1,'筛未评分只剩没打分的那位');
+  picks[4].onclick();
+  assert.equal(visible(),2,'可多选：未评分 + 5 分');
+  picks[5].onclick();
+  assert.equal(visible(),1,'取消未评分，只剩 5 分那位');
+  picks[4].onclick();
+  assert.equal(visible(),2,'全部取消后不按分数筛');
+});
+test('清除筛选会把分数也一起清掉',async()=>{
+  const {elements,state}=await boot();
+  const get=id=>{if(!elements.has(id))elements.set(id,new El());return elements.get(id);};
+  get('batch-artists').onclick();get('batch-names').value='甲';get('batch-works').checked=false;
+  await get('batch-form').onsubmit({preventDefault(){}});
+  get('scores').children[4].onclick();
+  assert.equal(get('scores').children[4]['aria-pressed'],'true');
+  get('reset').onclick();
+  assert.equal(get('scores').children[4]['aria-pressed'],'false','清除筛选要把分数一起复位');
 });
 test('展开与收起 Danbooru 读取区后，视图重新对准正在编辑的卡片',async()=>{
   const {elements,state}=await boot();
@@ -662,7 +704,7 @@ test('画师卡片：选用的笔名显示在名字下方，没选用就不显�
   assert.equal(marks.length,1,'选用后显示一条');
   assert.equal(marks[0].textContent,'乙','只写笔名本身，不加前缀');
   const info=shown.children[0];
-  assert.equal(info.children[1]._text,'tester','第二位是画师名字');
+  assert.equal(info.children[1].children[0]._text,'tester','第二位是画师名字，包在可点击复制的按钮里');
   assert.equal(String(info.children[2].className).includes('alias'),true,'笔名紧跟在名字下方');
 });
 test('编辑有笔名的画师：单选一个，保存写进资料并显示在卡片上',async()=>{
@@ -793,7 +835,7 @@ test('改名会把数量清空，交给「刷新所有画师作品数量」补�
   const get=id=>{if(!elements.has(id))elements.set(id,new El());return elements.get(id);};
   stub(ctx,{lookup:async()=>[],details:async()=>({counts:{checkedAt:'x',total:9,beforeTotal:1},countsError:false})});
   await createArtist(state,elements,'原名');
-  await get('refresh-all').onclick();
+  await get('sync-all').onclick();
   assert.equal(state.rows[0].counts.total,9,'先刷出数量');
   findText(lastRender(state)[0],'编辑').onclick();
   await wait(180);

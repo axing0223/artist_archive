@@ -163,8 +163,12 @@
     }
     await put(dir,'画师库.json',JSON.stringify({...data,artists:[...ids]},null,2));snapshots.set(dir,records);legacy.set(dir,new Map());
     for(const {folder,used} of cleanup)for(const kind of IMAGE_KINDS)try{const images=await folder.getDirectoryHandle(FOLDER_OF[kind]);for await(const entry of images.values())if(entry.kind==='file'&&imageNamePattern.test(entry.name)&&!used[kind].has(entry.name))await images.removeEntry(entry.name);}catch(error){warn('旧图片清理失败（'+error.message+'）');}
-    for(const id of previous)if(ArtistId.valid(id)&&!ids.has(id))try{await artists.removeEntry(id,{recursive:true});}catch(error){warn('画师 '+id+' 的目录删除失败（'+error.message+'）');}
-    for(const oldUid of moved.values())if(ArtistId.valid(oldUid)&&!ids.has(oldUid))try{await artists.removeEntry(oldUid,{recursive:true});}catch(error){warn('旧目录 '+oldUid+' 删除失败（'+error.message+'）');}
+    /* 下面两段会删到同一批目录：登记过改名的旧目录，往往就是上一次索引里有、这次没有的那个。
+       第一段删掉之后第二段再删只会报「找不到」，可那正说明目的已经达到，不该当成失败。
+       真正需要报出来的是权限、占用这类错误。 */
+    const removed=new Set();
+    for(const id of previous)if(ArtistId.valid(id)&&!ids.has(id))try{await artists.removeEntry(id,{recursive:true});removed.add(id);}catch(error){if(error.name!=='NotFoundError')warn('画师 '+id+' 的目录删除失败（'+error.message+'）');}
+    for(const oldUid of moved.values())if(ArtistId.valid(oldUid)&&!ids.has(oldUid)&&!removed.has(oldUid))try{await artists.removeEntry(oldUid,{recursive:true});removed.add(oldUid);}catch(error){if(error.name!=='NotFoundError')warn('旧目录 '+oldUid+' 删除失败（'+error.message+'）');}
     return result;
   }
   root.FolderStore={read,write,readImage,saveImage,imageOf,previewWorks,nextTestSeq,validWork,exportTo,remember,rename,empty,takeWarnings,IMAGE_KINDS,SIZES,FOLDER_OF,MAX_IMAGE_BYTES};

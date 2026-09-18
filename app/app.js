@@ -19,7 +19,7 @@
   const imageValue=v=>typeof v==='string'&&(/^data:image\/(jpeg|png|webp|gif|avif);base64,/.test(v)||/^(?:缩略图|大图)\/[a-f0-9]{24}\.(?:jpeg|png|webp|gif|avif)$/.test(v))?v:null;
   const httpsValue=v=>typeof v==='string'&&v.startsWith('https://')?v:null;
   const seqOf=a=>ArtistId.parse(a.uid)?.seq??a.order;
-  const state={category:'全部',tags:new Set(),query:''};
+  const state={category:'全部',tags:new Set(),scores:new Set(),query:''};
   const PREF_KEY='artist-library.thumb-height',PREF_CARD='artist-library.card-size';
   const savePref=(key,value)=>{try{localStorage.setItem(key,String(value));}catch{}};
   const applyCardSize=value=>document.documentElement.style.setProperty('--card-size',(value||prefs.cardSize)+'px');
@@ -51,6 +51,16 @@
     return {version:1,categories:categoryList,cutoffDate:/^\d{4}-\d{2}-\d{2}$/.test(raw.cutoffDate)?raw.cutoffDate:'2026-07-01',saveLargeImages:raw.saveLargeImages===true,workOrder:WORK_ORDERS.includes(raw.workOrder)?raw.workOrder:DEFAULT_WORK_ORDER,date:text(raw.date,40),method:text(raw.method,12000),tags:unique([...(Array.isArray(raw.tags)?raw.tags:defaults),...artists.flatMap(a=>a.tags)]).map(t=>t.slice(0,40)),artists};
   }
   function status(t,error=false){$('storage-status').textContent=t;$('storage-status').classList.toggle('error',error);}
+  /* 复制到剪贴板。file:// 下 clipboard API 通常可用，失败时退回选中文本再 execCommand 的老办法。 */
+  async function copyText(text,what){
+    try{await navigator.clipboard.writeText(text);status('已复制'+what+'：'+text);return;}catch{}
+    try{
+      const box=document.createElement('textarea');box.value=text;box.setAttribute('readonly','');
+      box.style.position='fixed';box.style.top='-1000px';document.body.append(box);box.select();
+      const ok=document.execCommand('copy');box.remove();
+      status(ok?'已复制'+what+'：'+text:'复制失败，请手动选中复制。',!ok);
+    }catch{status('复制失败，请手动选中复制。',true);}
+  }
   async function write(value){if(!folder)throw Error('请先选择数据文件夹');return normalize(await FolderStore.write(folder,value));}
   async function connectFolder(){
     if(busy)return;
@@ -64,13 +74,15 @@
     const controls=[...document.querySelectorAll('button,input,textarea,select')].map(e=>[e,e.disabled]);controls.forEach(([e])=>e.disabled=true);
     try{data=await write(data);volatile=false;const warnings=FolderStore.takeWarnings();status(warnings.length?message+'；'+warnings.join('；'):message,warnings.length>0);}catch(error){volatile=true;status('文件保存失败：'+error.message+'；修改暂留本页，请导出备份。',true);}finally{controls.forEach(([e,disabled])=>e.disabled=disabled);busy=false;render();}
   }
-  function reset(){state.category='全部';state.tags.clear();state.query='';$('search').value='';}
+  function reset(){state.category='全部';state.tags.clear();state.scores.clear();state.query='';$('search').value='';}
   function showImage(a,w){ArtistViewer.open({title:a.name,uid:a.uid,work:w,caption:w.caption,persist:true});}
   function artistCard(a){
     const article=el('article','artist'),info=el('div','artist-info'),top=el('div','artist-top');article.dataset.artist=a.name;
     const numbers=el('div','artist-numbers'),countLabel=el('span','work-count','作品数量：'+(a.counts?.total??'未读取')+'（'+(a.counts?.beforeTotal??'未读取')+'）');
     countLabel.title=a.counts?.beforeDate?'括号内数量使用的截至日期：'+a.counts.beforeDate+(a.counts.beforeDate!==data.cutoffDate?'；设置已变更，点击刷新后更新。':''):'括号内为截至日期数量，点击刷新读取。';
-    numbers.append(el('span','serial',String(seqOf(a)).padStart(4,'0')),countLabel);top.append(numbers);info.append(top,el('h2','',a.name));
+    numbers.append(el('span','serial',String(seqOf(a)).padStart(4,'0')),countLabel);top.append(numbers);
+    const heading=el('h2'),nameButton=el('button','artist-name',a.name);nameButton.type='button';nameButton.title='点击复制画师 tag';
+    nameButton.onclick=()=>copyText(a.name,'画师 tag');heading.append(nameButton);info.append(top,heading);
     if(a.alias)info.append(el('span','alias',a.alias));
     if(a.basis)info.append(el('span','basis',a.basis));
     if(a.description)info.append(el('p','description',a.description));
@@ -168,7 +180,7 @@
     const noteInput=el('textarea');noteInput.rows=2;noteInput.maxLength=5000;noteInput.value=draft.note||'';noteInput.placeholder='备注';noteInput.oninput=()=>draft.note=noteInput.value;
     const grid=el('div','edit-grid');grid.append(field('画师名字',nameInput),field('主分类',categorySelect),field('画师页面链接',urlInput),scoreField,fieldBox('标签',tagEditor),aliasField);
     editorError=el('p','error');info.append(grid,field('画风描述',descInput),field('备注',noteInput),editorError);
-    const actions=el('div','artist-actions');actions.append(btn('刷新',refreshCurrentArtist,'action'),btn('保存',saveDraft,'action primary-action'),btn('取消',cancelEdit,'action'));
+    const actions=el('div','artist-actions');actions.append(btn('保存',saveDraft,'action primary-action'),btn('取消',cancelEdit,'action'),btn('刷新',refreshCurrentArtist,'action'));
     const remove=removeButton();if(!editingId)remove.hidden=true;actions.append(remove);info.append(actions);
     const works=el('div','works');
     draft.works.forEach((w,i)=>{const figure=el('figure','work'),thumb=btn('',()=>showImage({uid:draft.uid,name:draft.name},w),'thumb'),img=el('img');if(w.kind==='test')figure.classList.add('is-test');img.alt=draft.name+' 的作品';ArtistImages.bind(img,draft.uid,w,'editor','thumb');thumb.append(img);const caption=el('figcaption');caption.append(el('span','',w.kind==='test'?`测试风格 ${w.testSeq||1}`:'作品 '+(i+1)));caption.append(btn('移除',()=>{draft.works.splice(i,1);render();},'danger-link'));figure.append(thumb,caption);works.append(figure);});
@@ -186,8 +198,14 @@
     for(const a of data.artists){if(a.category&&counts.has(a.category))counts.set(a.category,counts.get(a.category)+1);else if(!a.category)counts.set('待判断',counts.get('待判断')+1);}
     $('categories').replaceChildren(...['全部',...data.categories,'待判断'].map(c=>{const b=btn(c,()=>{state.category=c;render();},c===state.category?'active':'');b.setAttribute('aria-pressed',String(c===state.category));b.append(el('span','n',counts.get(c)||0));return b;}));
     $('tags').replaceChildren(...data.tags.map(t=>{const b=btn(t,()=>{state.tags.has(t)?state.tags.delete(t):state.tags.add(t);render();},state.tags.has(t)?'active':'');b.setAttribute('aria-pressed',String(state.tags.has(t)));return b;}));
+    /* 分数精确匹配、可多选；0 代表未评分 */
+    const toggleScore=value=>{state.scores.has(value)?state.scores.delete(value):state.scores.add(value);render();};
+    $('scores').replaceChildren(...[1,2,3,4,5].map(n=>{
+      const on=state.scores.has(n),b=btn(String(n),()=>toggleScore(n),`score-pick score-${n}${on?' active':''}`);
+      b.setAttribute('aria-pressed',String(on));b.setAttribute('aria-label',n+' 分');b.title=n+' 分';return b;
+    }),(()=>{const on=state.scores.has(0),b=btn('未评分',()=>toggleScore(0),`score-any${on?' active':''}`);b.setAttribute('aria-pressed',String(on));return b;})());
     const activeTags=[...state.tags];
-    const rows=data.artists.filter(a=>(state.category==='全部'||(state.category==='待判断'?!a.category:a.category===state.category))&&activeTags.every(t=>a.tags.includes(t))&&a.name.toLowerCase().includes(state.query));
+    const rows=data.artists.filter(a=>(state.category==='全部'||(state.category==='待判断'?!a.category:a.category===state.category))&&activeTags.every(t=>a.tags.includes(t))&&(state.scores.size===0||state.scores.has(a.score||0))&&a.name.toLowerCase().includes(state.query));
     if(draft&&!editingId)rows.push(draft);
     const gallery=$('gallery');gallery.classList.add('is-refreshing');ArtistGallery.render(gallery,rows,card);clearTimeout(refreshTimer);refreshTimer=setTimeout(()=>gallery.classList.remove('is-refreshing'),260);
     $('count').textContent=`找到 ${rows.length} / ${data.artists.length} 位 · 连续滚动，按需加载${state.tags.size>1?' · 同时包含所选标签':''}`;$('empty').hidden=rows.length!==0;
@@ -284,65 +302,33 @@
     if(result.counts.beforeTotal!==null){counts.beforeTotal=result.counts.beforeTotal;counts.beforeDate=data.cutoffDate;}
     return {counts,partial:result.countsError};
   }
-  const REFRESH_CHUNK=25,REFRESH_CONCURRENCY=3;
-  let refreshingAll=false,refreshAllStop=false;
-  /* 全库刷新作品数量。按批写盘：中途停下来时，已经刷好的部分已经落盘，不会白跑。 */
-  async function refreshAllCounts(){
-    if(busy||refreshingAll)return;
-    const targets=data.artists.map(a=>a.uid);
-    if(!targets.length){status('画师库还是空的，先添加画师。',true);return;}
-    const button=$('refresh-all');
-    let done=0,failed=0;
-    const paint=()=>{button.textContent=`停止刷新（${done} / ${targets.length}）`;};
-    refreshingAll=true;refreshAllStop=false;
-    button.classList.add('danger');button.classList.add('is-armed');paint();
-    try{
-      for(let i=0;i<targets.length;i+=REFRESH_CHUNK){
-        if(refreshAllStop)break;
-        const slice=targets.slice(i,i+REFRESH_CHUNK),next=clone(data);
-        let cursor=0;
-        await Promise.all(Array.from({length:Math.min(REFRESH_CONCURRENCY,slice.length)},async()=>{
-          while(cursor<slice.length&&!refreshAllStop){
-            const uid=slice[cursor++],target=next.artists.find(a=>a.uid===uid);
-            if(!target)continue;
-            try{target.counts=(await refreshCounts(target)).counts;}
-            catch{failed++;}
-            done++;paint();
-          }
-        }));
-        await save(next,`正在刷新作品数量 ${done} / ${targets.length}…`);
-      }
-    }finally{
-      refreshingAll=false;
-      button.classList.remove('is-armed');button.classList.remove('danger');button.textContent='开始刷新';
-    }
-    status(refreshAllStop?`已停止：刷新了 ${done} / ${targets.length} 位画师的作品数量${failed?`，${failed} 位读取失败`:''}。`:`已刷新 ${targets.length} 位画师的作品数量${failed?`，其中 ${failed} 位读取失败`:''}。`,failed>0);
-  }
-  const RENAME_CHUNK=25,RENAME_CONCURRENCY=3;
-  let renamingAll=false,renameAllStop=false;
-  /* 全库把画师名更新为站点上的最新名。按批写盘，中途可停。 */
-  async function renameAllArtists(){
-    if(busy||renamingAll)return;
+  const SYNC_CHUNK=25,SYNC_CONCURRENCY=3;
+  let syncingAll=false,syncAllStop=false;
+  /* 全库刷新：每位画师都重新核对站点上的正式名，并刷新作品数量。按批写盘，
+     中途停下来时已经刷好的部分已经落盘，不会白跑。 */
+  async function syncAllArtists(){
+    if(busy||syncingAll)return;
     const targets=data.artists.map(a=>({uid:a.uid,name:a.name}));
     if(!targets.length){status('画师库还是空的，先添加画师。',true);return;}
-    const button=$('rename-all');
-    let done=0,changed=0,skipped=0,failed=0;
-    const paint=()=>{button.textContent=`停止更新（${done} / ${targets.length}）`;};
-    renamingAll=true;renameAllStop=false;
+    const button=$('sync-all');
+    let done=0,renamed=0,skipped=0,failed=0;
+    const paint=()=>{button.textContent=`停止刷新（${done} / ${targets.length}）`;};
+    syncingAll=true;syncAllStop=false;
     button.classList.add('danger');button.classList.add('is-armed');paint();
     try{
-      for(let i=0;i<targets.length;i+=RENAME_CHUNK){
-        if(renameAllStop)break;
-        const slice=targets.slice(i,i+RENAME_CHUNK),next=clone(data);
-        /* 重名检查与登记在同一段同步代码里完成，三个并发之间不会同时放行同一个新名字 */
+      for(let i=0;i<targets.length;i+=SYNC_CHUNK){
+        if(syncAllStop)break;
+        const slice=targets.slice(i,i+SYNC_CHUNK),next=clone(data);
+        /* 重名检查与登记在同一段同步代码里完成，几个并发之间不会同时放行同一个新名字 */
         const takenNames=new Set(next.artists.map(a=>a.name.toLowerCase()));
         let cursor=0;
-        await Promise.all(Array.from({length:Math.min(RENAME_CONCURRENCY,slice.length)},async()=>{
-          while(cursor<slice.length&&!renameAllStop){
+        await Promise.all(Array.from({length:Math.min(SYNC_CONCURRENCY,slice.length)},async()=>{
+          while(cursor<slice.length&&!syncAllStop){
             const item=slice[cursor++],target=next.artists.find(a=>a.uid===item.uid);
             if(!target)continue;
             try{
-              const hit=await lookupArtist(item.name);
+              const [hit,counts]=await Promise.all([lookupArtist(item.name),refreshCounts({...target,name:item.name})]);
+              if(counts)target.counts=counts.counts;
               const canonical=hit&&hit.canonical;
               if(!canonical||canonical===target.name)skipped++;
               else if(takenNames.has(canonical.toLowerCase()))skipped++;
@@ -351,23 +337,23 @@
                 reidentify(target,canonical,hit.id);
                 target.name=canonical;
                 if(hit.id!=null)target.danbooruId=hit.id;
-                changed++;
+                if(hit.aliases.length)target.aliases=hit.aliases;
+                renamed++;
               }
             }catch{failed++;}
             done++;paint();
           }
         }));
-        await save(next,`正在更新画师名字 ${done} / ${targets.length}…`);
+        await save(next,`正在刷新画师数据 ${done} / ${targets.length}…`);
       }
     }finally{
-      renamingAll=false;
-      button.classList.remove('is-armed');button.classList.remove('danger');button.textContent='开始更新';
+      syncingAll=false;
+      button.classList.remove('is-armed');button.classList.remove('danger');button.textContent='开始刷新';
     }
-    status(renameAllStop?`已停止：检查了 ${done} / ${targets.length} 位，${changed} 位改成最新名${failed?`，${failed} 位查询失败`:''}。`:`已检查 ${targets.length} 位画师，其中 ${changed} 位改成最新名${skipped?`，${skipped} 位没找到或会撞名`:''}${failed?`，${failed} 位查询失败`:''}。`,failed>0);
+    status(syncAllStop?`已停止：刷新了 ${done} / ${targets.length} 位画师的数据${failed?`，${failed} 位读取失败`:''}。`:`已刷新 ${targets.length} 位画师的数据：${renamed} 位改用站点上的最新名${skipped?`，${skipped} 位名字没变或会撞名`:''}${failed?`，${failed} 位读取失败`:''}。`,failed>0);
   }
-  /* 刷新当前画师：和「刷新所有画师作品数量」「把所有画师名字更新为最新」做同样的事，
-     只是只针对编辑中的这一位。结果先写进编辑表单，点保存才落盘——在编辑器里直接落盘
-     会让「取消」失去意义。 */
+  /* 刷新当前画师：和「刷新所有画师数据」做同样的事，只是只针对编辑中的这一位。
+     结果先写进编辑表单，点保存才落盘——在编辑器里直接落盘会让「取消」失去意义。 */
   async function refreshCurrentArtist(){
     if(busy||uploading||!draft)return;
     const name=(draft.name||'').trim();
@@ -708,8 +694,7 @@
     $('quick-manual').onclick=()=>{cancelLookup();startEdit(null);const value=$('quick-input').value.trim();if(value&&draft){try{const p=ArtistLookup.plan(value);if(p.kind==='name')draft.name=p.query;else if(p.kind==='url')draft.artistUrl=p.query;render();}catch{}}};
     $('manage-tags').onclick=()=>{if(!busy){manageFilter.category='';manageFilter.tag='';$('category-search').value='';$('tag-search').value='';showManageTab('category');listCategories();listTags();$('tag-manager').showModal();}};$('close-tags').onclick=()=>$('tag-manager').close();
     $('tab-category').onclick=()=>showManageTab('category');$('tab-tag').onclick=()=>showManageTab('tag');
-    $('refresh-all').onclick=()=>{if(refreshingAll){refreshAllStop=true;return null;}return refreshAllCounts();};
-    $('rename-all').onclick=()=>{if(renamingAll){renameAllStop=true;return null;}return renameAllArtists();};
+    $('sync-all').onclick=()=>{if(syncingAll){syncAllStop=true;return null;}return syncAllArtists();};
     $('category-search').oninput=e=>{manageFilter.category=e.target.value.trim().toLowerCase();listCategories();};
     $('tag-search').oninput=e=>{manageFilter.tag=e.target.value.trim().toLowerCase();listTags();};
     $('category-form').onsubmit=async e=>{e.preventDefault();if(busy)return;const name=$('new-category').value.trim();if(!name)return;if(data.categories.includes(name)){alert('这个分类已存在。');return;}const next=clone(data);next.categories.push(name);await save(next);$('new-category').value='';listCategories();};$('tag-form').onsubmit=async e=>{e.preventDefault();if(busy)return;const t=$('new-tag').value.trim();if(!t)return;if(data.tags.includes(t)){alert('这个标签已存在。');return;}const next=clone(data);next.tags.push(t);await save(next);$('new-tag').value='';listTags();};
