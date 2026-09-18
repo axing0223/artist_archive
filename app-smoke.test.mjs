@@ -346,6 +346,68 @@ test('管理分类：与标签同样支持行内重命名与筛选',async()=>{
   search.value='';search.oninput({target:search});
   assert.equal(list.children.length,total);
 });
+test('管理对话框：主分类与标签改成标签页，一次只展开一个',async()=>{
+  const {elements}=await boot();
+  elements.get('manage-tags').onclick();
+  assert.equal(elements.get('panel-category').hidden,false,'打开时停在主分类');
+  assert.equal(elements.get('panel-tag').hidden,true,'标签面板默认收起');
+  assert.equal(elements.get('tab-category')['aria-selected'],'true');
+  assert.equal(String(elements.get('tab-category').className).includes('active'),true);
+  assert.equal(String(elements.get('tab-tag').className).includes('active'),false);
+  elements.get('tab-tag').onclick();
+  assert.equal(elements.get('panel-category').hidden,true,'切到标签后分类面板收起');
+  assert.equal(elements.get('panel-tag').hidden,false);
+  assert.equal(elements.get('tab-tag')['aria-selected'],'true');
+  assert.equal(elements.get('tab-category')['aria-selected'],'false');
+  assert.equal(String(elements.get('tab-category').className).includes('active'),false,'旧标签页要去掉高亮');
+  assert.ok(findByClass(elements.get('tag-list').children[0],'manage-name'),'标签列表照常可用');
+});
+test('管理标签：拖动行首把手调整顺序，并同步到顶部筛选栏',async()=>{
+  const {elements}=await boot();
+  elements.get('manage-tags').onclick();
+  const list=elements.get('tag-list');
+  const before=list.children.map(row=>findByClass(row,'manage-name').textContent);
+  assert.ok(before.length>=3,'默认标签数量要够验证移动');
+  const handle=findByClass(list.children[0],'manage-handle');
+  assert.ok(handle,'未筛选时每行应有拖动把手');
+  handle.ondragstart({dataTransfer:null});
+  list.children[2].ondragover({preventDefault(){}});
+  list.children[2].ondrop({preventDefault(){}});
+  await wait(20);
+  const after=elements.get('tag-list').children.map(row=>findByClass(row,'manage-name').textContent);
+  assert.equal(after.length,before.length,'数量不增不减');
+  assert.equal(after[2],before[0],'被拖动的标签落到第 3 位');
+  assert.equal(after[0],before[1],'其余标签依次前移');
+  const filterOrder=elements.get('tags').children.map(button=>button.textContent);
+  assert.equal(filterOrder[2],before[0],'新顺序要反映到顶部筛选栏');
+});
+test('管理分类：同样可以拖动把手调整顺序',async()=>{
+  const {elements}=await boot();
+  elements.get('manage-tags').onclick();
+  const list=elements.get('category-list');
+  const before=list.children.map(row=>findByClass(row,'manage-name').textContent);
+  assert.ok(before.length>=2,'默认分类数量要够验证移动');
+  assert.ok(findByClass(list.children[0],'manage-handle'),'分类也有拖动把手');
+  findByClass(list.children[0],'manage-handle').ondragstart({dataTransfer:null});
+  list.children[1].ondrop({preventDefault(){}});
+  await wait(20);
+  const after=elements.get('category-list').children.map(row=>findByClass(row,'manage-name').textContent);
+  assert.equal(after[0],before[1],'与后一项互换位置');
+  assert.equal(after[1],before[0]);
+});
+test('管理标签：筛选状态下不提供拖动把手，避免顺序歧义',async()=>{
+  const {elements}=await boot();
+  elements.get('manage-tags').onclick();
+  const list=elements.get('tag-list'),search=elements.get('tag-search');
+  const target=findByClass(list.children[0],'manage-name').textContent;
+  assert.ok(findByClass(list.children[0],'manage-handle'),'未筛选时可以拖动排序');
+  search.value=target;search.oninput({target:search});
+  assert.equal(findAllByClass(list.children[0],'manage-handle').length,0,'筛选时不给把手');
+  assert.equal(findByClass(list.children[0],'manage-name').textContent,target,'名字仍然显示');
+  assert.ok(findText(list.children[0],'重命名'),'重命名照旧可用');
+  search.value='';search.oninput({target:search});
+  assert.ok(findByClass(list.children[0],'manage-handle'),'清空筛选后把手回来');
+});
 test('批量导入：默认勾选采集，为每位新画师写入作品数量与最新 3 张作品',async()=>{
   const {elements,state,ctx}=await boot();
   stub(ctx,{lookup:async()=>[{id:196870,name:'iuui',aliases:[],pageUrl:'https://danbooru.donmai.us/artists/196870'}],

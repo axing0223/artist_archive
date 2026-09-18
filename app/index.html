@@ -45,16 +45,21 @@
   </div></dialog>
   <dialog id="viewer" aria-labelledby="viewer-title"><div class="viewer-bar"><h2 id="viewer-title"></h2><button id="close-viewer" aria-label="关闭图片">关闭 ×</button></div><div class="viewer-image"><img id="large-image" alt=""></div><div class="viewer-bottom"><p id="viewer-caption"></p><div class="viewer-actions"><button id="save-original" class="action" type="button">保存原图</button><a id="viewer-source" target="_blank" rel="noopener noreferrer">查看作品来源 ↗</a></div></div></dialog>
   <dialog id="tag-manager" class="small-dialog" aria-labelledby="tag-title"><div class="viewer-bar"><h2 id="tag-title">管理分类与标签</h2><button id="close-tags" type="button">关闭 ×</button></div><div class="form-body">
-    <h3 class="manage-heading">主分类</h3><p class="field-help">画师卡片上的大分类，也是筛选栏的第一排。重命名会同步更新已分类的画师；删除后这些画师回到「待判断」，画师和图片都不会丢。</p>
+    <div class="manage-tabs" role="tablist" aria-label="管理分类与标签"><button id="tab-category" class="manage-tab" type="button" role="tab" aria-selected="true" aria-controls="panel-category">主分类</button><button id="tab-tag" class="manage-tab" type="button" role="tab" aria-selected="false" aria-controls="panel-tag">画面感觉标签</button></div>
+    <div id="panel-category" class="manage-panel" role="tabpanel" aria-labelledby="tab-category">
+    <p class="field-help">画师卡片上的大分类，也是筛选栏的第一排。重命名会同步更新已分类的画师；删除后这些画师回到「待判断」，画师和图片都不会丢。拖动行首的把手可以调整顺序。</p>
     <form id="category-form" class="inline-form"><input id="new-category" required maxlength="40" placeholder="例如：厚涂向、赛璐璐、像素风" aria-label="新分类名称"><button class="action primary-action">添加分类</button></form>
     <input id="category-search" class="manage-search" type="search" placeholder="筛选分类…" aria-label="筛选分类">
     <div id="category-list"></div>
     <p id="category-empty" class="manage-empty" role="status" hidden></p>
-    <h3 class="manage-heading">画面感觉标签</h3><p class="field-help">可多选的小标签。重命名会同步更新画师标签；删除标签不会删除画师。</p>
+    </div>
+    <div id="panel-tag" class="manage-panel" role="tabpanel" aria-labelledby="tab-tag" hidden>
+    <p class="field-help">可多选的小标签，这里的顺序会用在顶部筛选栏和编辑卡片的标签按钮上。重命名会同步更新画师标签；删除标签不会删除画师。拖动行首的把手可以调整顺序。</p>
     <form id="tag-form" class="inline-form"><input id="new-tag" required maxlength="40" placeholder="例如：厚涂、黑白、擅长服装" aria-label="自定义标签名称"><button class="action primary-action">添加标签</button></form>
     <input id="tag-search" class="manage-search" type="search" placeholder="筛选标签…" aria-label="筛选标签">
     <div id="tag-list"></div>
     <p id="tag-empty" class="manage-empty" role="status" hidden></p>
+    </div>
   </div></dialog>
   <dialog id="batch-dialog" class="small-dialog" aria-labelledby="batch-title"><form id="batch-form"><div class="viewer-bar"><h2 id="batch-title">批量导入画师名字</h2><button type="button" id="close-batch">取消 ×</button></div><div class="form-body"><p class="field-help">每行一位，也可读取「画师表.txt」。自动跳过重名；新画师保持未分类。</p><label class="action upload-label">读取 TXT 名单<input id="names-file" type="file" accept=".txt" hidden></label><textarea id="batch-names" rows="10" aria-label="一行一个画师名字" required></textarea><div class="setting-row"><div><strong>同时采集最新 3 张作品与数量</strong><p class="field-help">为每位新画师补齐 Danbooru 编号、作品总数，并保存最新 3 张作品的缩略图。名字很多时会持续较久；中途点「取消」会保留已采集的进度，再次提交同一名单会自动跳过。</p></div><label class="switch"><input id="batch-works" type="checkbox" checked><span></span></label></div><p id="batch-message" role="status"></p></div><div class="form-footer"><button class="action primary-action">添加到画师库</button></div></form></dialog>
 </body>
