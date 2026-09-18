@@ -14,11 +14,17 @@
   const httpsValue=v=>typeof v==='string'&&v.startsWith('https://')?v:null;
   const seqOf=a=>ArtistId.parse(a.uid)?.seq??a.order;
   const state={category:'全部',tags:new Set(),query:''};
-  const PREF_KEY='artist-library.thumb-height';
-  const prefs={thumbHeight:120,listeners:new Set(),
-    setThumbHeight(value){this.thumbHeight=value;try{localStorage.setItem(PREF_KEY,String(value));}catch{}for(const fn of this.listeners)fn(value);},
+  const PREF_KEY='artist-library.thumb-height',PREF_CARD='artist-library.card-size';
+  const savePref=(key,value)=>{try{localStorage.setItem(key,String(value));}catch{}};
+  const applyCardSize=value=>document.documentElement.style.setProperty('--card-size',(value||prefs.cardSize)+'px');
+  const prefs={thumbHeight:120,cardSize:220,listeners:new Set(),
+    setThumbHeight(value){this.thumbHeight=value;savePref(PREF_KEY,value);for(const fn of this.listeners)fn(value);},
+    setCardSize(value){this.cardSize=value;savePref(PREF_CARD,value);applyCardSize(value);},
     subscribe(fn){this.listeners.add(fn);},unsubscribe(fn){this.listeners.delete(fn);}};
-  try{const stored=Number(localStorage.getItem(PREF_KEY));if(Number.isFinite(stored)&&stored>=70&&stored<=220)prefs.thumbHeight=stored;}catch{}
+  try{
+    const stored=Number(localStorage.getItem(PREF_KEY));if(Number.isFinite(stored)&&stored>=70&&stored<=220)prefs.thumbHeight=stored;
+    const card=Number(localStorage.getItem(PREF_CARD));if(Number.isFinite(card)&&card>=140&&card<=360)prefs.cardSize=card;
+  }catch{}
   let data,folder,draft,editingId,busy=false,uploading=false,volatile=false,viewerRef=null;
   function normalize(raw,backup=false){
     if(!raw||!Array.isArray(raw.artists)||(backup&&raw.version!==1))throw Error('不是此网页导出的备份。');
@@ -256,14 +262,6 @@
     }
     return result;
   }
-  let caching=false;
-  async function cacheVisible(){
-    if(busy||caching)return;const targets=ArtistGallery.visible().map(a=>a.uid),originalFolder=folder;caching=true;$('cache-visible').disabled=true;let cached=0,failed=0;
-    try{for(const id of targets){if(originalFolder!==folder)break;const a=data.artists.find(x=>x.uid===id);if(!a)continue;const remote=a.works.filter(w=>FolderStore.imageOf(w,'thumb')?.kind==='remote');if(!remote.length)continue;status('正在缓存 '+a.name+' 的预览图…');const converted=await cacheWorks(id,remote);if(originalFolder!==folder)break;const next=clone(data),target=next.artists.find(x=>x.uid===id);if(!target)continue;
-        for(let i=0;i<remote.length;i++){const index=target.works.findIndex(w=>w.id===remote[i].id);if(index<0)continue;if(converted[i].thumb?.startsWith('data:')){target.works[index]={...target.works[index],thumb:converted[i].thumb,caption:converted[i].caption};cached++;}else failed++;}await save(next,'已缓存 '+a.name+' 的预览图');if(volatile){status('预览图已获取，但写入文件失败。已停止缓存，请导出备份保留本页修改。',true);return;}}
-      status(`预览图缓存完成：${cached} 张已保存${failed?'，'+failed+' 张失败，可稍后重试':''}。只处理点击时附近已加载的画师。`,failed>0);
-    }finally{caching=false;$('cache-visible').disabled=false;}
-  }
   const lookupCache=new Map();let activePickers=[];
   function clearCandidates(){for(const picker of activePickers)picker.dispose();activePickers=[];$('quick-results').replaceChildren();}
   function cancelLookup(){clearTimeout(lookupTimer);lookupController?.abort();lookupSequence++;}
@@ -319,8 +317,10 @@
     if(value.length>=2||/^\d$/.test(value))lookupTimer=setTimeout(detectArtist,800);
   }
   async function init(){
+    applyCardSize();
     data=normalize(FolderStore.empty());status('请先选择「数据」文件夹，读取或开始整理画师库。');
-    $('settings-open').onclick=()=>{$('history-date').value=data.cutoffDate;$('save-large').checked=data.saveLargeImages===true;$('settings').showModal();};$('close-settings').onclick=()=>$('settings').close();
+    $('settings-open').onclick=()=>{$('history-date').value=data.cutoffDate;$('save-large').checked=data.saveLargeImages===true;$('card-size').value=String(prefs.cardSize);$('card-size-value').textContent=prefs.cardSize;$('settings').showModal();};$('close-settings').onclick=()=>$('settings').close();
+    $('card-size').oninput=()=>{const value=Number($('card-size').value);$('card-size-value').textContent=value;prefs.setCardSize(value);};
     $('save-large').onchange=async()=>{const next=clone(data);next.saveLargeImages=$('save-large').checked;await save(next,next.saveLargeImages?'已开启「保存大图」：预览作品时会保存原图':'已关闭「保存大图」：预览作品时不再保存原图');};
     $('history-date').onchange=async()=>{const date=$('history-date').value;if(!/^\d{4}-\d{2}-\d{2}$/.test(date)){ $('history-date').value=data.cutoffDate;return;}const next=clone(data);next.cutoffDate=date;await save(next,'已保存截至日期；点击画师旁的刷新后，该画师数量才会更新。');};
     $('add-artist').onclick=focusQuick;$('quick-form').onsubmit=e=>{e.preventDefault();detectArtist();};$('quick-input').oninput=quickChanged;$('quick-input').oncompositionend=quickChanged;
@@ -335,7 +335,7 @@
     let searchTimer;$('search').oninput=e=>{state.query=e.target.value.trim().toLowerCase();clearTimeout(searchTimer);searchTimer=setTimeout(render,150);};$('reset').onclick=()=>{reset();render();};$('close-viewer').onclick=()=>$('viewer').close();
     $('viewer').addEventListener('close',()=>{ArtistImages.dispose('viewer');viewerRef=null;});$('save-original').onclick=saveViewerOriginal;$('editor').addEventListener('close',()=>{ArtistImages.dispose('editor');closeWorkPicker();draft=null;});
     document.querySelectorAll('dialog').forEach(dialog=>dialog.addEventListener('click',event=>{if(event.target!==dialog)return;if(dialog.id==='editor')closeEditor();else dialog.close();}));
-    $('cache-visible').onclick=cacheVisible;$('clear-image-cache').onclick=()=>{ArtistImages.clear();status('已释放临时图片缓存，本地图片文件未删除；当前可见图片会按需重载。');};$('extension-status').onclick=checkExtension;
+    $('extension-status').onclick=checkExtension;
     window.addEventListener('beforeunload',e=>{if(volatile||busy){e.preventDefault();e.returnValue='';}});render();document.querySelectorAll('button,input,textarea,select').forEach(b=>b.disabled=true);$('choose-folder').disabled=false;$('extension-status').disabled=false;$('choose-folder').onclick=connectFolder;checkExtension();
   }
   init();

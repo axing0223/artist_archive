@@ -19,6 +19,8 @@
 .candidate-body{flex-basis:100%;display:flex;flex-direction:column;gap:6px;min-width:0}.picker-status{color:#788496;font-size:12px}.pick-id{background:none;border:none;padding:0;color:#375af5;font-size:11px;cursor:pointer;text-decoration:underline}.pick-id:hover{color:#1f3fd0}.picker-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding-top:10px;border-top:1px solid #e7ebf2;margin-top:10px}.work-picker{display:flex;flex-direction:column;gap:8px;border:1px solid #e0e5f0;border-radius:10px;padding:14px;margin-top:12px;background:#f8faff}.work-picker[hidden]{display:none}
 .picker-zoom{display:flex;align-items:center;gap:10px}.picker-zoom small{color:#788496;font-size:12px;white-space:nowrap}.picker-zoom input[type=range]{flex:1;max-width:240px;width:auto;padding:0;border:0;background:none;accent-color:var(--accent)}
 .settings-body{gap:0}.setting-row{display:flex;gap:16px;align-items:flex-start;justify-content:space-between;padding:14px 0;border-bottom:1px solid #eef0f4}.setting-row:last-child{border-bottom:0;padding-bottom:0}.setting-row strong{display:block;font-size:14px;margin-bottom:5px}.setting-row .field-help{margin:0}.setting-row>button{flex-shrink:0}.setting-row input[type=date]{width:auto;min-width:160px}.switch{position:relative;display:inline-flex;flex-shrink:0;margin-top:2px}.switch input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer}.switch span{display:block;width:46px;height:26px;border-radius:13px;background:#d5d9e2;transition:background .2s}.switch span::after{content:'';position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px #0003;transition:transform .2s}.switch input:checked+span{background:var(--accent)}.switch input:checked+span::after{transform:translateX(20px)}
+.size-control{display:flex;align-items:center;gap:10px;flex-shrink:0}.size-control input[type=range]{width:180px;padding:0;border:0;background:none;accent-color:var(--accent)}.size-control span{font-size:13px;color:#788496;min-width:38px;text-align:right}
+.works{grid-template-columns:repeat(auto-fill,minmax(var(--card-size,220px),1fr))}.thumb{height:var(--card-size,220px)}
 #viewer{width:min(1600px,96vw);max-width:96vw;max-height:96vh}.viewer-image{padding:12px;min-height:120px;overflow:auto}.viewer-image img{max-width:100%;max-height:calc(96vh - 160px);width:auto;height:auto;min-height:0;object-fit:contain}
 </style>
 
@@ -41,8 +43,7 @@
   </main><dialog id="settings" class="small-dialog" aria-labelledby="settings-title"><div class="viewer-bar"><h2 id="settings-title">设置</h2><button id="close-settings" type="button">关闭 ×</button></div><div class="form-body settings-body">
     <div class="setting-row"><div><strong>数据截至日期</strong><p class="field-help">统计「截至日期数量」时使用的日期，默认 2026-07-01。更改后已读取的数量保持不变，要点对应画师卡片上的「刷新」才会更新。</p></div><input id="history-date" type="date" value="2026-07-01" required></div>
     <div class="setting-row"><div><strong>保存大图</strong><p class="field-help">开启后，点开作品预览时会把这件作品的原图保存进画师目录的「大图」文件夹，之后预览直接读本地、不再联网，也能离线查看。关闭时原图只在本次预览中临时加载，关掉即释放。</p></div><label class="switch"><input id="save-large" type="checkbox"><span></span></label></div>
-    <div class="setting-row"><div><strong>缓存附近预览</strong><p class="field-help">把当前视野附近已加载画师的在线缩略图下载到本地，此后优先读本地文件，滚动浏览更快。只处理点击时附近的画师，不会扫描或下载整个画师库。</p></div><button id="cache-visible" class="action" type="button">执行</button></div>
-    <div class="setting-row"><div><strong>释放临时缓存</strong><p class="field-help">清空浏览器内存里缓存的图片，用来在浏览大库后回收内存。本地已保存的图片文件不受影响，当前可见的图会按需重新加载。</p></div><button id="clear-image-cache" class="action" type="button">执行</button></div>
+    <div class="setting-row"><div><strong>预览图尺寸</strong><p class="field-help">调整主页面每位画师的作品预览图大小，每行显示几位画师会跟着自动变化；设置会记住。识别画师与编辑页的作品列表另有各自的「预览大小」滑动条。</p></div><div class="size-control"><input id="card-size" type="range" min="140" max="360" step="20" value="220"><span id="card-size-value">220</span></div></div>
   </div></dialog>
   <dialog id="viewer" aria-labelledby="viewer-title"><div class="viewer-bar"><h2 id="viewer-title"></h2><button id="close-viewer" aria-label="关闭图片">关闭 ×</button></div><div class="viewer-image"><img id="large-image" alt=""></div><div class="viewer-bottom"><p id="viewer-caption"></p><div class="viewer-actions"><button id="save-original" class="action" type="button">保存原图</button><a id="viewer-source" target="_blank" rel="noopener noreferrer">查看作品来源 ↗</a></div></div></dialog>
   <dialog id="editor" class="edit-dialog" aria-labelledby="editor-title"><form id="artist-form"><div class="viewer-bar"><h2 id="editor-title">编辑画师</h2><button type="button" id="cancel-editor">取消 ×</button></div><div class="form-body">
@@ -441,11 +442,17 @@
   const httpsValue=v=>typeof v==='string'&&v.startsWith('https://')?v:null;
   const seqOf=a=>ArtistId.parse(a.uid)?.seq??a.order;
   const state={category:'全部',tags:new Set(),query:''};
-  const PREF_KEY='artist-library.thumb-height';
-  const prefs={thumbHeight:120,listeners:new Set(),
-    setThumbHeight(value){this.thumbHeight=value;try{localStorage.setItem(PREF_KEY,String(value));}catch{}for(const fn of this.listeners)fn(value);},
+  const PREF_KEY='artist-library.thumb-height',PREF_CARD='artist-library.card-size';
+  const savePref=(key,value)=>{try{localStorage.setItem(key,String(value));}catch{}};
+  const applyCardSize=value=>document.documentElement.style.setProperty('--card-size',(value||prefs.cardSize)+'px');
+  const prefs={thumbHeight:120,cardSize:220,listeners:new Set(),
+    setThumbHeight(value){this.thumbHeight=value;savePref(PREF_KEY,value);for(const fn of this.listeners)fn(value);},
+    setCardSize(value){this.cardSize=value;savePref(PREF_CARD,value);applyCardSize(value);},
     subscribe(fn){this.listeners.add(fn);},unsubscribe(fn){this.listeners.delete(fn);}};
-  try{const stored=Number(localStorage.getItem(PREF_KEY));if(Number.isFinite(stored)&&stored>=70&&stored<=220)prefs.thumbHeight=stored;}catch{}
+  try{
+    const stored=Number(localStorage.getItem(PREF_KEY));if(Number.isFinite(stored)&&stored>=70&&stored<=220)prefs.thumbHeight=stored;
+    const card=Number(localStorage.getItem(PREF_CARD));if(Number.isFinite(card)&&card>=140&&card<=360)prefs.cardSize=card;
+  }catch{}
   let data,folder,draft,editingId,busy=false,uploading=false,volatile=false,viewerRef=null;
   function normalize(raw,backup=false){
     if(!raw||!Array.isArray(raw.artists)||(backup&&raw.version!==1))throw Error('不是此网页导出的备份。');
@@ -683,14 +690,6 @@
     }
     return result;
   }
-  let caching=false;
-  async function cacheVisible(){
-    if(busy||caching)return;const targets=ArtistGallery.visible().map(a=>a.uid),originalFolder=folder;caching=true;$('cache-visible').disabled=true;let cached=0,failed=0;
-    try{for(const id of targets){if(originalFolder!==folder)break;const a=data.artists.find(x=>x.uid===id);if(!a)continue;const remote=a.works.filter(w=>FolderStore.imageOf(w,'thumb')?.kind==='remote');if(!remote.length)continue;status('正在缓存 '+a.name+' 的预览图…');const converted=await cacheWorks(id,remote);if(originalFolder!==folder)break;const next=clone(data),target=next.artists.find(x=>x.uid===id);if(!target)continue;
-        for(let i=0;i<remote.length;i++){const index=target.works.findIndex(w=>w.id===remote[i].id);if(index<0)continue;if(converted[i].thumb?.startsWith('data:')){target.works[index]={...target.works[index],thumb:converted[i].thumb,caption:converted[i].caption};cached++;}else failed++;}await save(next,'已缓存 '+a.name+' 的预览图');if(volatile){status('预览图已获取，但写入文件失败。已停止缓存，请导出备份保留本页修改。',true);return;}}
-      status(`预览图缓存完成：${cached} 张已保存${failed?'，'+failed+' 张失败，可稍后重试':''}。只处理点击时附近已加载的画师。`,failed>0);
-    }finally{caching=false;$('cache-visible').disabled=false;}
-  }
   const lookupCache=new Map();let activePickers=[];
   function clearCandidates(){for(const picker of activePickers)picker.dispose();activePickers=[];$('quick-results').replaceChildren();}
   function cancelLookup(){clearTimeout(lookupTimer);lookupController?.abort();lookupSequence++;}
@@ -746,8 +745,10 @@
     if(value.length>=2||/^\d$/.test(value))lookupTimer=setTimeout(detectArtist,800);
   }
   async function init(){
+    applyCardSize();
     data=normalize(FolderStore.empty());status('请先选择「数据」文件夹，读取或开始整理画师库。');
-    $('settings-open').onclick=()=>{$('history-date').value=data.cutoffDate;$('save-large').checked=data.saveLargeImages===true;$('settings').showModal();};$('close-settings').onclick=()=>$('settings').close();
+    $('settings-open').onclick=()=>{$('history-date').value=data.cutoffDate;$('save-large').checked=data.saveLargeImages===true;$('card-size').value=String(prefs.cardSize);$('card-size-value').textContent=prefs.cardSize;$('settings').showModal();};$('close-settings').onclick=()=>$('settings').close();
+    $('card-size').oninput=()=>{const value=Number($('card-size').value);$('card-size-value').textContent=value;prefs.setCardSize(value);};
     $('save-large').onchange=async()=>{const next=clone(data);next.saveLargeImages=$('save-large').checked;await save(next,next.saveLargeImages?'已开启「保存大图」：预览作品时会保存原图':'已关闭「保存大图」：预览作品时不再保存原图');};
     $('history-date').onchange=async()=>{const date=$('history-date').value;if(!/^\d{4}-\d{2}-\d{2}$/.test(date)){ $('history-date').value=data.cutoffDate;return;}const next=clone(data);next.cutoffDate=date;await save(next,'已保存截至日期；点击画师旁的刷新后，该画师数量才会更新。');};
     $('add-artist').onclick=focusQuick;$('quick-form').onsubmit=e=>{e.preventDefault();detectArtist();};$('quick-input').oninput=quickChanged;$('quick-input').oncompositionend=quickChanged;
@@ -762,7 +763,7 @@
     let searchTimer;$('search').oninput=e=>{state.query=e.target.value.trim().toLowerCase();clearTimeout(searchTimer);searchTimer=setTimeout(render,150);};$('reset').onclick=()=>{reset();render();};$('close-viewer').onclick=()=>$('viewer').close();
     $('viewer').addEventListener('close',()=>{ArtistImages.dispose('viewer');viewerRef=null;});$('save-original').onclick=saveViewerOriginal;$('editor').addEventListener('close',()=>{ArtistImages.dispose('editor');closeWorkPicker();draft=null;});
     document.querySelectorAll('dialog').forEach(dialog=>dialog.addEventListener('click',event=>{if(event.target!==dialog)return;if(dialog.id==='editor')closeEditor();else dialog.close();}));
-    $('cache-visible').onclick=cacheVisible;$('clear-image-cache').onclick=()=>{ArtistImages.clear();status('已释放临时图片缓存，本地图片文件未删除；当前可见图片会按需重载。');};$('extension-status').onclick=checkExtension;
+    $('extension-status').onclick=checkExtension;
     window.addEventListener('beforeunload',e=>{if(volatile||busy){e.preventDefault();e.returnValue='';}});render();document.querySelectorAll('button,input,textarea,select').forEach(b=>b.disabled=true);$('choose-folder').disabled=false;$('extension-status').disabled=false;$('choose-folder').onclick=connectFolder;checkExtension();
   }
   init();
