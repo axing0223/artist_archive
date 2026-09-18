@@ -1,6 +1,6 @@
 (() => {
-  let observer,resize,current=[],make=null;const mounted=new Map(),heights=new Map(),pinned=new Set(),slots=new Map();
-  function clear(){observer?.disconnect();resize?.disconnect();for(const id of mounted.keys())ArtistImages.dispose('card:'+id);mounted.clear();slots.clear();}
+  let observer,resize,current=[],make=null,uids=[];const mounted=new Map(),heights=new Map(),pinned=new Set(),slots=new Map();
+  function clear(){observer?.disconnect();resize?.disconnect();for(const id of mounted.keys())ArtistImages.dispose('card:'+id);mounted.clear();slots.clear();uids=[];}
   /* 立刻按卡片真实高度挂载。render() 重建占位用的是上一次量到的高度，
      刚加完作品会比旧高度高，照着旧占位滚动会落到错的位置。 */
   function mountSlot(slot){
@@ -12,8 +12,20 @@
     slot.style.height='';slot.append(make(artist));mounted.set(id,artist);resize.observe(slot);return true;
   }
   function render(container,rows,makeCard){
-    clear();
+    const next=rows.map(a=>a.uid),same=uids.length>0&&next.length===uids.length&&next.every((uid,i)=>uid===uids[i]);
     current=rows;make=makeCard;
+    if(same){
+      /* 还是同一批画师、同样顺序，只是内容变了（刚保存了某一位）。
+         只重画已经挂载的那几张就够；重建上千个占位会连整棵布局树一起丢掉，
+         那正是保存后卡顿的来源。 */
+      for(const [uid,slot] of slots)if(mounted.has(uid)){
+        const artist=current[Number(slot.dataset.index)];
+        if(artist){slot.replaceChildren(make(artist));mounted.set(uid,artist);}
+      }
+      return;
+    }
+    clear();
+    uids=next;
     resize=new ResizeObserver(entries=>{for(const entry of entries){const id=entry.target.dataset.uid;const h=entry.target.getBoundingClientRect().height;if(h>0)heights.set(id,h);}});
     observer=new IntersectionObserver(entries=>{for(const entry of entries){const slot=entry.target,id=slot.dataset.uid;
       if(entry.isIntersecting)mountSlot(slot);
@@ -25,3 +37,4 @@
   }
   window.ArtistGallery={render,clear,mount(uid){return mountSlot(slots.get(uid));},pin(uid,value){if(value)pinned.add(uid);else pinned.delete(uid);},visible(){return [...mounted.values()];}};
 })();
+

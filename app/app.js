@@ -174,9 +174,13 @@
     $('history-date').value=data.cutoffDate;
     $('save-large').checked=data.saveLargeImages===true;
     $('work-order').value=data.workOrder;
-    $('categories').replaceChildren(...['全部',...data.categories,'待判断'].map(c=>{const n=data.artists.filter(a=>c==='全部'||(c==='待判断'?!a.category:a.category===c)).length;const b=btn(c,()=>{state.category=c;render();},c===state.category?'active':'');b.setAttribute('aria-pressed',String(c===state.category));b.append(el('span','n',n));return b;}));
+    /* 分类计数一趟走完：原来是每个分类各过滤一遍全部画师，八个分类就是八趟。 */
+    const counts=new Map([['全部',data.artists.length],['待判断',0]]);for(const c of data.categories)counts.set(c,0);
+    for(const a of data.artists){if(a.category&&counts.has(a.category))counts.set(a.category,counts.get(a.category)+1);else if(!a.category)counts.set('待判断',counts.get('待判断')+1);}
+    $('categories').replaceChildren(...['全部',...data.categories,'待判断'].map(c=>{const b=btn(c,()=>{state.category=c;render();},c===state.category?'active':'');b.setAttribute('aria-pressed',String(c===state.category));b.append(el('span','n',counts.get(c)||0));return b;}));
     $('tags').replaceChildren(...data.tags.map(t=>{const b=btn(t,()=>{state.tags.has(t)?state.tags.delete(t):state.tags.add(t);render();},state.tags.has(t)?'active':'');b.setAttribute('aria-pressed',String(state.tags.has(t)));return b;}));
-    const rows=data.artists.filter(a=>(state.category==='全部'||(state.category==='待判断'?!a.category:a.category===state.category))&&[...state.tags].every(t=>a.tags.includes(t))&&a.name.toLowerCase().includes(state.query));
+    const activeTags=[...state.tags];
+    const rows=data.artists.filter(a=>(state.category==='全部'||(state.category==='待判断'?!a.category:a.category===state.category))&&activeTags.every(t=>a.tags.includes(t))&&a.name.toLowerCase().includes(state.query));
     if(draft&&!editingId)rows.push(draft);
     const gallery=$('gallery');gallery.classList.add('is-refreshing');ArtistGallery.render(gallery,rows,card);clearTimeout(refreshTimer);refreshTimer=setTimeout(()=>gallery.classList.remove('is-refreshing'),260);
     $('count').textContent=`找到 ${rows.length} / ${data.artists.length} 位 · 连续滚动，按需加载${state.tags.size>1?' · 同时包含所选标签':''}`;$('empty').hidden=rows.length!==0;

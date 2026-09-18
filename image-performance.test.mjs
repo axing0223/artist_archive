@@ -62,6 +62,44 @@ test('编辑中的卡片被钉住后滚出视野也不释放，取消钉住即�
   observers[0].fn([{target:gallery.children[0],isIntersecting:false}]);
   assert.equal(window.ArtistGallery.visible().length,0,'取消钉住后正常释放');
 });
+test('同一批画师重绘时不重建占位，只重画已挂载的卡片',async()=>{
+  const observers=[];let built=0,created=0;
+  class Element{constructor(){created++;this.style={};this.dataset={};this.children=[];}append(child){this.children.push(child);}replaceChildren(...nodes){this.children=nodes;}getBoundingClientRect(){return {height:320};}}
+  class IO{constructor(fn){this.fn=fn;observers.push(this);}observe(){}disconnect(){}}
+  class RO{observe(){}unobserve(){}disconnect(){}}
+  const window={innerWidth:1200},context={window,document:{createElement:()=>new Element()},IntersectionObserver:IO,ResizeObserver:RO,ArtistImages:{dispose(){}}};
+  vm.runInNewContext(await fs.readFile('app/virtual-gallery.js','utf8'),context);
+  const gallery=new Element(),rows=[{uid:'a',n:1},{uid:'b',n:1}];
+  window.ArtistGallery.render(gallery,rows,()=>{built++;return new Element();});
+  observers[0].fn(rows.map((row,i)=>({target:gallery.children[i],isIntersecting:true})));
+  assert.equal(built,2,'两张都挂载了');
+  const slotsBefore=gallery.children.slice(),builtBefore=built,observerCount=observers.length;
+  window.ArtistGallery.render(gallery,[{uid:'a',n:2},{uid:'b',n:2}],()=>{built++;return new Element();});
+  assert.equal(gallery.children.length,2,'占位数量不变');
+  assert.equal(gallery.children[0],slotsBefore[0],'占位对象要复用，不能重建——重建会连整棵布局树一起丢掉');
+  assert.equal(gallery.children[1],slotsBefore[1]);
+  assert.equal(observers.length,observerCount,'不该重建观察器');
+  assert.equal(built,builtBefore+2,'已挂载的卡片要重画，内容才会更新');
+  assert.equal(window.ArtistGallery.visible().map(artist=>artist.n).join(','),'2,2','挂载记录要指向新对象');
+});
+test('画师增减或换序时才重建占位',async()=>{
+  const observers=[];let created=0;
+  class Element{constructor(){created++;this.style={};this.dataset={};this.children=[];}append(child){this.children.push(child);}replaceChildren(...nodes){this.children=nodes;}getBoundingClientRect(){return {height:320};}}
+  class IO{constructor(fn){this.fn=fn;observers.push(this);}observe(){}disconnect(){}}
+  class RO{observe(){}unobserve(){}disconnect(){}}
+  const window={innerWidth:1200},context={window,document:{createElement:()=>new Element()},IntersectionObserver:IO,ResizeObserver:RO,ArtistImages:{dispose(){}}};
+  vm.runInNewContext(await fs.readFile('app/virtual-gallery.js','utf8'),context);
+  const gallery=new Element();
+  window.ArtistGallery.render(gallery,[{uid:'a'},{uid:'b'}],()=>new Element());
+  const first=gallery.children[0];
+  window.ArtistGallery.render(gallery,[{uid:'a'},{uid:'b'},{uid:'c'}],()=>new Element());
+  assert.equal(gallery.children.length,3,'多了一位要重建');
+  assert.notEqual(gallery.children[0],first);
+  const before=gallery.children.slice();
+  window.ArtistGallery.render(gallery,[{uid:'b'},{uid:'a'},{uid:'c'}],()=>new Element());
+  assert.notEqual(gallery.children[0],before[0],'换了顺序也要重建，否则占位与画师对不上');
+  assert.equal(gallery.children[0].dataset.uid,'b');
+});
 test('查看器里缩略图换成原图时做交叉淡入，中途不清空已显示的图',async()=>{
   const observers=[],animations=[],revoked=[];
   class IO{constructor(fn){this.fn=fn;observers.push(this);}observe(){}unobserve(){}}
