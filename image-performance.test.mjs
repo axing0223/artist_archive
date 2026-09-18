@@ -43,6 +43,25 @@ test('原图只有在线地址时经扩展取回，同一张第二次直接命�
   api.dispose('viewer');api.bind(img,'0001-a-1',work,'viewer','large');observers[0].fn([{target:img,isIntersecting:true}]);await new Promise(r=>setImmediate(r));
   assert.equal(requested.length,1,'缓存命中后不再请求扩展');
 });
+test('编辑中的卡片被钉住后滚出视野也不释放，取消钉住即恢复',async()=>{
+  const observers=[],disposed=[];let built=0;
+  class Element{constructor(){this.style={};this.dataset={};this.children=[];}append(child){this.children.push(child);}replaceChildren(...nodes){this.children=nodes;}getBoundingClientRect(){return {height:320};}}
+  class IO{constructor(fn){this.fn=fn;observers.push(this);}observe(){}disconnect(){}}
+  class RO{observe(){}unobserve(){}disconnect(){}}
+  const window={innerWidth:1200},context={window,document:{createElement:()=>new Element()},IntersectionObserver:IO,ResizeObserver:RO,ArtistImages:{dispose:id=>disposed.push(id)}};
+  vm.runInNewContext(await fs.readFile('app/virtual-gallery.js','utf8'),context);
+  const gallery=new Element(),rows=[{uid:'a'},{uid:'b'}];
+  window.ArtistGallery.render(gallery,rows,()=>{built++;return new Element();});
+  observers[0].fn(rows.map((row,i)=>({target:gallery.children[i],isIntersecting:true})));
+  assert.equal(built,2);
+  window.ArtistGallery.pin('a',true);
+  observers[0].fn(rows.map((row,i)=>({target:gallery.children[i],isIntersecting:false})));
+  assert.equal(window.ArtistGallery.visible().length,1,'钉住的卡片要留着，否则编辑到一半就被卸载');
+  assert.deepEqual(disposed,['card:b'],'只释放没被钉住的那张');
+  window.ArtistGallery.pin('a',false);
+  observers[0].fn([{target:gallery.children[0],isIntersecting:false}]);
+  assert.equal(window.ArtistGallery.visible().length,0,'取消钉住后正常释放');
+});
 test('连接通道只接受本地画师库顶层页面，不接受网站或其他扩展',()=>{
   const s={id:'this-extension',tab:{id:1},frameId:0,url:'file:///F:/test/'+encodeURIComponent('画师库.html')};assert.equal(allowedSender(s,'this-extension'),true);
   for(const override of [{frameId:1},{id:'other'},{url:'https://evil.example/画师库.html'},{url:'file:///F:/other.html'}])assert.equal(allowedSender({...s,...override},'this-extension'),false);
