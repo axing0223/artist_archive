@@ -21,6 +21,8 @@
 .settings-body{gap:0}.setting-row{display:flex;gap:16px;align-items:flex-start;justify-content:space-between;padding:14px 0;border-bottom:1px solid #eef0f4}.setting-row:last-child{border-bottom:0;padding-bottom:0}.setting-row strong{display:block;font-size:14px;margin-bottom:5px}.setting-row .field-help{margin:0}.setting-row>button{flex-shrink:0}.setting-row input[type=date]{width:auto;min-width:160px}.switch{position:relative;display:inline-flex;flex-shrink:0;margin-top:2px}.switch input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer}.switch span{display:block;width:46px;height:26px;border-radius:13px;background:#d5d9e2;transition:background .2s}.switch span::after{content:'';position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px #0003;transition:transform .2s}.switch input:checked+span{background:var(--accent)}.switch input:checked+span::after{transform:translateX(20px)}
 .size-control{display:flex;align-items:center;gap:10px;flex-shrink:0}.size-control input[type=range]{width:180px;padding:0;border:0;background:none;accent-color:var(--accent)}.size-control span{font-size:13px;color:#788496;min-width:38px;text-align:right}
 .works{grid-template-columns:repeat(auto-fill,minmax(var(--card-size,220px),1fr))}.thumb{height:var(--card-size,220px)}
+.work.is-test{position:relative}.work.is-test::after{content:'测试风格';position:absolute;top:0;left:0;z-index:1;background:#e08b1f;color:#fff;font-size:11px;line-height:1;padding:4px 7px;border-radius:7px 0 7px 0}
+.test-preview{display:flex;flex-direction:column;gap:6px}.test-row{display:flex;align-items:baseline;gap:10px;font-size:13px;padding:6px 10px;border:1px solid #e6e9f0;border-radius:7px;background:#f8faff}.test-row .test-seq{font-family:ui-monospace,Consolas,monospace;color:#375af5}.test-row strong{font-size:13px}.test-row small{color:#788496;overflow-wrap:anywhere}
 #viewer{width:min(1600px,96vw);max-width:96vw;max-height:96vh}.viewer-image{padding:12px;min-height:120px;overflow:auto}.viewer-image img{max-width:100%;max-height:calc(96vh - 160px);width:auto;height:auto;min-height:0;object-fit:contain}
 </style>
 
@@ -31,7 +33,7 @@
   <header class="top"><a class="brand" href="#"><span class="brand-mark">画</span> 画师分类</a><div class="header-actions"><button id="extension-status" class="action">检测图片助手…</button><button id="choose-folder" class="action" title="选择或切换数据文件夹">数据库文件夹</button><button id="settings-open" class="action" title="设置">设置</button></div></header>
   <main>
     <div class="heading"><div><p class="eyebrow">ARTIST INDEX</p><h1>从作品，找到画风。</h1><p class="intro" id="library-summary">正在打开画师库…</p></div><label class="search"><span>搜索画师</span><input id="search" type="search" placeholder="输入画师名字" autocomplete="off"></label></div>
-    <div class="toolbar"><button id="add-artist" class="action primary-action">＋ 添加画师</button><button id="manage-tags" class="action">管理标签</button><button id="batch-artists" class="action">批量导入名字</button><span class="toolbar-spacer"></span><button id="export-data" class="action">导出备份</button><button id="import-data" class="action">导入备份</button><input id="import-file" type="file" accept=".json" hidden></div>
+    <div class="toolbar"><button id="add-artist" class="action primary-action">＋ 添加画师</button><button id="manage-tags" class="action">管理标签</button><button id="batch-artists" class="action">批量导入名字</button><button id="test-import-open" class="action">导入测试风格图</button><span class="toolbar-spacer"></span><button id="export-data" class="action">导出备份</button><button id="import-data" class="action">导入备份</button><input id="import-file" type="file" accept=".json" hidden></div>
     <div class="storage-line"><span id="storage-status" role="status">正在读取保存的数据…</span><span id="folder-name">点击顶部「数据库文件夹」，选择已有数据目录或空文件夹。</span></div>
     <section class="filters" aria-label="分类筛选"><div id="categories" class="categories"></div><div class="tag-line"><span class="filter-label">画面感觉</span><div id="tags" class="tags"></div><button id="reset" class="reset">清除筛选</button></div></section>
     <div class="result-line"><p id="count" aria-live="polite"></p><details><summary>使用与取样说明</summary><div id="method"></div></details></div>
@@ -40,7 +42,15 @@
     
     <section id="quick-add" class="quick-add" aria-labelledby="quick-title"><div class="quick-icon" aria-hidden="true">＋</div><div class="quick-body"><h2 id="quick-title">添加下一位画师</h2><form id="quick-form" class="inline-form"><input id="quick-input" aria-label="画师 ID 或主页 URL" placeholder="输入画师标签，或粘贴 Pixiv / X / Danbooru 画师主页 URL" autocomplete="off" maxlength="1200"><button id="quick-search" class="action primary-action">识别画师</button></form><p class="field-help">停下输入后自动查询 Danbooru。纯数字按 Danbooru 画师编号查询；Pixiv ID 请粘贴完整主页链接。</p><p id="quick-status" role="status" aria-live="polite">输入标签或链接，识别后点击候选画师添加。</p><div id="quick-results"></div><div class="quick-fallback"><a id="quick-site" target="_blank" rel="noopener noreferrer" hidden>打开 Danbooru 站内检索 ↗</a><button id="quick-manual" type="button" class="reset">不联网，手动填写</button></div></div></section>
     <footer><span>本地编辑，不调用 AI；修改自动写入数据文件夹。</span><span id="sample-date"></span></footer>
-  </main><dialog id="settings" class="small-dialog" aria-labelledby="settings-title"><div class="viewer-bar"><h2 id="settings-title">设置</h2><button id="close-settings" type="button">关闭 ×</button></div><div class="form-body settings-body">
+  </main><dialog id="test-import" class="small-dialog" aria-labelledby="test-import-title"><div class="viewer-bar"><h2 id="test-import-title">批量导入测试风格图片</h2><button id="close-test-import" type="button">关闭 ×</button></div><div class="form-body">
+    <p class="field-help">选择多张图片并指定起始画师序号：第 1 张给该序号的画师，第 2 张给下一位，依次类推，每位画师最多 1 张。测试风格图片会和作品图放在一起，但始终排在作品后面显示，并在卡片上带「测试风格」角标。</p>
+    <label class="action upload-label">选择图片<input id="test-files" type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif" multiple hidden></label>
+    <p id="test-files-info" class="field-help">还没有选择图片。</p>
+    <label>起始画师序号<input id="test-start" type="number" min="1" step="1" placeholder="例如 3"></label>
+    <div id="test-preview" class="test-preview"></div>
+    <p id="test-message" class="field-help" role="status"></p>
+  </div><div class="form-footer"><button id="test-cancel" type="button" class="action">取消</button><button id="test-run" type="button" class="action primary-action">开始导入</button></div></dialog>
+  <dialog id="settings" class="small-dialog" aria-labelledby="settings-title"><div class="viewer-bar"><h2 id="settings-title">设置</h2><button id="close-settings" type="button">关闭 ×</button></div><div class="form-body settings-body">
     <div class="setting-row"><div><strong>数据截至日期</strong><p class="field-help">统计「截至日期数量」时使用的日期，默认 2026-07-01。更改后已读取的数量保持不变，要点对应画师卡片上的「刷新」才会更新。</p></div><input id="history-date" type="date" value="2026-07-01" required></div>
     <div class="setting-row"><div><strong>保存大图</strong><p class="field-help">开启后，点开作品预览时会把这件作品的原图保存进画师目录的「大图」文件夹，之后预览直接读本地、不再联网，也能离线查看。关闭时原图只在本次预览中临时加载，关掉即释放。</p></div><label class="switch"><input id="save-large" type="checkbox"><span></span></label></div>
     <div class="setting-row"><div><strong>预览图尺寸</strong><p class="field-help">调整主页面每位画师的作品预览图大小，每行显示几位画师会跟着自动变化；设置会记住。识别画师与编辑页的作品列表另有各自的「预览大小」滑动条。</p></div><div class="size-control"><input id="card-size" type="range" min="140" max="360" step="20" value="220"><span id="card-size-value">220</span></div></div>
@@ -185,6 +195,10 @@
   }
   const okImage=value=>value==null||(typeof value==='string'&&(imagePathPattern.test(value)||inlinePattern.test(value)||remotePattern.test(value)));
   function validWork(w){return !!w&&typeof w==='object'&&IMAGE_KINDS.every(kind=>okImage(w[kind])&&okImage(w[kind+'Url']))&&okImage(w.previewUrl);}
+  function previewWorks(artist,limit=5){
+    const works=Array.isArray(artist?.works)?artist.works:[],tests=works.filter(w=>w.kind==='test'),normals=works.filter(w=>w.kind!=='test'),keep=tests.slice(0,limit);
+    return [...normals.slice(0,Math.max(0,limit-keep.length)),...keep];
+  }
   function imageOf(work,size){
     if(!work||!SIZES.includes(size))return null;
     const file=work[size],url=work[size+'Url'];
@@ -294,7 +308,7 @@
     for(const oldUid of moved.values())if(ArtistId.valid(oldUid)&&!ids.has(oldUid))try{await artists.removeEntry(oldUid,{recursive:true});}catch(error){warn('旧目录 '+oldUid+' 删除失败（'+error.message+'）');}
     return result;
   }
-  root.FolderStore={read,write,readImage,saveImage,imageOf,validWork,exportTo,remember,empty,takeWarnings,IMAGE_KINDS,SIZES,FOLDER_OF,MAX_IMAGE_BYTES};
+  root.FolderStore={read,write,readImage,saveImage,imageOf,previewWorks,validWork,exportTo,remember,empty,takeWarnings,IMAGE_KINDS,SIZES,FOLDER_OF,MAX_IMAGE_BYTES};
   if(typeof module!=='undefined')module.exports=root.FolderStore;
 })(globalThis);
 </script><script>(() => {
@@ -466,7 +480,7 @@
       const danbooruId=Number.isSafeInteger(a.danbooruId)&&a.danbooruId>0?a.danbooruId:null,stored=text(a.uid,100);
       const id=ArtistId.valid(stored)&&!ids.has(stored)?stored:ArtistId.issue(issued,{name,danbooruId});
       ids.add(id);issued.push({uid:id});
-      const works=a.works.map(w=>{if(!FolderStore.validWork(w))throw Error(name+' 的图片格式或本地路径无效。');return {id:text(String(w.id??''),100),url:url(w.url),caption:text(w.caption),thumb:imageValue(w.thumb),thumbUrl:httpsValue(w.thumbUrl),previewUrl:httpsValue(w.previewUrl),large:imageValue(w.large),largeUrl:httpsValue(w.largeUrl)};});
+      const works=a.works.map(w=>{if(!FolderStore.validWork(w))throw Error(name+' 的图片格式或本地路径无效。');return {id:text(String(w.id??''),100),url:url(w.url),caption:text(w.caption),thumb:imageValue(w.thumb),thumbUrl:httpsValue(w.thumbUrl),previewUrl:httpsValue(w.previewUrl),large:imageValue(w.large),largeUrl:httpsValue(w.largeUrl),...(w.kind==='test'?{kind:'test'}:{})};});
       const c=a.counts||{},number=n=>Number.isSafeInteger(n)&&n>=0?n:null;
       return {uid:id,order:i+1,name,category:a.category||null,tags:unique(a.tags||[]).map(t=>t.slice(0,40)),danbooruId,counts:{total:number(c.total),checkedAt:text(c.checkedAt,40),beforeDate:text(c.beforeDate,10),beforeTotal:number(c.beforeTotal)},artistUrl:url(a.artistUrl),description:text(a.description),note:text(a.note),basis:text(a.basis,100),status:text(a.status,100),works};
     });
@@ -571,7 +585,7 @@
     numbers.append(el('span','serial',String(seqOf(a)).padStart(4,'0')),countLabel,refresh);top.append(numbers);info.append(top,el('h2','',a.name),el('span',a.category?'primary':'pending-badge',a.category||'待判断'));
     if(a.basis)info.append(el('span','basis',a.basis));const ts=el('div','secondary');a.tags.forEach(t=>ts.append(el('span','',t)));info.append(ts,el('p','description',a.description||'点击编辑，记录画风和特点。'));const actions=el('div','artist-actions');if(a.artistUrl)actions.append(link('画师页面 ↗',a.artistUrl,'artist-link'));actions.append(btn('编辑',()=>edit(a),'edit-button'));info.append(actions);
     const works=el('div','works');if(!a.works.length){const empty=el('div','unavailable');empty.append(el('strong','',a.status||'还没有作品图片'),el('span','',a.note||'编辑画师，上传你想参考的作品。'));works.append(empty);}
-    a.works.slice(0,5).forEach((w,i)=>{const figure=el('figure','work'),b=btn('',()=>showImage(a,w),'thumb'),img=el('img');b.setAttribute('aria-label',`查看 ${a.name} 的作品 ${i+1}`);img.alt=a.name+' 的作品';ArtistImages.bind(img,a.uid,w,'card:'+a.uid,'thumb');b.append(img);const caption=el('figcaption');caption.append(el('span','',w.id?'#'+w.id:'作品 '+(i+1)));if(w.url)caption.append(link('来源 ↗',w.url));figure.append(b,caption);works.append(figure);});
+    FolderStore.previewWorks(a).forEach((w,i)=>{const figure=el('figure','work'),b=btn('',()=>showImage(a,w),'thumb'),img=el('img');if(w.kind==='test')figure.classList.add('is-test');b.setAttribute('aria-label',`查看 ${a.name} 的${w.kind==='test'?'测试风格图片':'作品 '+(i+1)}`);img.alt=a.name+' 的作品';ArtistImages.bind(img,a.uid,w,'card:'+a.uid,'thumb');b.append(img);const caption=el('figcaption');caption.append(el('span','',w.kind==='test'?'测试风格':w.id?'#'+w.id:'作品 '+(i+1)));if(w.url)caption.append(link('来源 ↗',w.url));figure.append(b,caption);works.append(figure);});
     if(a.works.length)works.append(el('p','sample-note',a.works.length+' 张图片'+(a.works.length>5?' · 卡片预览前 5 张，编辑可查看全部':'')+(a.note?' · '+a.note:'')));article.append(info,works);return article;
   }
   function render(){
@@ -588,7 +602,7 @@
     $('editor-tags').replaceChildren(...unique([...data.tags,...draft.tags]).map(t=>{const l=el('label','tag-choice'),c=el('input');c.type='checkbox';c.checked=draft.tags.includes(t);c.onchange=()=>{draft.tags=c.checked?unique([...draft.tags,t]):draft.tags.filter(x=>x!==t);};l.append(c,el('span','',t));return l;}));
   }
   function workEditor(){
-    ArtistImages.dispose('editor');$('editor-works').replaceChildren(...draft.works.map((w,i)=>{const row=el('div','work-editor'),img=el('img'),fields=el('div','work-fields');img.alt='作品 '+(i+1);ArtistImages.bind(img,draft.uid,w,'editor','thumb');const local=FolderStore.imageOf(w,'large')?.kind==='local';fields.append(el('small','work-state',local?'已存原图':'点开时临时加载原图，不保存'));for(const [key,title,type] of [['url','作品来源链接','url'],['caption','图片说明','text']]){const label=el('label','',title),input=el('input');input.type=type;input.value=w[key]||'';input.maxLength=5000;input.oninput=()=>w[key]=input.value;label.append(input);fields.append(label);}row.append(img,fields,btn('移除',()=>{draft.works.splice(i,1);workEditor();},'danger'));return row;}));
+    ArtistImages.dispose('editor');$('editor-works').replaceChildren(...draft.works.map((w,i)=>{const row=el('div','work-editor'),img=el('img'),fields=el('div','work-fields');img.alt='作品 '+(i+1);ArtistImages.bind(img,draft.uid,w,'editor','thumb');const local=FolderStore.imageOf(w,'large')?.kind==='local';fields.append(el('small','work-state',(w.kind==='test'?'测试风格 · ':'')+(local?'已存原图':'点开时临时加载原图，不保存')));for(const [key,title,type] of [['url','作品来源链接','url'],['caption','图片说明','text']]){const label=el('label','',title),input=el('input');input.type=type;input.value=w[key]||'';input.maxLength=5000;input.oninput=()=>w[key]=input.value;label.append(input);fields.append(label);}row.append(img,fields,btn('移除',()=>{draft.works.splice(i,1);workEditor();},'danger'));return row;}));
   }
   function edit(a){
     if(busy)return;editingId=a?.uid||null;draft=a?clone(a):{uid:uid(),name:'',category:null,tags:[],artistUrl:'',description:'',note:'',works:[]};
@@ -672,6 +686,44 @@
     for(const name of names){if(seen.has(name.toLowerCase()))continue;seen.add(name.toLowerCase());if(next.artists.length>=20000){$('batch-message').textContent='最多支持 20,000 位画师。';return;}next.artists.push({uid:ArtistId.issue(next.artists,{name}),order:next.artists.length+1,name,category:null,tags:[],artistUrl:'https://danbooru.donmai.us/posts?tags='+encodeURIComponent(name),description:'',note:'',works:[]});count++;}
     reset();await save(next,`已添加 ${count} 位，跳过 ${names.length-count} 个重复名字`);$('batch-dialog').close();
   }
+  let testFiles=[];
+  const testTargets=start=>data.artists.map(a=>({artist:a,seq:ArtistId.parse(a.uid)?.seq??0})).filter(item=>item.seq>=start).sort((x,y)=>x.seq-y.seq).slice(0,testFiles.length);
+  function refreshTestImport(){
+    const start=Number($('test-start').value),preview=$('test-preview'),message=$('test-message');
+    $('test-files-info').textContent=testFiles.length?`已选择 ${testFiles.length} 张图片。`:'还没有选择图片。';
+    if(!testFiles.length||!Number.isSafeInteger(start)||start<1){preview.replaceChildren();message.textContent='';return;}
+    const targets=testTargets(start);
+    preview.replaceChildren(...targets.map((item,i)=>{const row=el('div','test-row');row.append(el('span','test-seq',String(item.seq).padStart(4,'0')),el('strong','',item.artist.name),el('small','',testFiles[i].name));return row;}));
+    const rest=testFiles.length-targets.length;
+    message.textContent=targets.length?`将依次分配给 ${targets.length} 位画师${rest>0?`；后面没有更多画师，剩余 ${rest} 张会跳过`:''}。`:'这个序号之后没有画师，请检查序号。';
+  }
+  async function runTestImport(){
+    if(busy||!testFiles.length)return;
+    const start=Number($('test-start').value),message=$('test-message');
+    if(!Number.isSafeInteger(start)||start<1){message.textContent='请填写有效的起始序号。';return;}
+    const targets=testTargets(start);
+    if(!targets.length){message.textContent='这个序号之后没有画师，请检查序号。';return;}
+    $('test-run').disabled=true;
+    try{
+      const next=clone(data);let done=0;
+      for(let i=0;i<targets.length;i++){
+        const file=testFiles[i];message.textContent=`正在处理第 ${i+1} / ${targets.length} 张…`;
+        if(!['image/jpeg','image/png','image/webp','image/gif','image/avif'].includes(file.type)||file.size>50*1024*1024)throw Error(file.name+'：只支持不超过 50 MB 的 JPG、PNG、WebP、GIF 或 AVIF。');
+        const original=await readImage(file),target=next.artists.find(a=>a.uid===targets[i].artist.uid);
+        if(!target)continue;
+        target.works.push({id:'',url:'',caption:'',kind:'test',thumb:await thumbnail(original),large:original,thumbUrl:null,largeUrl:null});
+        done++;
+      }
+      await save(next,`已为 ${done} 位画师导入测试风格图片`);
+      message.textContent=`完成：${done} 张测试风格图片已导入，各自排在作品图之后。`;
+      testFiles=[];$('test-files').value='';$('test-preview').replaceChildren();$('test-files-info').textContent='还没有选择图片。';
+    }catch(error){message.textContent='导入失败：'+error.message;}
+    finally{$('test-run').disabled=false;}
+  }
+  function openTestImport(){
+    testFiles=[];$('test-files').value='';$('test-start').value='';$('test-preview').replaceChildren();$('test-message').textContent='';
+    refreshTestImport();$('test-import').showModal();
+  }
   let lookupTimer,lookupController,lookupSequence=0;
   async function checkExtension(){try{const version=await ArtistExtension.check();$('extension-status').textContent='图片助手已连接 · '+version;$('extension-status').title='扩展取图可用';ArtistImages.clear();}catch(error){$('extension-status').textContent='图片助手未连接 · 点击重试';$('extension-status').title=error.message;status(error.message,true);}}
   async function cacheWorks(id,works){
@@ -747,6 +799,8 @@
   async function init(){
     applyCardSize();
     data=normalize(FolderStore.empty());status('请先选择「数据」文件夹，读取或开始整理画师库。');
+    $('test-import-open').onclick=openTestImport;$('close-test-import').onclick=()=>$('test-import').close();$('test-cancel').onclick=()=>$('test-import').close();
+    $('test-files').onchange=e=>{testFiles=[...e.target.files];refreshTestImport();};$('test-start').oninput=refreshTestImport;$('test-run').onclick=runTestImport;
     $('settings-open').onclick=()=>{$('history-date').value=data.cutoffDate;$('save-large').checked=data.saveLargeImages===true;$('card-size').value=String(prefs.cardSize);$('card-size-value').textContent=prefs.cardSize;$('settings').showModal();};$('close-settings').onclick=()=>$('settings').close();
     $('card-size').oninput=()=>{const value=Number($('card-size').value);$('card-size-value').textContent=value;prefs.setCardSize(value);};
     $('save-large').onchange=async()=>{const next=clone(data);next.saveLargeImages=$('save-large').checked;await save(next,next.saveLargeImages?'已开启「保存大图」：预览作品时会保存原图':'已关闭「保存大图」：预览作品时不再保存原图');};

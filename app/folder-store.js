@@ -26,6 +26,10 @@
   }
   const okImage=value=>value==null||(typeof value==='string'&&(imagePathPattern.test(value)||inlinePattern.test(value)||remotePattern.test(value)));
   function validWork(w){return !!w&&typeof w==='object'&&IMAGE_KINDS.every(kind=>okImage(w[kind])&&okImage(w[kind+'Url']))&&okImage(w.previewUrl);}
+  function previewWorks(artist,limit=5){
+    const works=Array.isArray(artist?.works)?artist.works:[],tests=works.filter(w=>w.kind==='test'),normals=works.filter(w=>w.kind!=='test'),keep=tests.slice(0,limit);
+    return [...normals.slice(0,Math.max(0,limit-keep.length)),...keep];
+  }
   function imageOf(work,size){
     if(!work||!SIZES.includes(size))return null;
     const file=work[size],url=work[size+'Url'];
@@ -135,6 +139,6 @@
     for(const oldUid of moved.values())if(ArtistId.valid(oldUid)&&!ids.has(oldUid))try{await artists.removeEntry(oldUid,{recursive:true});}catch(error){warn('旧目录 '+oldUid+' 删除失败（'+error.message+'）');}
     return result;
   }
-  root.FolderStore={read,write,readImage,saveImage,imageOf,validWork,exportTo,remember,empty,takeWarnings,IMAGE_KINDS,SIZES,FOLDER_OF,MAX_IMAGE_BYTES};
+  root.FolderStore={read,write,readImage,saveImage,imageOf,previewWorks,validWork,exportTo,remember,empty,takeWarnings,IMAGE_KINDS,SIZES,FOLDER_OF,MAX_IMAGE_BYTES};
   if(typeof module!=='undefined')module.exports=root.FolderStore;
 })(globalThis);

@@ -106,6 +106,28 @@ test('识别区按页取作品，每张都带缩略图与原图地址，无效�
  await assert.rejects(posts('a',{fetcher:async()=>({ok:false,status:429})}),/频繁/);
  await assert.rejects(posts('a',{fetcher:async()=>({ok:true,json:async()=>({})})}),/未返回作品/);
 });
+test('测试风格图片排在作品之后，且不会被作品挤出卡片预览',()=>{
+ const works=[1,2,3,4,5,6].map(n=>({id:String(n)}));
+ const artist={works:[...works,{id:'',kind:'test'}]};
+ const shown=store.previewWorks(artist);
+ assert.equal(shown.length,5);
+ assert.equal(shown[4].kind,'test','测试风格图片固定在最后一位');
+ assert.deepEqual(shown.slice(0,4).map(w=>w.id),['1','2','3','4'],'为了让出位置，作品少显示一张');
+ assert.deepEqual(store.previewWorks({works}).map(w=>w.id),['1','2','3','4','5'],'没有测试图时照旧显示前 5 张作品');
+ const many={works:[...works,{id:'',kind:'test'},{id:'',kind:'test'},{id:'',kind:'test'},{id:'',kind:'test'},{id:'',kind:'test'},{id:'',kind:'test'}]};
+ assert.equal(store.previewWorks(many).filter(w=>w.kind==='test').length,5,'测试图最多占满 5 个位置');
+ assert.equal(store.previewWorks(many)[0].kind,'test','作品让位后全部是测试图');
+ assert.deepEqual(store.previewWorks({works:[]}),[]);
+});
+test('测试风格图片的标记随数据保存、导出与恢复',async()=>{
+ const dir=new Directory();
+ await store.write(dir,{version:1,tags:[],artists:[{uid:'0001-a',name:'a',works:[{id:'1',thumb:png},{id:'',thumb:png,kind:'test'}]}]});
+ const restored=await store.read(dir);
+ assert.equal(restored.artists[0].works.length,2);
+ assert.equal(restored.artists[0].works[1].kind,'test','标记不能在保存后丢失');
+ const chunks=[];await store.exportTo(dir,restored,{write:async s=>chunks.push(s)});
+ assert.equal(JSON.parse(chunks.join('')).artists[0].works[1].kind,'test','导出备份也要带上标记');
+});
 test('主分类列表随数据保存与读取，画师可引用自定义分类',async()=>{
  const dir=new Directory();
  await store.write(dir,{version:1,categories:['厚涂向','像素风'],tags:[],artists:[{uid:'0001-a',name:'a',category:'像素风',works:[]}]});
