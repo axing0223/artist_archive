@@ -93,6 +93,16 @@ test('没有备注时不留下空行',async()=>{
   const card=state.card(artist),works=card.children[1];
   assert.equal(works.children.filter(child=>child.className==='sample-note').length,0);
 });
+test('编辑态的三个操作按钮集中在同一个容器里，顺序为保存、取消、删除',async()=>{
+  const {elements,state}=await boot();
+  elements.get('add-artist').onclick();
+  const card=lastRender(state)[0];
+  const findClass=(node,cls)=>{if(String(node.className).includes(cls))return node;for(const child of node.children||[]){const hit=findClass(child,cls);if(hit)return hit;}return null;};
+  const actions=findClass(card,'artist-actions');
+  assert.ok(actions,'编辑态卡片应有操作区');
+  assert.deepEqual(actions.children.map(child=>child.textContent),['保存','取消','删除画师'],'三个按钮要在同一个容器里依次排列');
+  assert.equal(actions.children[0].className.includes('primary-action'),true,'保存是主操作');
+});
 test('编辑已有画师时，卡片渲染成编辑态而不是浏览态',async()=>{
   const {elements,state}=await boot();
   elements.get('add-artist').onclick();
