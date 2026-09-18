@@ -13,6 +13,7 @@ class El{
     };
     this.hidden=false;this.value='';this.type='';this.checked=false;this.title='';this.placeholder='';this.href='';this.disabled=false;
     this.onclick=null;this.oninput=null;this.onchange=null;this.onerror=null;this.onload=null;
+    this.showModal=()=>{};this.close=()=>{};
   }
   get textContent(){return this._text;}
   set textContent(value){this._text=value==null?'':String(value);this.children=[];}
@@ -182,6 +183,26 @@ test('取消编辑：改动不写入数据',async()=>{
   await wait(180);
   assert.equal(state.rows.length,1);
   assert.equal(state.rows[0].name,'原名字','取消后应保留原值');
+});
+test('重排时给画廊加临时标记，标记过后滚动挂载的卡片不再重复淡入',async()=>{
+  const {elements}=await boot();
+  const gallery=elements.get('gallery');
+  assert.equal(String(gallery.className).includes('is-refreshing'),true,'渲染后应带上重排标记');
+  await wait(340);
+  assert.equal(String(gallery.className).includes('is-refreshing'),false,'标记会自动移除，之后滚动加载的卡片不再播动画');
+});
+test('删除分类也走按钮二次确认，不再弹系统对话框',async()=>{
+  const {elements,state}=await boot();
+  elements.get('manage-tags').onclick();
+  const list=elements.get('category-list');
+  const findText=(node,label)=>{if(node._text===label)return node;for(const child of node.children||[]){const hit=findText(child,label);if(hit)return hit;}return null;};
+  const remove=findText(list,'删除');
+  assert.ok(remove,'分类列表里应有删除按钮');
+  const before=state.rows.length;
+  remove.onclick();
+  assert.equal(remove.textContent,'确认删除？','第一次点击只进入确认态');
+  assert.equal(String(remove.className).includes('is-armed'),true);
+  assert.equal(state.rows.length,before,'确认前不改动数据');
 });
 test('编辑已有画师时，卡片渲染成编辑态而不是浏览态',async()=>{
   const {elements,state}=await boot();

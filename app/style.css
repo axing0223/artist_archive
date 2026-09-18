@@ -59,7 +59,7 @@ dialog[open]::backdrop{opacity:1}
 .artist-expand{animation:panel-in .2s ease}
 @keyframes panel-in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 @keyframes fade-in{from{opacity:0}to{opacity:1}}
-.artist{animation:panel-in .2s ease}
+#gallery.is-refreshing .artist{animation:panel-in .2s ease}
 .pick img{transition:height .18s ease,opacity .25s ease}
 .thumb{transition:height .18s ease}
 .error{animation:fade-in .2s ease}

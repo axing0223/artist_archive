@@ -67,7 +67,7 @@ dialog[open]::backdrop{opacity:1}
 .artist-expand{animation:panel-in .2s ease}
 @keyframes panel-in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 @keyframes fade-in{from{opacity:0}to{opacity:1}}
-.artist{animation:panel-in .2s ease}
+#gallery.is-refreshing .artist{animation:panel-in .2s ease}
 .pick img{transition:height .18s ease,opacity .25s ease}
 .thumb{transition:height .18s ease}
 .error{animation:fade-in .2s ease}
@@ -554,7 +554,7 @@ dialog[open]::backdrop{opacity:1}
     const stored=Number(localStorage.getItem(PREF_KEY));if(Number.isFinite(stored)&&stored>=70&&stored<=220)prefs.thumbHeight=stored;
     const card=Number(localStorage.getItem(PREF_CARD));if(Number.isFinite(card)&&card>=140&&card<=360)prefs.cardSize=card;
   }catch{}
-  let data,folder,draft,editingId,busy=false,uploading=false,volatile=false,viewerRef=null;
+  let data,folder,draft,editingId,busy=false,uploading=false,volatile=false,viewerRef=null,refreshTimer=null;
   function normalize(raw,backup=false){
     if(!raw||!Array.isArray(raw.artists)||(backup&&raw.version!==1))throw Error('不是此网页导出的备份。');
     if(raw.artists.length>20000)throw Error('最多支持 20,000 位画师。');
@@ -708,7 +708,8 @@ dialog[open]::backdrop{opacity:1}
     $('tags').replaceChildren(...data.tags.map(t=>{const b=btn(t,()=>{state.tags.has(t)?state.tags.delete(t):state.tags.add(t);render();},state.tags.has(t)?'active':'');b.setAttribute('aria-pressed',String(state.tags.has(t)));return b;}));
     const rows=data.artists.filter(a=>(state.category==='全部'||(state.category==='待判断'?!a.category:a.category===state.category))&&[...state.tags].every(t=>a.tags.includes(t))&&a.name.toLowerCase().includes(state.query));
     if(draft&&!editingId)rows.push(draft);
-    ArtistGallery.render($('gallery'),rows,card);$('count').textContent=`找到 ${rows.length} / ${data.artists.length} 位 · 连续滚动，按需加载${state.tags.size>1?' · 同时包含所选标签':''}`;$('empty').hidden=rows.length!==0;
+    const gallery=$('gallery');gallery.classList.add('is-refreshing');ArtistGallery.render(gallery,rows,card);clearTimeout(refreshTimer);refreshTimer=setTimeout(()=>gallery.classList.remove('is-refreshing'),260);
+    $('count').textContent=`找到 ${rows.length} / ${data.artists.length} 位 · 连续滚动，按需加载${state.tags.size>1?' · 同时包含所选标签':''}`;$('empty').hidden=rows.length!==0;
     $('library-summary').textContent=`${data.artists.length} 位画师 · ${data.artists.reduce((n,a)=>n+a.works.length,0)} 张作品 · 由你自由整理`;$('sample-date').textContent=data.date?'初始样本日期：'+data.date:'';
   }
   let editorPicker=null,editorHost=null,editorError=null;
@@ -778,20 +779,21 @@ dialog[open]::backdrop{opacity:1}
     closeEditor();
     await save(next,'已删除画师');
   }
-  function removeButton(){
+  function confirmButton(label,armedLabel,onConfirm,cls='danger'){
     let armed=false,timer=null;
-    const button=btn('删除画师',async()=>{
+    const button=btn(label,async()=>{
       if(busy||uploading)return;
       if(!armed){
-        armed=true;button.textContent='再次点击确认删除';button.classList.add('is-armed');
-        timer=setTimeout(()=>{armed=false;button.textContent='删除画师';button.classList.remove('is-armed');},4000);
+        armed=true;button.textContent=armedLabel;button.classList.add('is-armed');
+        timer=setTimeout(()=>{armed=false;button.textContent=label;button.classList.remove('is-armed');},4000);
         return;
       }
-      clearTimeout(timer);
-      await removeArtist();
-    },'danger');
+      clearTimeout(timer);armed=false;
+      await onConfirm();
+    },cls);
     return button;
   }
+  const removeButton=()=>confirmButton('删除画师','再次点击确认删除',removeArtist);
   const readImage=file=>new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(Error('图片读取失败。'));reader.readAsDataURL(file);});
   const thumbnail=dataUrl=>new Promise((resolve,reject)=>{const img=new Image();img.onload=()=>{try{const scale=Math.min(1,400/Math.max(img.width,img.height)),c=document.createElement('canvas');c.width=Math.max(1,Math.round(img.width*scale));c.height=Math.max(1,Math.round(img.height*scale));const ctx=c.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height);ctx.drawImage(img,0,0,c.width,c.height);resolve(c.toDataURL('image/jpeg',.8));}catch{reject(Error('图片处理失败。'));}};img.onerror=()=>reject(Error('图片读取失败。'));img.src=dataUrl;});
   async function upload(e){
@@ -814,17 +816,16 @@ dialog[open]::backdrop{opacity:1}
         if(data.categories.includes(name)){alert('这个分类已存在。');return;}
         const next=clone(data);next.categories=next.categories.map(x=>x===c?name:x);next.artists.forEach(a=>{if(a.category===c)a.category=name;});if(state.category===c)state.category=name;
         await save(next);listCategories();
-      }),btn('删除',async()=>{
-        if(busy)return;const used=data.artists.filter(a=>a.category===c).length;
-        if(!confirm(`删除分类「${c}」？${used?'这 '+used+' 位画师会回到「待判断」，':''}画师和图片都会保留。`))return;
+      }),confirmButton('删除','确认删除？',async()=>{
+        const used=data.artists.filter(a=>a.category===c).length;
         const next=clone(data);next.categories=next.categories.filter(x=>x!==c);next.artists.forEach(a=>{if(a.category===c)a.category=null;});if(state.category===c)state.category='全部';
-        await save(next);listCategories();
-      },'danger'));
+        await save(next,used?`已删除分类「${c}」，${used} 位画师回到「待判断」`:`已删除分类「${c}」`);listCategories();
+      }));
       return row;
     }));
   }
   function listTags(){
-    $('tag-list').replaceChildren(...data.tags.map(t=>{const row=el('div','manage-tag-row'),input=el('input');input.value=t;input.maxLength=40;input.setAttribute('aria-label','重命名标签 '+t);row.append(input,btn('重命名',async()=>{if(busy)return;const name=input.value.trim();if(!name||name===t)return;if(data.tags.includes(name)){alert('这个标签已存在。');return;}const next=clone(data);next.tags=next.tags.map(x=>x===t?name:x);next.artists.forEach(a=>a.tags=a.tags.map(x=>x===t?name:x));if(state.tags.delete(t))state.tags.add(name);await save(next);listTags();}),btn('删除',async()=>{if(busy||!confirm(`删除标签「${t}」并从画师上移除？画师和图片会保留。`))return;const next=clone(data);next.tags=next.tags.filter(x=>x!==t);next.artists.forEach(a=>a.tags=a.tags.filter(x=>x!==t));state.tags.delete(t);await save(next);listTags();},'danger'));return row;}));
+    $('tag-list').replaceChildren(...data.tags.map(t=>{const row=el('div','manage-tag-row'),input=el('input');input.value=t;input.maxLength=40;input.setAttribute('aria-label','重命名标签 '+t);row.append(input,btn('重命名',async()=>{if(busy)return;const name=input.value.trim();if(!name||name===t)return;if(data.tags.includes(name)){alert('这个标签已存在。');return;}const next=clone(data);next.tags=next.tags.map(x=>x===t?name:x);next.artists.forEach(a=>a.tags=a.tags.map(x=>x===t?name:x));if(state.tags.delete(t))state.tags.add(name);await save(next);listTags();}),confirmButton('删除','确认删除？',async()=>{const used=data.artists.filter(a=>a.tags.includes(t)).length;const next=clone(data);next.tags=next.tags.filter(x=>x!==t);next.artists.forEach(a=>a.tags=a.tags.filter(x=>x!==t));state.tags.delete(t);await save(next,used?`已删除标签「${t}」，${used} 位画师已移除该标签`:`已删除标签「${t}」`);listTags();}));return row;}));
   }
   async function exportData(){
     if(busy)return;let stream;const controls=[...document.querySelectorAll('button,input,textarea,select')].map(e=>[e,e.disabled]);
@@ -891,13 +892,24 @@ dialog[open]::backdrop{opacity:1}
       return row;
     }));
   }
+  let removeArmed=false,removeTimer=null;
+  function disarmRemove(){
+    removeArmed=false;clearTimeout(removeTimer);
+    const button=$('test-remove-run');button.textContent='删除所选';button.classList.remove('is-armed');
+  }
   async function runTestRemove(){
     if(busy)return;
-    const boxes=[...$('test-remove-list').querySelectorAll('input[type=checkbox]')].filter(box=>box.checked),message=$('test-message');
+    const button=$('test-remove-run'),boxes=[...$('test-remove-list').querySelectorAll('input[type=checkbox]')].filter(box=>box.checked),message=$('test-message');
     if(!boxes.length){message.textContent='请先勾选要删除的测试风格序号。';return;}
     const seqs=boxes.map(box=>Number(box.value)).filter(Number.isSafeInteger);
     if(!seqs.length)return;
-    if(!confirm(`删除所有画师中「序号 ${seqs.join('、')}」的测试风格图片？作品图不会受影响。`))return;
+    if(!removeArmed){
+      removeArmed=true;button.textContent='再次点击确认删除';button.classList.add('is-armed');
+      message.textContent=`将删除所有画师中「序号 ${seqs.join('、')}」的测试风格图片，作品图不受影响。`;
+      removeTimer=setTimeout(disarmRemove,4000);
+      return;
+    }
+    disarmRemove();
     const next=clone(data);let removed=0;
     for(const artist of next.artists){
       const before=artist.works.length;
