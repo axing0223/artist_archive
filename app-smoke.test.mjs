@@ -239,6 +239,98 @@ const runBatch=async(elements,names,collect=true)=>{
   get('batch-works').checked=collect;
   await get('batch-form').onsubmit({preventDefault(){}});
 };
+const findByClass=(node,cls)=>{for(const child of [node,...(node.children||[])]){if(String(child.className).split(/\s+/).includes(cls))return child;}for(const child of node.children||[]){const hit=findByClass(child,cls);if(hit)return hit;}return null;};
+const findAllByClass=(node,cls,out=[])=>{if(String(node.className).split(/\s+/).includes(cls))out.push(node);for(const child of node.children||[])findAllByClass(child,cls,out);return out;};
+const tagRowOf=editor=>findByClass(editor,'tag-editor-row');
+test('编辑卡片的标签：下拉菜单选一个加一个胶囊，× 可移除',async()=>{
+  const {elements,state}=await boot();
+  elements.get('add-artist').onclick();
+  const editor=findByClass(lastRender(state)[0],'tag-editor');
+  assert.ok(editor,'编辑卡片里应有标签编辑器');
+  const [picker,input]=tagRowOf(editor).children;
+  assert.equal(String(picker.tagName).toLowerCase(),'select','应有从已有标签中选择的下拉菜单');
+  assert.equal(picker.children[0].textContent,'从已有标签中选择…','下拉首项是占位提示');
+  assert.equal(input.placeholder,'输入新标签后回车','应保留现场新建标签的入口');
+  assert.equal(findAllByClass(editor,'tag-chip').length,0,'新画师默认没有标签');
+  assert.ok(findByClass(editor,'tag-chips-empty'),'没有标签时要给出提示');
+
+  const available=picker.children.slice(1).map(option=>option.value);
+  assert.ok(available.length>0,'默认库里有可选标签');
+  picker.value=available[0];picker.onchange();
+  const chips=findAllByClass(editor,'tag-chip');
+  assert.equal(chips.length,1,'从下拉选一个就应出现一个胶囊');
+  assert.equal(chips[0].children[0].textContent,available[0]);
+  assert.equal(picker.children.slice(1).map(o=>o.value).includes(available[0]),false,'已选标签不再出现在下拉里');
+  assert.equal(findAllByClass(editor,'tag-chips-empty').length,0,'有标签时不再显示空提示');
+  chips[0].children[1].onclick();
+  assert.equal(findAllByClass(editor,'tag-chip').length,0,'点 × 应移除该胶囊');
+});
+test('编辑卡片的标签：输入新标签回车即可加入，「添加」按钮等效',async()=>{
+  const {elements,state}=await boot();
+  elements.get('add-artist').onclick();
+  const editor=findByClass(lastRender(state)[0],'tag-editor');
+  const [,input,addButton]=tagRowOf(editor).children;
+  input.value='  新风格  ';input.onkeydown({key:'Enter',preventDefault(){}});
+  let chips=findAllByClass(editor,'tag-chip');
+  assert.equal(chips.length,1);
+  assert.equal(chips[0].children[0].textContent,'新风格','首尾空格应被去掉');
+  assert.equal(input.value,'','加入后应清空输入框');
+  input.value='新风格';input.onkeydown({key:'Enter',preventDefault(){}});
+  assert.equal(findAllByClass(editor,'tag-chip').length,1,'重复标签不应重复加入');
+  input.value='另一个';addButton.onclick();
+  assert.equal(findAllByClass(editor,'tag-chip').length,2,'「添加」按钮与回车等效');
+});
+test('管理标签：平时只显示名字，点「重命名」才就地把该行变输入框',async()=>{
+  const {elements}=await boot();
+  elements.get('manage-tags').onclick();
+  const list=elements.get('tag-list'),row=list.children[0];
+  assert.ok(row,'标签列表应有内容');
+  const name=findByClass(row,'manage-name');
+  assert.ok(name,'平时显示的应是文字而不是输入框');
+  assert.equal(row.children.some(child=>child.tagName==='input'),false,'未进入编辑态时不应有输入框');
+  assert.ok(findText(row,'重命名')&&findText(row,'删除'),'每行有重命名与删除');
+  findText(row,'重命名').onclick();
+  const input=row.children.find(child=>child.tagName==='input');
+  assert.ok(input,'点重命名后该行应变成输入框');
+  assert.equal(input.value,name.textContent,'输入框要预填当前名字');
+  assert.ok(findText(row,'保存')&&findText(row,'取消'),'就地编辑要有保存与取消');
+  findText(row,'取消').onclick();
+  const rebuilt=elements.get('tag-list').children[0];
+  assert.notEqual(rebuilt,row,'取消后列表重建回显示态');
+  assert.equal(rebuilt.children.some(child=>child.tagName==='input'),false,'回到文字显示');
+});
+test('管理标签：搜索框只保留匹配的行，无匹配时给出提示',async()=>{
+  const {elements}=await boot();
+  elements.get('manage-tags').onclick();
+  const list=elements.get('tag-list'),total=list.children.length,search=elements.get('tag-search');
+  assert.ok(total>1,'默认应有多个标签才能验证筛选');
+  const target=findByClass(list.children[0],'manage-name').textContent;
+  search.value=target;search.oninput({target:search});
+  assert.equal(list.children.length,1,'只剩匹配的一行');
+  assert.equal(findByClass(list.children[0],'manage-name').textContent,target);
+  search.value='绝对不存在的标签xyz';search.oninput({target:search});
+  assert.equal(list.children.length,0);
+  assert.equal(elements.get('tag-empty').hidden,false,'没有匹配时要给出提示');
+  search.value='';search.oninput({target:search});
+  assert.equal(list.children.length,total,'清空搜索恢复全部');
+  assert.equal(elements.get('tag-empty').hidden,true);
+});
+test('管理分类：与标签同样支持行内重命名与筛选',async()=>{
+  const {elements}=await boot();
+  elements.get('manage-tags').onclick();
+  const list=elements.get('category-list'),row=list.children[0];
+  const name=findByClass(row,'manage-name');
+  assert.ok(name,'分类也改为平时只显示名字');
+  const target=name.textContent,total=list.children.length;
+  findText(row,'重命名').onclick();
+  assert.ok(row.children.find(child=>child.tagName==='input'),'分类同样就地编辑');
+  findText(row,'取消').onclick();
+  const search=elements.get('category-search');
+  search.value=target;search.oninput({target:search});
+  assert.equal(list.children.length,1,'分类也支持筛选');
+  search.value='';search.oninput({target:search});
+  assert.equal(list.children.length,total);
+});
 test('批量导入：默认勾选采集，为每位新画师写入作品数量与最新 3 张作品',async()=>{
   const {elements,state,ctx}=await boot();
   stub(ctx,{lookup:async()=>[{id:196870,name:'iuui',aliases:[],pageUrl:'https://danbooru.donmai.us/artists/196870'}],

@@ -76,6 +76,21 @@ dialog[open]::backdrop{opacity:1}
 .artist.is-morphing{animation:morph-out .13s ease forwards}
 @keyframes morph-out{to{opacity:0;transform:scale(.985)}}.test-row{display:flex;align-items:baseline;gap:10px;font-size:13px;padding:6px 10px;border:1px solid #e6e9f0;border-radius:7px;background:#f8faff}.test-row .test-seq{font-family:ui-monospace,Consolas,monospace;color:#375af5}.test-row strong{font-size:13px}.test-row small{color:#788496;overflow-wrap:anywhere}
 #viewer{width:min(1600px,96vw);max-width:96vw;max-height:96vh}.viewer-image{padding:12px;min-height:120px;overflow:auto}.viewer-image img{max-width:100%;max-height:calc(96vh - 160px);width:auto;height:auto;min-height:0;object-fit:contain}
+.manage-name{flex:1;min-width:0;font-size:14px;color:#3d4657;overflow-wrap:anywhere}
+.manage-search{margin-top:10px;padding:10px 12px;font-size:14px}
+.manage-empty{margin:10px 0 0;font-size:13px;color:#78808e}
+.manage-tag-row{flex-wrap:wrap}
+.edit-field-wide{grid-column:1/-1}
+.tag-editor{display:grid;gap:10px;width:100%}
+.tag-chips{display:flex;flex-wrap:wrap;gap:7px;min-height:30px;align-items:center}
+.tag-chips-empty{font-size:13px;color:#98a0b0}
+.tag-chip{display:inline-flex;align-items:center;gap:4px;padding:5px 6px 5px 11px;border-radius:30px;background:#eef1fe;color:#3243a5;font-size:13px;line-height:1.5}
+.tag-chip-remove{border:0;background:transparent;color:#6b78b8;font-size:15px;line-height:1;padding:0 5px;cursor:pointer}
+.tag-chip-remove:hover{color:#b33931}
+.tag-editor-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.tag-editor-row select{flex:1;min-width:150px;width:auto}
+.tag-editor-row input{flex:1;min-width:130px}
+.tag-editor-row button{flex-shrink:0}
 </style>
 
   
@@ -117,10 +132,14 @@ dialog[open]::backdrop{opacity:1}
   <dialog id="tag-manager" class="small-dialog" aria-labelledby="tag-title"><div class="viewer-bar"><h2 id="tag-title">管理分类与标签</h2><button id="close-tags" type="button">关闭 ×</button></div><div class="form-body">
     <h3 class="manage-heading">主分类</h3><p class="field-help">画师卡片上的大分类，也是筛选栏的第一排。重命名会同步更新已分类的画师；删除后这些画师回到「待判断」，画师和图片都不会丢。</p>
     <form id="category-form" class="inline-form"><input id="new-category" required maxlength="40" placeholder="例如：厚涂向、赛璐璐、像素风" aria-label="新分类名称"><button class="action primary-action">添加分类</button></form>
+    <input id="category-search" class="manage-search" type="search" placeholder="筛选分类…" aria-label="筛选分类">
     <div id="category-list"></div>
+    <p id="category-empty" class="manage-empty" role="status" hidden></p>
     <h3 class="manage-heading">画面感觉标签</h3><p class="field-help">可多选的小标签。重命名会同步更新画师标签；删除标签不会删除画师。</p>
     <form id="tag-form" class="inline-form"><input id="new-tag" required maxlength="40" placeholder="例如：厚涂、黑白、擅长服装" aria-label="自定义标签名称"><button class="action primary-action">添加标签</button></form>
+    <input id="tag-search" class="manage-search" type="search" placeholder="筛选标签…" aria-label="筛选标签">
     <div id="tag-list"></div>
+    <p id="tag-empty" class="manage-empty" role="status" hidden></p>
   </div></dialog>
   <dialog id="batch-dialog" class="small-dialog" aria-labelledby="batch-title"><form id="batch-form"><div class="viewer-bar"><h2 id="batch-title">批量导入画师名字</h2><button type="button" id="close-batch">取消 ×</button></div><div class="form-body"><p class="field-help">每行一位，也可读取「画师表.txt」。自动跳过重名；新画师保持未分类。</p><label class="action upload-label">读取 TXT 名单<input id="names-file" type="file" accept=".txt" hidden></label><textarea id="batch-names" rows="10" aria-label="一行一个画师名字" required></textarea><div class="setting-row"><div><strong>同时采集最新 3 张作品与数量</strong><p class="field-help">为每位新画师补齐 Danbooru 编号、作品总数，并保存最新 3 张作品的缩略图。名字很多时会持续较久；中途点「取消」会保留已采集的进度，再次提交同一名单会自动跳过。</p></div><label class="switch"><input id="batch-works" type="checkbox" checked><span></span></label></div><p id="batch-message" role="status"></p></div><div class="form-footer"><button class="action primary-action">添加到画师库</button></div></form></dialog>
 <script>(function(root){
@@ -790,13 +809,34 @@ dialog[open]::backdrop{opacity:1}
     const article=el('article','artist is-editing'),info=el('div','artist-info');
     const numbers=el('div','artist-numbers');numbers.append(el('span','serial',String(seqOf(draft)).padStart(4,'0')),el('span','work-count',draft.works.length+' 张图片'));info.append(numbers);
     const field=(label,node)=>{const wrap=el('label','edit-field');wrap.append(el('span','edit-label',label),node);return wrap;};
+    const fieldBox=(label,node)=>{const wrap=el('div','edit-field edit-field-wide');wrap.append(el('span','edit-label',label),node);return wrap;};
     const nameInput=el('input');nameInput.value=draft.name;nameInput.maxLength=160;nameInput.placeholder='画师名字（必填）';nameInput.oninput=()=>draft.name=nameInput.value;
     const categorySelect=el('select');categorySelect.append(new Option('待判断',''),...data.categories.map(c=>new Option(c,c)));categorySelect.value=draft.category||'';categorySelect.onchange=()=>draft.category=categorySelect.value||null;
     const urlInput=el('input');urlInput.type='url';urlInput.value=draft.artistUrl||'';urlInput.placeholder='https://…';urlInput.oninput=()=>draft.artistUrl=urlInput.value;
-    const tagsInput=el('input');tagsInput.value=draft.tags.join('、');tagsInput.placeholder='用顿号或逗号分隔，例如：厚涂、黑白';tagsInput.oninput=()=>draft.tags=unique(tagsInput.value.split(/[、,，;；\s]+/).filter(tag=>/[\p{L}\p{N}]/u.test(tag)));
+    const tagEditor=el('div','tag-editor'),tagChips=el('div','tag-chips'),tagRow=el('div','tag-editor-row'),tagPicker=el('select'),tagNew=el('input');
+    const renderTagEditor=()=>{
+      tagChips.replaceChildren(...draft.tags.map(tag=>{
+        const chip=el('span','tag-chip'),remove=el('button','tag-chip-remove','×');remove.type='button';remove.setAttribute('aria-label','移除标签 '+tag);
+        remove.onclick=()=>{draft.tags=draft.tags.filter(x=>x!==tag);renderTagEditor();};
+        chip.append(el('span','',tag),remove);return chip;
+      }));
+      if(!draft.tags.length)tagChips.append(el('span','tag-chips-empty','还没有标签，从下面选一个，或直接输入新标签。'));
+      tagPicker.replaceChildren(new Option('从已有标签中选择…',''),...data.tags.filter(t=>!draft.tags.includes(t)).map(t=>new Option(t,t)));
+      tagPicker.value='';
+    };
+    const addTag=value=>{const tag=String(value||'').trim().slice(0,40);if(!tag||!/[\p{L}\p{N}]/u.test(tag)||draft.tags.includes(tag))return false;draft.tags=[...draft.tags,tag];renderTagEditor();return true;};
+    tagPicker.setAttribute('aria-label','从已有标签中选择');tagPicker.onchange=()=>addTag(tagPicker.value);
+    tagNew.maxLength=40;tagNew.placeholder='输入新标签后回车';tagNew.setAttribute('aria-label','新建标签');
+    const tagAdd=el('button','action','添加');tagAdd.type='button';
+    const commitNewTag=()=>{if(addTag(tagNew.value))tagNew.value='';tagNew.focus?.();};
+    tagAdd.onclick=commitNewTag;
+    tagNew.onkeydown=event=>{if(event.key==='Enter'){event.preventDefault();commitNewTag();}};
+    tagRow.append(tagPicker,tagNew,tagAdd);
+    tagEditor.append(tagChips,tagRow);
+    renderTagEditor();
     const descInput=el('textarea');descInput.rows=3;descInput.maxLength=5000;descInput.value=draft.description||'';descInput.placeholder='记录画风和特点';descInput.oninput=()=>draft.description=descInput.value;
     const noteInput=el('textarea');noteInput.rows=2;noteInput.maxLength=5000;noteInput.value=draft.note||'';noteInput.placeholder='备注';noteInput.oninput=()=>draft.note=noteInput.value;
-    const grid=el('div','edit-grid');grid.append(field('画师名字',nameInput),field('主分类',categorySelect),field('画师页面链接',urlInput),field('标签',tagsInput));
+    const grid=el('div','edit-grid');grid.append(field('画师名字',nameInput),field('主分类',categorySelect),field('画师页面链接',urlInput),fieldBox('标签',tagEditor));
     editorError=el('p','error');info.append(grid,field('画风描述',descInput),field('备注',noteInput),editorError);
     const actions=el('div','artist-actions');actions.append(btn('保存',saveDraft,'action primary-action'),btn('取消',cancelEdit,'action'));
     const remove=removeButton();if(!editingId)remove.hidden=true;actions.append(remove);info.append(actions);
@@ -917,24 +957,54 @@ dialog[open]::backdrop{opacity:1}
     }catch(error){setEditorError(error.message);}
     finally{uploading=false;e.target.value='';}
   }
+  const manageFilter={category:'',tag:''};
+  /* 列表行平时只显示名字，点「重命名」才就地把这一行换成输入框 */
+  function manageRow(name,onRename,onRemove,relist){
+    const row=el('div','manage-tag-row');
+    const edit=()=>{
+      const input=el('input');input.value=name;input.maxLength=40;input.setAttribute('aria-label','重命名 '+name);
+      const keep=btn('保存',()=>onRename(input.value.trim(),name)),drop=btn('取消',()=>relist());
+      input.onkeydown=event=>{if(event.key==='Enter'){event.preventDefault();keep.onclick();}else if(event.key==='Escape'){event.preventDefault();drop.onclick();}};
+      row.replaceChildren(input,keep,drop);
+      input.focus?.();input.select?.();
+    };
+    row.append(el('span','manage-name',name),btn('重命名',edit),confirmButton('删除','确认删除？',()=>onRemove(name)));
+    return row;
+  }
+  const manageMatch=(value,filter)=>!filter||String(value).toLowerCase().includes(filter);
+  function fillManageEmpty(id,filter,count,what){
+    const empty=$(id);empty.hidden=count>0;
+    empty.textContent=filter?`没有匹配「${filter}」的${what}。`:`还没有任何${what}。`;
+  }
   function listCategories(){
-    $('category-list').replaceChildren(...data.categories.map(c=>{
-      const row=el('div','manage-tag-row'),input=el('input');input.value=c;input.maxLength=40;input.setAttribute('aria-label','重命名分类 '+c);
-      row.append(input,btn('重命名',async()=>{
-        if(busy)return;const name=input.value.trim();if(!name||name===c)return;
-        if(data.categories.includes(name)){alert('这个分类已存在。');return;}
-        const next=clone(data);next.categories=next.categories.map(x=>x===c?name:x);next.artists.forEach(a=>{if(a.category===c)a.category=name;});if(state.category===c)state.category=name;
-        await save(next);listCategories();
-      }),confirmButton('删除','确认删除？',async()=>{
-        const used=data.artists.filter(a=>a.category===c).length;
-        const next=clone(data);next.categories=next.categories.filter(x=>x!==c);next.artists.forEach(a=>{if(a.category===c)a.category=null;});if(state.category===c)state.category='全部';
-        await save(next,used?`已删除分类「${c}」，${used} 位画师回到「待判断」`:`已删除分类「${c}」`);listCategories();
-      }));
-      return row;
-    }));
+    const filter=manageFilter.category,visible=data.categories.filter(c=>manageMatch(c,filter));
+    $('category-list').replaceChildren(...visible.map(c=>manageRow(c,(name,from)=>{
+      if(busy)return;
+      if(!name||name===from){listCategories();return;}
+      if(data.categories.includes(name)){alert('这个分类已存在。');listCategories();return;}
+      const next=clone(data);next.categories=next.categories.map(x=>x===from?name:x);next.artists.forEach(a=>{if(a.category===from)a.category=name;});if(state.category===from)state.category=name;
+      return save(next).then(listCategories);
+    },async from=>{
+      const used=data.artists.filter(a=>a.category===from).length;
+      const next=clone(data);next.categories=next.categories.filter(x=>x!==from);next.artists.forEach(a=>{if(a.category===from)a.category=null;});if(state.category===from)state.category='全部';
+      await save(next,used?`已删除分类「${from}」，${used} 位画师回到「待判断」`:`已删除分类「${from}」`);listCategories();
+    },listCategories)));
+    fillManageEmpty('category-empty',filter,visible.length,'分类');
   }
   function listTags(){
-    $('tag-list').replaceChildren(...data.tags.map(t=>{const row=el('div','manage-tag-row'),input=el('input');input.value=t;input.maxLength=40;input.setAttribute('aria-label','重命名标签 '+t);row.append(input,btn('重命名',async()=>{if(busy)return;const name=input.value.trim();if(!name||name===t)return;if(data.tags.includes(name)){alert('这个标签已存在。');return;}const next=clone(data);next.tags=next.tags.map(x=>x===t?name:x);next.artists.forEach(a=>a.tags=a.tags.map(x=>x===t?name:x));if(state.tags.delete(t))state.tags.add(name);await save(next);listTags();}),confirmButton('删除','确认删除？',async()=>{const used=data.artists.filter(a=>a.tags.includes(t)).length;const next=clone(data);next.tags=next.tags.filter(x=>x!==t);next.artists.forEach(a=>a.tags=a.tags.filter(x=>x!==t));state.tags.delete(t);await save(next,used?`已删除标签「${t}」，${used} 位画师已移除该标签`:`已删除标签「${t}」`);listTags();}));return row;}));
+    const filter=manageFilter.tag,visible=data.tags.filter(t=>manageMatch(t,filter));
+    $('tag-list').replaceChildren(...visible.map(t=>manageRow(t,(name,from)=>{
+      if(busy)return;
+      if(!name||name===from){listTags();return;}
+      if(data.tags.includes(name)){alert('这个标签已存在。');listTags();return;}
+      const next=clone(data);next.tags=next.tags.map(x=>x===from?name:x);next.artists.forEach(a=>a.tags=a.tags.map(x=>x===from?name:x));if(state.tags.delete(from))state.tags.add(name);
+      return save(next).then(listTags);
+    },async from=>{
+      const used=data.artists.filter(a=>a.tags.includes(from)).length;
+      const next=clone(data);next.tags=next.tags.filter(x=>x!==from);next.artists.forEach(a=>a.tags=a.tags.filter(x=>x!==from));state.tags.delete(from);
+      await save(next,used?`已删除标签「${from}」，${used} 位画师已移除该标签`:`已删除标签「${from}」`);listTags();
+    },listTags)));
+    fillManageEmpty('tag-empty',filter,visible.length,'标签');
   }
   async function exportData(){
     if(busy)return;let stream;const controls=[...document.querySelectorAll('button,input,textarea,select')].map(e=>[e,e.disabled]);
@@ -1085,7 +1155,9 @@ dialog[open]::backdrop{opacity:1}
     $('history-date').onchange=async()=>{const date=$('history-date').value;if(!/^\d{4}-\d{2}-\d{2}$/.test(date)){ $('history-date').value=data.cutoffDate;return;}const next=clone(data);next.cutoffDate=date;await save(next,'已保存截至日期；点击画师旁的刷新后，该画师数量才会更新。');};
     $('add-artist').onclick=()=>startEdit(null);$('quick-form').onsubmit=e=>{e.preventDefault();detectArtist();};$('quick-input').oninput=quickChanged;$('quick-input').oncompositionend=quickChanged;
     $('quick-manual').onclick=()=>{cancelLookup();startEdit(null);const value=$('quick-input').value.trim();if(value&&draft){try{const p=ArtistLookup.plan(value);if(p.kind==='name')draft.name=p.query;else if(p.kind==='url')draft.artistUrl=p.query;render();}catch{}}};
-    $('manage-tags').onclick=()=>{if(!busy){listCategories();listTags();$('tag-manager').showModal();}};$('close-tags').onclick=()=>$('tag-manager').close();
+    $('manage-tags').onclick=()=>{if(!busy){manageFilter.category='';manageFilter.tag='';$('category-search').value='';$('tag-search').value='';listCategories();listTags();$('tag-manager').showModal();}};$('close-tags').onclick=()=>$('tag-manager').close();
+    $('category-search').oninput=e=>{manageFilter.category=e.target.value.trim().toLowerCase();listCategories();};
+    $('tag-search').oninput=e=>{manageFilter.tag=e.target.value.trim().toLowerCase();listTags();};
     $('category-form').onsubmit=async e=>{e.preventDefault();if(busy)return;const name=$('new-category').value.trim();if(!name)return;if(data.categories.includes(name)){alert('这个分类已存在。');return;}const next=clone(data);next.categories.push(name);await save(next);$('new-category').value='';listCategories();};$('tag-form').onsubmit=async e=>{e.preventDefault();if(busy)return;const t=$('new-tag').value.trim();if(!t)return;if(data.tags.includes(t)){alert('这个标签已存在。');return;}const next=clone(data);next.tags.push(t);await save(next);$('new-tag').value='';listTags();};
     $('batch-artists').onclick=()=>{if(busy)return;$('batch-names').value='';$('batch-message').textContent='';$('batch-dialog').showModal();};$('close-batch').onclick=()=>$('batch-dialog').close();$('batch-dialog').addEventListener('close',()=>{batchStop=true;});$('batch-form').onsubmit=batch;$('names-file').onchange=async e=>{try{const f=e.target.files[0];if(f){if(f.size>5*1024*1024)throw Error('TXT 名单不能超过 5 MB。');$('batch-names').value=await f.text();}}catch(error){$('batch-message').textContent=error.message;}finally{e.target.value='';}};
     $('export-data').onclick=exportData;$('import-data').onclick=()=>{if(!busy)$('import-file').click();};$('import-file').onchange=importData;

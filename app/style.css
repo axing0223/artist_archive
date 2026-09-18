@@ -68,3 +68,18 @@ dialog[open]::backdrop{opacity:1}
 .artist.is-morphing{animation:morph-out .13s ease forwards}
 @keyframes morph-out{to{opacity:0;transform:scale(.985)}}.test-row{display:flex;align-items:baseline;gap:10px;font-size:13px;padding:6px 10px;border:1px solid #e6e9f0;border-radius:7px;background:#f8faff}.test-row .test-seq{font-family:ui-monospace,Consolas,monospace;color:#375af5}.test-row strong{font-size:13px}.test-row small{color:#788496;overflow-wrap:anywhere}
 #viewer{width:min(1600px,96vw);max-width:96vw;max-height:96vh}.viewer-image{padding:12px;min-height:120px;overflow:auto}.viewer-image img{max-width:100%;max-height:calc(96vh - 160px);width:auto;height:auto;min-height:0;object-fit:contain}
+.manage-name{flex:1;min-width:0;font-size:14px;color:#3d4657;overflow-wrap:anywhere}
+.manage-search{margin-top:10px;padding:10px 12px;font-size:14px}
+.manage-empty{margin:10px 0 0;font-size:13px;color:#78808e}
+.manage-tag-row{flex-wrap:wrap}
+.edit-field-wide{grid-column:1/-1}
+.tag-editor{display:grid;gap:10px;width:100%}
+.tag-chips{display:flex;flex-wrap:wrap;gap:7px;min-height:30px;align-items:center}
+.tag-chips-empty{font-size:13px;color:#98a0b0}
+.tag-chip{display:inline-flex;align-items:center;gap:4px;padding:5px 6px 5px 11px;border-radius:30px;background:#eef1fe;color:#3243a5;font-size:13px;line-height:1.5}
+.tag-chip-remove{border:0;background:transparent;color:#6b78b8;font-size:15px;line-height:1;padding:0 5px;cursor:pointer}
+.tag-chip-remove:hover{color:#b33931}
+.tag-editor-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.tag-editor-row select{flex:1;min-width:150px;width:auto}
+.tag-editor-row input{flex:1;min-width:130px}
+.tag-editor-row button{flex-shrink:0}
