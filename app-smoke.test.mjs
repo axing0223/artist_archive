@@ -79,6 +79,20 @@ test('没有画师页面链接时不显示右下角按钮',async()=>{
   assert.equal(actions.children.length,1);
   assert.equal(actions.children[0].textContent,'编辑');
 });
+test('卡片显示备注，但作品张数说明不再显示',async()=>{
+  const {state}=await boot();
+  const artist={uid:'0001-tester-1',order:1,name:'tester',category:null,tags:[],danbooruId:null,counts:{},artistUrl:'',description:'',note:'这里是备注内容',basis:'',status:'',works:[{id:'1',thumb:null},{id:'2',thumb:null}]};
+  const texts=[];const walk=node=>{if(node._text)texts.push(node._text);for(const child of node.children||[])walk(child);};
+  walk(state.card(artist));
+  assert.equal(texts.includes('这里是备注内容'),true,'备注要显示出来');
+  assert.equal(texts.some(t=>String(t).includes('张图片')),false,'张数说明仍然不显示');
+});
+test('没有备注时不留下空行',async()=>{
+  const {state}=await boot();
+  const artist={uid:'0001-tester-1',order:1,name:'tester',category:null,tags:[],danbooruId:null,counts:{},artistUrl:'',description:'',note:'',basis:'',status:'',works:[{id:'1',thumb:null}]};
+  const card=state.card(artist),works=card.children[1];
+  assert.equal(works.children.filter(child=>child.className==='sample-note').length,0);
+});
 test('编辑已有画师时，卡片渲染成编辑态而不是浏览态',async()=>{
   const {elements,state}=await boot();
   elements.get('add-artist').onclick();
