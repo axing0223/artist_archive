@@ -39,7 +39,18 @@ a.action{display:inline-flex;align-items:center;text-decoration:none}
 .artist .artist-numbers .action{padding:5px 11px;font-size:12px}
 .artist-actions{justify-content:space-between;margin-top:auto;padding-top:18px;width:100%}
 .artist-actions .edit-button{margin:0}
-.artist.is-editing .artist-actions{justify-content:flex-start;gap:10px}.test-row{display:flex;align-items:baseline;gap:10px;font-size:13px;padding:6px 10px;border:1px solid #e6e9f0;border-radius:7px;background:#f8faff}.test-row .test-seq{font-family:ui-monospace,Consolas,monospace;color:#375af5}.test-row strong{font-size:13px}.test-row small{color:#788496;overflow-wrap:anywhere}
+.artist.is-editing .artist-actions{justify-content:flex-start;gap:10px}
+.action,.edit-button,.danger,.reset,.danger-link,.categories button,.tags button,.viewer-bar button,.pick-id{transition:background-color .18s ease,border-color .18s ease,color .18s ease,box-shadow .18s ease,transform .12s ease}
+.action:hover,a.action:hover{background:#f5f8fd;border-color:#c8d2e4}
+.primary-action:hover{background:#2d4bd6;border-color:#2d4bd6;box-shadow:0 4px 12px #375af53d}
+.edit-button:hover{background:#e2e8ff}
+.danger:hover{background:#fbebe9;border-color:#e6b2ae}
+.categories button:hover{background:#e7eaf2}
+.tags button:hover{border-color:#c8d2e4;color:#3b4252}
+.reset:hover{color:var(--accent)}.danger-link:hover{color:#8f2f28}
+.viewer-bar button:hover{background:#e4e7ec}
+.action:active,.edit-button:active,.danger:active,.categories button:active,.tags button:active,.viewer-bar button:active{transform:translateY(1px);box-shadow:none}
+button:disabled{opacity:.55;cursor:default;transform:none;box-shadow:none}.test-row{display:flex;align-items:baseline;gap:10px;font-size:13px;padding:6px 10px;border:1px solid #e6e9f0;border-radius:7px;background:#f8faff}.test-row .test-seq{font-family:ui-monospace,Consolas,monospace;color:#375af5}.test-row strong{font-size:13px}.test-row small{color:#788496;overflow-wrap:anywhere}
 #viewer{width:min(1600px,96vw);max-width:96vw;max-height:96vh}.viewer-image{padding:12px;min-height:120px;overflow:auto}.viewer-image img{max-width:100%;max-height:calc(96vh - 160px);width:auto;height:auto;min-height:0;object-fit:contain}
 </style>
 
