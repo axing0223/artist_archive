@@ -313,88 +313,6 @@
     for(const name of names){if(seen.has(name.toLowerCase()))continue;seen.add(name.toLowerCase());if(next.artists.length>=20000){$('batch-message').textContent='最多支持 20,000 位画师。';return;}next.artists.push({uid:ArtistId.issue(next.artists,{name}),order:next.artists.length+1,name,category:null,tags:[],artistUrl:'https://danbooru.donmai.us/posts?tags='+encodeURIComponent(name),description:'',note:'',works:[]});count++;}
     reset();await save(next,`已添加 ${count} 位，跳过 ${names.length-count} 个重复名字`);$('batch-dialog').close();
   }
-  let testFiles=[];
-  const testTargets=start=>data.artists.map(a=>({artist:a,seq:ArtistId.parse(a.uid)?.seq??0})).filter(item=>item.seq>=start).sort((x,y)=>x.seq-y.seq).slice(0,testFiles.length);
-  function refreshTestImport(){
-    const start=Number($('test-start').value),want=Number($('test-seq').value),preview=$('test-preview'),message=$('test-message');
-    $('test-files-info').textContent=testFiles.length?`已选择 ${testFiles.length} 张图片。`:'还没有选择图片。';
-    if(!testFiles.length||!Number.isSafeInteger(start)||start<1){preview.replaceChildren();message.textContent='';return;}
-    const targets=testTargets(start);
-    preview.replaceChildren(...targets.map((item,i)=>{const row=el('div','test-row');row.append(el('span','test-seq',String(item.seq).padStart(4,'0')),el('strong','',item.artist.name),el('small','',`${testFiles[i].name} → 序号 ${FolderStore.nextTestSeq(item.artist.works,want)}`));return row;}));
-    const rest=testFiles.length-targets.length;
-    message.textContent=targets.length?`将依次分配给 ${targets.length} 位画师${rest>0?`；后面没有更多画师，剩余 ${rest} 张会跳过`:''}。`:'这个序号之后没有画师，请检查序号。';
-  }
-  async function runTestImport(){
-    if(busy||!testFiles.length)return;
-    const start=Number($('test-start').value),want=Number($('test-seq').value),message=$('test-message');
-    if(!Number.isSafeInteger(start)||start<1){message.textContent='请填写有效的起始序号。';return;}
-    const targets=testTargets(start);
-    if(!targets.length){message.textContent='这个序号之后没有画师，请检查序号。';return;}
-    $('test-run').disabled=true;
-    try{
-      const next=clone(data);let done=0;
-      for(let i=0;i<targets.length;i++){
-        const file=testFiles[i];message.textContent=`正在处理第 ${i+1} / ${targets.length} 张…`;
-        if(!['image/jpeg','image/png','image/webp','image/gif','image/avif'].includes(file.type)||file.size>50*1024*1024)throw Error(file.name+'：只支持不超过 50 MB 的 JPG、PNG、WebP、GIF 或 AVIF。');
-        const original=await readImage(file),target=next.artists.find(a=>a.uid===targets[i].artist.uid);
-        if(!target)continue;
-        target.works.push({id:'',url:'',caption:'',kind:'test',testSeq:FolderStore.nextTestSeq(target.works,want),thumb:await thumbnail(original),large:original,thumbUrl:null,largeUrl:null});
-        done++;
-      }
-      await save(next,`已为 ${done} 位画师导入测试风格图片`);
-      message.textContent=`完成：${done} 张测试风格图片已导入，各自排在作品图之后。`;
-      testFiles=[];$('test-files').value='';$('test-preview').replaceChildren();$('test-files-info').textContent='还没有选择图片。';
-    }catch(error){message.textContent='导入失败：'+error.message;}
-    finally{$('test-run').disabled=false;}
-  }
-  function renderTestRemoval(){
-    const counts=new Map();
-    for(const artist of data.artists)for(const work of artist.works){
-      if(work.kind!=='test')continue;
-      const seq=Number.isSafeInteger(work.testSeq)&&work.testSeq>0?work.testSeq:1;
-      if(!counts.has(seq))counts.set(seq,{artists:new Set(),count:0});
-      const item=counts.get(seq);item.artists.add(artist.uid);item.count++;
-    }
-    const container=$('test-remove-list'),list=[...counts.entries()].sort((a,b)=>a[0]-b[0]);
-    if(!list.length){container.replaceChildren(el('p','field-help','当前没有测试风格图片。'));return;}
-    container.replaceChildren(...list.map(([seq,item])=>{
-      const row=el('label','test-row'),box=el('input');box.type='checkbox';box.value=String(seq);
-      row.append(box,el('span','test-seq','序号 '+seq),el('small','',`${item.artists.size} 位画师共 ${item.count} 张`));
-      return row;
-    }));
-  }
-  let removeArmed=false,removeTimer=null;
-  function disarmRemove(){
-    removeArmed=false;clearTimeout(removeTimer);
-    const button=$('test-remove-run');button.textContent='删除所选';button.classList.remove('is-armed');
-  }
-  async function runTestRemove(){
-    if(busy)return;
-    const button=$('test-remove-run'),boxes=[...$('test-remove-list').querySelectorAll('input[type=checkbox]')].filter(box=>box.checked),message=$('test-message');
-    if(!boxes.length){message.textContent='请先勾选要删除的测试风格序号。';return;}
-    const seqs=boxes.map(box=>Number(box.value)).filter(Number.isSafeInteger);
-    if(!seqs.length)return;
-    if(!removeArmed){
-      removeArmed=true;button.textContent='再次点击确认删除';button.classList.add('is-armed');
-      message.textContent=`将删除所有画师中「序号 ${seqs.join('、')}」的测试风格图片，作品图不受影响。`;
-      removeTimer=setTimeout(disarmRemove,4000);
-      return;
-    }
-    disarmRemove();
-    const next=clone(data);let removed=0;
-    for(const artist of next.artists){
-      const before=artist.works.length;
-      artist.works=artist.works.filter(work=>!(work.kind==='test'&&seqs.includes(Number.isSafeInteger(work.testSeq)&&work.testSeq>0?work.testSeq:1)));
-      removed+=before-artist.works.length;
-    }
-    await save(next,`已删除 ${removed} 张测试风格图片`);
-    message.textContent=`完成：删除了 ${removed} 张测试风格图片。`;
-    renderTestRemoval();
-  }
-  function openTestImport(){
-    testFiles=[];$('test-files').value='';$('test-start').value='';$('test-seq').value='1';$('test-preview').replaceChildren();$('test-message').textContent='';
-    refreshTestImport();renderTestRemoval();$('test-import').showModal();
-  }
   let lookupTimer,lookupController,lookupSequence=0;
   async function checkExtension(){try{const version=await ArtistExtension.check();$('extension-status').textContent='图片助手已连接 · '+version;$('extension-status').title='扩展取图可用';ArtistImages.clear();}catch(error){$('extension-status').textContent='图片助手未连接 · 点击重试';$('extension-status').title=error.message;status(error.message,true);}}
   async function cacheWorks(id,works){
@@ -477,11 +395,13 @@
   async function init(){
     applyCardSize();
     data=normalize(FolderStore.empty());status('请先选择「数据」文件夹，读取或开始整理画师库。');
-    $('test-import-open').onclick=openTestImport;$('close-test-import').onclick=()=>$('test-import').close();$('test-cancel').onclick=()=>$('test-import').close();
-    $('test-files').onchange=e=>{testFiles=[...e.target.files];refreshTestImport();};$('test-start').oninput=refreshTestImport;$('test-seq').oninput=refreshTestImport;$('test-run').onclick=runTestImport;
+    ArtistTestImages.init({getData:()=>data,getBusy:()=>busy,readImage,thumbnail,save});
+    $('test-import-open').onclick=()=>ArtistTestImages.open();$('close-test-import').onclick=()=>$('test-import').close();$('test-cancel').onclick=()=>$('test-import').close();
+    $('test-files').onchange=e=>{ArtistTestImages.files=[...e.target.files];ArtistTestImages.refresh();};
+    $('test-start').oninput=()=>ArtistTestImages.refresh();$('test-seq').oninput=()=>ArtistTestImages.refresh();$('test-run').onclick=()=>ArtistTestImages.runImport();
     $('test-remove-all').onclick=()=>{for(const box of $('test-remove-list').querySelectorAll('input[type=checkbox]'))box.checked=true;};
     $('test-remove-none').onclick=()=>{for(const box of $('test-remove-list').querySelectorAll('input[type=checkbox]'))box.checked=false;};
-    $('test-remove-run').onclick=runTestRemove;
+    $('test-remove-run').onclick=()=>ArtistTestImages.runRemove();
     $('settings-open').onclick=()=>{$('history-date').value=data.cutoffDate;$('save-large').checked=data.saveLargeImages===true;$('card-size').value=String(prefs.cardSize);$('card-size-value').textContent=prefs.cardSize;$('settings').showModal();};$('close-settings').onclick=()=>$('settings').close();
     $('card-size').oninput=()=>{const value=Number($('card-size').value);$('card-size-value').textContent=value;prefs.setCardSize(value);};
     $('save-large').onchange=async()=>{const next=clone(data);next.saveLargeImages=$('save-large').checked;await save(next,next.saveLargeImages?'已开启「保存大图」：预览作品时会保存原图':'已关闭「保存大图」：预览作品时不再保存原图');};
