@@ -16,9 +16,16 @@
     }catch(error){if(error.name!=='AbortError')failures.set(id,{time:Date.now(),message:error.message});while(failures.size>100)failures.delete(failures.keys().next().value);throw error;}},signal);
   }
   function release(record){record.controller?.abort();record.controller=null;if(record.objectUrl)URL.revokeObjectURL(record.objectUrl);record.objectUrl=null;record.img.removeAttribute('src');}
+  async function resizeInto(img,before){
+    await new Promise(resolve=>{if(img.complete)return resolve();img.onload=resolve;setTimeout(resolve,800);});
+    const after=img.getBoundingClientRect?.();
+    if(!after||after.width<=0)return;
+    if(Math.abs(after.width-before.width)<1&&Math.abs(after.height-before.height)<1)return;
+    img.animate([{width:before.width+'px',height:before.height+'px'},{width:after.width+'px',height:after.height+'px'}],{duration:260,easing:'ease'});
+  }
   async function show(record){if(record.controller||record.objectUrl)return;const controller=new AbortController();record.controller=controller;record.img.classList.remove('image-failed');
     try{const blob=await fetchBlob(record.uid,record.work,record.size,controller.signal);if(record.controller!==controller||!bindings.has(record.img))return;
-      const img=record.img;
+      const img=record.img,before=img.getBoundingClientRect?.();
       if(img.src&&img.animate){
         const out=img.animate([{opacity:1},{opacity:0}],{duration:130,easing:'ease-in',fill:'forwards'});
         await out.finished.catch(()=>{});out.cancel();
@@ -26,6 +33,7 @@
       }
       record.objectUrl=URL.createObjectURL(blob);img.src=record.objectUrl;img.title='';
       img.animate?.([{opacity:0},{opacity:1}],{duration:240,easing:'ease-out'});
+      if(before&&before.width>0&&img.animate)resizeInto(img,before);
     }
     catch(error){if(error.name!=='AbortError'&&record.controller===controller){record.img.classList.add('image-failed');record.img.title=error.message;record.img.alt='图片未加载：'+error.message;record.error?.(error);}}
   }
