@@ -1,6 +1,8 @@
 (function(root){
   'use strict';
   const origin='https://danbooru.donmai.us';
+  /* 排序元标签由这里拼进查询，所以限定成小写字母与下划线，避免拼出意外的查询 */
+  const orderTag=value=>/^[a-z][a-z_]*$/.test(String(value||''))?String(value):'id_desc';
   /* 优先走扩展：它带登录 Cookie，图片地址字段只对"可见用户"返回，页面匿名直连拿不到。
      扩展不在、或版本太旧不认接口通道时退回页面直连，数量类接口照常可用。
      返回形状与 fetch 的 Response 一致（ok/status/json）。 */
@@ -54,19 +56,19 @@
       previewUrl:https(pick('720x720'))||https(pick('360x360')),
       largeUrl:https(post.file_url)||https(pick('original'))||https(post.large_file_url)||https(pick('720x720'))};
   };
-  async function posts(name,{limit=20,page=1,signal,fetcher=defaultFetcher}={}){
-    const params=new URLSearchParams({tags:name+' order:id_desc',limit:String(limit),page:String(page)});
+  async function posts(name,{limit=20,page=1,signal,fetcher=defaultFetcher,order='id_desc'}={}){
+    const params=new URLSearchParams({tags:name+' order:'+orderTag(order),limit:String(limit),page:String(page)});
     const response=await fetcher(origin+'/posts.json?'+params,{signal,credentials:'omit',headers:{Accept:'application/json'}});
     if(!response.ok)throw Error(response.status===429?'请求过于频繁，请稍后重试。':'作品列表读取失败（'+response.status+'）。');
     let payload;try{payload=await response.json();}catch{throw Error('站点未返回作品数据，请稍后重试。');}
     if(!Array.isArray(payload))throw Error('站点未返回作品数据，请稍后重试。');
     return payload.filter(post=>post&&Number.isSafeInteger(post.id)&&post.id>0).map(workOf);
   }
-  async function details(name,date,{fetcher=defaultFetcher,previews=true}={}){
+  async function details(name,date,{fetcher=defaultFetcher,previews=true,order='id_desc'}={}){
     const get=async(endpoint,params)=>{const r=await fetcher(origin+endpoint+'?'+new URLSearchParams(params),{signal:AbortSignal.timeout(15000),credentials:'omit',headers:{Accept:'application/json'}});if(!r.ok)throw Error('读取受限：'+r.status);return r.json();};
     const checkedAt=new Date().toISOString();
     const count=async(tags)=>{const j=await get('/counts/posts.json',{tags,estimate_count:'false'});const n=j?.counts?.posts;if(!Number.isSafeInteger(n)||n<0)throw Error('数量未返回');return n;};
-    const jobs=[count(name),previews?get('/posts.json',{tags:name+' order:id_desc',limit:'5'}):Promise.resolve([])];
+    const jobs=[count(name),previews?get('/posts.json',{tags:name+' order:'+orderTag(order),limit:'5'}):Promise.resolve([])];
     if(date&&/^\d{4}-\d{2}-\d{2}$/.test(date))jobs.push(count(name+' date:<'+date));
     const results=await Promise.allSettled(jobs),ok=i=>results[i]?.status==='fulfilled';
     const counts={checkedAt,total:ok(0)?results[0].value:null,beforeDate:date||null,beforeTotal:ok(2)?results[2].value:null};

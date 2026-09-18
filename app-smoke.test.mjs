@@ -225,6 +225,25 @@ test('删除分类也走按钮二次确认，不再弹系统对话框',async()=>
   assert.equal(String(remove.className).includes('is-armed'),true);
   assert.equal(state.rows.length,before,'确认前不改动数据');
 });
+test('设置里可以切换采集排序，编辑卡片按它取作品',async()=>{
+  const {elements,state,ctx}=await boot();
+  const asked=[];
+  ctx.ArtistLookup={...ctx.ArtistLookup,plan:value=>({query:String(value)}),posts:async(tag,options)=>{asked.push({tag,...options});return [];}};
+  const select=elements.get('work-order');
+  assert.equal(select.children.map(option=>option.value).join(','),'favcount,score,rank,id_desc','四档排序，收藏最多排第一');
+  assert.equal(select.value,'favcount','默认按收藏最多采集');
+  select.value='score';select.onchange();
+  await wait(20);
+  elements.get('add-artist').onclick();
+  const card=lastRender(state)[0],nameInput=findByPlaceholder(card,'画师名字（必填）');
+  nameInput.value='tester';nameInput.oninput();
+  findText(card,'展开读取').onclick();
+  await wait(20);
+  assert.equal(asked.length,1,'展开后按设置取一次作品');
+  assert.equal(asked[0].order,'score','用的是设置里改过的排序');
+  assert.equal(asked[0].tag,'tester');
+  assert.match(await fs.readFile('app/index.html','utf8'),/id="work-order" aria-label="采集作品的排序"/,'设置里要有这一栏');
+});
 test('展开与收起 Danbooru 读取区后，视图重新对准正在编辑的卡片',async()=>{
   const {elements,state}=await boot();
   elements.get('add-artist').onclick();

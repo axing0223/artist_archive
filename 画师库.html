@@ -19,7 +19,7 @@
 .candidate-previews{flex-wrap:wrap;overflow:visible;gap:10px}.pick{position:relative;display:flex;flex-direction:column;gap:4px;padding:6px;border:1px solid #e0e5f0;border-radius:8px;background:#fff;cursor:pointer}.pick input{position:absolute;top:8px;left:8px;width:18px;height:18px;margin:0;cursor:pointer}.pick img{height:var(--pick-size,120px);width:auto;aspect-ratio:3/4;object-fit:cover;border-radius:6px}.pick a{font-size:11px;color:#375af5;text-align:center}.pick:has(input:checked){border-color:#375af5;box-shadow:0 0 0 1px #375af5}.candidate-tools{display:flex;gap:10px;align-items:center;flex-wrap:wrap;flex-basis:100%;padding-top:4px}.candidate-tools .action{padding:5px 12px;font-size:12px}.candidate-tools small{color:#788496;font-size:12px}
 .candidate-body{flex-basis:100%;display:flex;flex-direction:column;gap:6px;min-width:0}.picker-status{color:#788496;font-size:12px}.pick-id{background:none;border:none;padding:0;color:#375af5;font-size:11px;cursor:pointer;text-decoration:underline}.pick-id:hover{color:#1f3fd0}.picker-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding-top:10px;border-top:1px solid #e7ebf2;margin-top:10px}.work-picker{display:flex;flex-direction:column;gap:8px;border:1px solid #e0e5f0;border-radius:10px;padding:14px;margin-top:12px;background:#f8faff}.work-picker[hidden]{display:none}
 .picker-zoom{display:flex;align-items:center;gap:8px}.picker-zoom small{color:#788496;font-size:12px;white-space:nowrap}.picker-zoom input[type=range]{flex:none;width:130px;padding:0;border:0;background:none;accent-color:var(--accent)}
-.settings-body{gap:0}.setting-row{display:flex;gap:16px;align-items:flex-start;justify-content:space-between;padding:14px 0;border-bottom:1px solid #eef0f4}.setting-row:last-child{border-bottom:0;padding-bottom:0}.setting-row strong{display:block;font-size:14px;margin-bottom:5px}.setting-row .field-help{margin:0}.setting-row>button{flex-shrink:0}.setting-row input[type=date]{width:auto;min-width:160px}.switch{position:relative;display:inline-flex;flex-shrink:0;margin-top:2px}.switch input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer}.switch span{display:block;width:46px;height:26px;border-radius:13px;background:#d5d9e2;transition:background .2s}.switch span::after{content:'';position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px #0003;transition:transform .2s}.switch input:checked+span{background:var(--accent)}.switch input:checked+span::after{transform:translateX(20px)}
+.settings-body{gap:0}.setting-row{display:flex;gap:16px;align-items:flex-start;justify-content:space-between;padding:14px 0;border-bottom:1px solid #eef0f4}.setting-row:last-child{border-bottom:0;padding-bottom:0}.setting-row strong{display:block;font-size:14px;margin-bottom:5px}.setting-row .field-help{margin:0}.setting-row>button{flex-shrink:0}.setting-row input[type=date]{width:auto;min-width:160px}.setting-row select{width:auto;min-width:180px;flex-shrink:0}.switch{position:relative;display:inline-flex;flex-shrink:0;margin-top:2px}.switch input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer}.switch span{display:block;width:46px;height:26px;border-radius:13px;background:#d5d9e2;transition:background .2s}.switch span::after{content:'';position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px #0003;transition:transform .2s}.switch input:checked+span{background:var(--accent)}.switch input:checked+span::after{transform:translateX(20px)}
 .size-control{display:flex;align-items:center;gap:10px;flex-shrink:0}.size-control input[type=range]{width:180px;padding:0;border:0;background:none;accent-color:var(--accent)}.size-control span{font-size:13px;color:#788496;min-width:38px;text-align:right}
 .works{grid-template-columns:repeat(auto-fill,minmax(var(--card-size,220px),1fr))}.thumb{height:var(--card-size,220px)}
 .work.is-test{position:relative}.work.is-test::after{content:'测试风格';position:absolute;top:0;left:0;z-index:1;background:#e08b1f;color:#fff;font-size:11px;line-height:1;padding:4px 7px;border-radius:7px 0 7px 0}
@@ -165,6 +165,7 @@ dialog[open]::backdrop{opacity:1}
   </div><div class="form-footer"><button id="test-cancel" type="button" class="action">取消</button><button id="test-run" type="button" class="action primary-action">开始导入</button></div></dialog>
   <dialog id="settings" class="small-dialog" aria-labelledby="settings-title"><div class="viewer-bar"><h2 id="settings-title">设置</h2><button id="close-settings" type="button">关闭 ×</button></div><div class="form-body settings-body">
     <div class="setting-row"><div><strong>数据截至日期</strong><p class="field-help">统计「截至日期数量」时使用的日期，默认 2026-07-01。更改后已读取的数量保持不变，要点对应画师卡片上的「刷新」才会更新。</p></div><input id="history-date" type="date" value="2026-07-01" required></div>
+    <div class="setting-row"><div><strong>采集作品的排序</strong><p class="field-help">批量导入、识别候选与回填工具都按这个顺序取每位画师的作品。收藏最多、评分最高与综合热度依赖站点的排序元标签，而排序元标签没有索引，作品特别多的画师可能超时失败；最新发布走编号索引，最稳。</p></div><select id="work-order" aria-label="采集作品的排序"></select></div>
     <div class="setting-row"><div><strong>保存大图</strong><p class="field-help">开启后，点开作品预览时会把这件作品的原图保存进画师目录的「大图」文件夹，之后预览直接读本地、不再联网，也能离线查看。关闭时原图只在本次预览中临时加载，关掉即释放。</p></div><label class="switch"><input id="save-large" type="checkbox"><span></span></label></div>
     <div class="setting-row"><div><strong>预览图尺寸</strong><p class="field-help">调整主页面每位画师的作品预览图大小，每行显示几位画师会跟着自动变化；设置会记住。识别画师与编辑页的作品列表另有各自的「预览大小」滑动条。</p></div><div class="size-control"><input id="card-size" type="range" min="140" max="360" step="20" value="220"><span id="card-size-value">220</span></div></div>
   </div></dialog>
@@ -217,6 +218,8 @@ dialog[open]::backdrop{opacity:1}
 </script><script>(function(root){
   'use strict';
   const origin='https://danbooru.donmai.us';
+  /* 排序元标签由这里拼进查询，所以限定成小写字母与下划线，避免拼出意外的查询 */
+  const orderTag=value=>/^[a-z][a-z_]*$/.test(String(value||''))?String(value):'id_desc';
   /* 优先走扩展：它带登录 Cookie，图片地址字段只对"可见用户"返回，页面匿名直连拿不到。
      扩展不在、或版本太旧不认接口通道时退回页面直连，数量类接口照常可用。
      返回形状与 fetch 的 Response 一致（ok/status/json）。 */
@@ -270,19 +273,19 @@ dialog[open]::backdrop{opacity:1}
       previewUrl:https(pick('720x720'))||https(pick('360x360')),
       largeUrl:https(post.file_url)||https(pick('original'))||https(post.large_file_url)||https(pick('720x720'))};
   };
-  async function posts(name,{limit=20,page=1,signal,fetcher=defaultFetcher}={}){
-    const params=new URLSearchParams({tags:name+' order:id_desc',limit:String(limit),page:String(page)});
+  async function posts(name,{limit=20,page=1,signal,fetcher=defaultFetcher,order='id_desc'}={}){
+    const params=new URLSearchParams({tags:name+' order:'+orderTag(order),limit:String(limit),page:String(page)});
     const response=await fetcher(origin+'/posts.json?'+params,{signal,credentials:'omit',headers:{Accept:'application/json'}});
     if(!response.ok)throw Error(response.status===429?'请求过于频繁，请稍后重试。':'作品列表读取失败（'+response.status+'）。');
     let payload;try{payload=await response.json();}catch{throw Error('站点未返回作品数据，请稍后重试。');}
     if(!Array.isArray(payload))throw Error('站点未返回作品数据，请稍后重试。');
     return payload.filter(post=>post&&Number.isSafeInteger(post.id)&&post.id>0).map(workOf);
   }
-  async function details(name,date,{fetcher=defaultFetcher,previews=true}={}){
+  async function details(name,date,{fetcher=defaultFetcher,previews=true,order='id_desc'}={}){
     const get=async(endpoint,params)=>{const r=await fetcher(origin+endpoint+'?'+new URLSearchParams(params),{signal:AbortSignal.timeout(15000),credentials:'omit',headers:{Accept:'application/json'}});if(!r.ok)throw Error('读取受限：'+r.status);return r.json();};
     const checkedAt=new Date().toISOString();
     const count=async(tags)=>{const j=await get('/counts/posts.json',{tags,estimate_count:'false'});const n=j?.counts?.posts;if(!Number.isSafeInteger(n)||n<0)throw Error('数量未返回');return n;};
-    const jobs=[count(name),previews?get('/posts.json',{tags:name+' order:id_desc',limit:'5'}):Promise.resolve([])];
+    const jobs=[count(name),previews?get('/posts.json',{tags:name+' order:'+orderTag(order),limit:'5'}):Promise.resolve([])];
     if(date&&/^\d{4}-\d{2}-\d{2}$/.test(date))jobs.push(count(name+' date:<'+date));
     const results=await Promise.allSettled(jobs),ok=i=>results[i]?.status==='fulfilled';
     const counts={checkedAt,total:ok(0)?results[0].value:null,beforeDate:date||null,beforeTotal:ok(2)?results[2].value:null};
@@ -568,7 +571,7 @@ dialog[open]::backdrop{opacity:1}
   const el=(tag,cls,text)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n;};
   const btn=(text,fn,cls='action')=>{const b=el('button',cls,text);b.type='button';b.onclick=fn;return b;};
   const LIMIT=20,DEFAULT_ZOOM={thumbHeight:120,setThumbHeight(){},subscribe(){},unsubscribe(){}};
-  function mount(container,{uid,tag,exclude,onPreview=()=>{},zoom=DEFAULT_ZOOM,limit=LIMIT}={}){
+  function mount(container,{uid,tag,exclude,onPreview=()=>{},zoom=DEFAULT_ZOOM,limit=LIMIT,order='id_desc'}={}){
     const group='picker:'+uid;
     const status=el('small','picker-status','正在读取作品…'),grid=el('div','candidate-previews'),tools=el('div','candidate-tools'),counter=el('small','');
     const zoomBar=el('div','picker-zoom'),range=el('input');
@@ -594,7 +597,7 @@ dialog[open]::backdrop{opacity:1}
       updateCount();
     };
     const loadMore=async()=>{
-      const batch=await ArtistLookup.posts(tag,{limit,page});
+      const batch=await ArtistLookup.posts(tag,{limit,page,order});
       if(disposed)return works.length;
       if(batch.length<limit)exhausted=true;
       const fresh=batch.filter(w=>!exclude||!exclude.has(w.id));
@@ -798,6 +801,11 @@ dialog[open]::backdrop{opacity:1}
   'use strict';
   const defaultCategories=['二次元','写实 / 半写实','Q版 / 卡通','概念 / 设定','场景 / 环境'];
   const defaults=['可爱','唯美','暗黑','酷炫','清爽','华丽'];
+  /* 作品采集排序。收藏最多最贴近"多少人真的喜欢"；最新发布走编号索引，永远不会超时，
+     其余三种依赖站点的排序元标签，而排序元标签没有索引，作品特别多的画师可能超时。 */
+  const WORK_ORDERS=['favcount','score','rank','id_desc'];
+  const WORK_ORDER_LABELS={favcount:'收藏最多（热度）',score:'评分最高',rank:'综合热度（评分 + 新鲜度）',id_desc:'最新发布'};
+  const DEFAULT_WORK_ORDER='favcount';
   const $=id=>document.getElementById(id), clone=v=>structuredClone(v);
   const uid=()=>'draft-'+(crypto.randomUUID?crypto.randomUUID():Date.now()+'-'+Math.random().toString(36).slice(2));
   const el=(tag,cls,text)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n;};
@@ -838,7 +846,7 @@ dialog[open]::backdrop{opacity:1}
       const c=a.counts||{},number=n=>Number.isSafeInteger(n)&&n>=0?n:null;
       return {uid:id,order:i+1,name,category:a.category||null,score:Number.isSafeInteger(a.score)&&a.score>=1&&a.score<=5?a.score:null,aliases:unique(Array.isArray(a.aliases)?a.aliases:[]).map(x=>x.slice(0,60)),alias:typeof a.alias==='string'&&a.alias.trim()?a.alias.trim().slice(0,60):null,tags:unique(a.tags||[]).map(t=>t.slice(0,40)),danbooruId,counts:{total:number(c.total),checkedAt:text(c.checkedAt,40),beforeDate:text(c.beforeDate,10),beforeTotal:number(c.beforeTotal)},artistUrl:url(a.artistUrl),description:text(a.description),note:text(a.note),basis:text(a.basis,100),status:text(a.status,100),works};
     });
-    return {version:1,categories:categoryList,cutoffDate:/^\d{4}-\d{2}-\d{2}$/.test(raw.cutoffDate)?raw.cutoffDate:'2026-07-01',saveLargeImages:raw.saveLargeImages===true,date:text(raw.date,40),method:text(raw.method,12000),tags:unique([...(Array.isArray(raw.tags)?raw.tags:defaults),...artists.flatMap(a=>a.tags)]).map(t=>t.slice(0,40)),artists};
+    return {version:1,categories:categoryList,cutoffDate:/^\d{4}-\d{2}-\d{2}$/.test(raw.cutoffDate)?raw.cutoffDate:'2026-07-01',saveLargeImages:raw.saveLargeImages===true,workOrder:WORK_ORDERS.includes(raw.workOrder)?raw.workOrder:DEFAULT_WORK_ORDER,date:text(raw.date,40),method:text(raw.method,12000),tags:unique([...(Array.isArray(raw.tags)?raw.tags:defaults),...artists.flatMap(a=>a.tags)]).map(t=>t.slice(0,40)),artists};
   }
   function status(t,error=false){$('storage-status').textContent=t;$('storage-status').classList.toggle('error',error);}
   async function write(value){if(!folder)throw Error('请先选择数据文件夹');return normalize(await FolderStore.write(folder,value));}
@@ -963,6 +971,7 @@ dialog[open]::backdrop{opacity:1}
   function render(){
     $('history-date').value=data.cutoffDate;
     $('save-large').checked=data.saveLargeImages===true;
+    $('work-order').value=data.workOrder;
     $('categories').replaceChildren(...['全部',...data.categories,'待判断'].map(c=>{const n=data.artists.filter(a=>c==='全部'||(c==='待判断'?!a.category:a.category===c)).length;const b=btn(c,()=>{state.category=c;render();},c===state.category?'active':'');b.setAttribute('aria-pressed',String(c===state.category));b.append(el('span','n',n));return b;}));
     $('tags').replaceChildren(...data.tags.map(t=>{const b=btn(t,()=>{state.tags.has(t)?state.tags.delete(t):state.tags.add(t);render();},state.tags.has(t)?'active':'');b.setAttribute('aria-pressed',String(state.tags.has(t)));return b;}));
     const rows=data.artists.filter(a=>(state.category==='全部'||(state.category==='待判断'?!a.category:a.category===state.category))&&[...state.tags].every(t=>a.tags.includes(t))&&a.name.toLowerCase().includes(state.query));
@@ -981,7 +990,7 @@ dialog[open]::backdrop{opacity:1}
     setEditorError('');
     editorHost=el('div','work-picker');expand.append(editorHost);
     const exclude=new Set(draft.works.map(w=>w.id).filter(Boolean));
-    editorPicker=WorkPicker.mount(editorHost,{uid:draft.uid,tag,exclude,zoom:prefs,onPreview:work=>previewWork(draft.name,work,draft.uid)});
+    editorPicker=WorkPicker.mount(editorHost,{uid:draft.uid,tag,exclude,zoom:prefs,order:data.workOrder,onPreview:work=>previewWork(draft.name,work,draft.uid)});
     const action=btn('添加所选到作品列表',async()=>{
       const chosen=editorPicker.selected();
       if(!chosen.length){setEditorError('请先勾选要添加的作品。');return;}
@@ -1226,7 +1235,7 @@ dialog[open]::backdrop{opacity:1}
         const artist=next.artists.find(a=>a.name===name);done++;
         if(!artist||(artist.counts&&artist.counts.checkedAt)){report();continue;}
         try{
-          const detail=await ArtistLookup.details(name,next.cutoffDate,{previews:true});
+          const detail=await ArtistLookup.details(name,next.cutoffDate,{previews:true,order:next.workOrder});
           if(detail.countsError)throw Error('作品数量读取失败');
           let id=null,aliases=null;
           try{const hit=pickCandidate(await ArtistLookup.lookup(ArtistLookup.plan(name)),name);if(hit){id=hit.id;if(hit.aliases.length)aliases=hit.aliases;}}catch{}
@@ -1306,7 +1315,7 @@ dialog[open]::backdrop{opacity:1}
       const countLine=el('small','','作品数量：读取中…');detail.append(countLine);
       const body=el('div','candidate-body');detail.append(body);
       const previewUid='preview-'+artist.id;
-      const picker=WorkPicker.mount(body,{uid:previewUid,tag:artist.name,zoom:prefs,onPreview:work=>previewWork(artist.name,work,previewUid)});activePickers.push(picker);
+      const picker=WorkPicker.mount(body,{uid:previewUid,tag:artist.name,zoom:prefs,order:data.workOrder,onPreview:work=>previewWork(artist.name,work,previewUid)});activePickers.push(picker);
       ArtistLookup.details(artist.name,'',{previews:false}).then(result=>{if(sequence===lookupSequence)countLine.textContent='作品数量：'+(result.counts.total??'读取失败');}).catch(()=>{if(sequence===lookupSequence)countLine.textContent='作品数量：读取失败';});
       const exists=()=>data.artists.some(a=>a.danbooruId===artist.id||a.name.toLowerCase()===artist.name.toLowerCase());
       const add=btn(exists()?'已在画师库中':'添加此画师',async()=>{
@@ -1349,6 +1358,7 @@ dialog[open]::backdrop{opacity:1}
   async function init(){
     applyCardSize();
     data=normalize(FolderStore.empty());status('请先选择「数据」文件夹，读取或开始整理画师库。');
+    $('work-order').replaceChildren(...WORK_ORDERS.map(order=>new Option(WORK_ORDER_LABELS[order],order)));
     ArtistTestImages.init({getData:()=>data,getBusy:()=>busy,readImage,thumbnail,save});
     $('test-import-open').onclick=()=>ArtistTestImages.open();$('close-test-import').onclick=()=>$('test-import').close();$('test-cancel').onclick=()=>$('test-import').close();
     $('test-files').onchange=e=>{ArtistTestImages.files=[...e.target.files];ArtistTestImages.refresh();};
@@ -1356,10 +1366,11 @@ dialog[open]::backdrop{opacity:1}
     $('test-remove-all').onclick=()=>{for(const box of $('test-remove-list').querySelectorAll('input[type=checkbox]'))box.checked=true;};
     $('test-remove-none').onclick=()=>{for(const box of $('test-remove-list').querySelectorAll('input[type=checkbox]'))box.checked=false;};
     $('test-remove-run').onclick=()=>ArtistTestImages.runRemove();
-    $('settings-open').onclick=()=>{$('history-date').value=data.cutoffDate;$('save-large').checked=data.saveLargeImages===true;$('card-size').value=String(prefs.cardSize);$('card-size-value').textContent=prefs.cardSize;$('settings').showModal();};$('close-settings').onclick=()=>$('settings').close();
+    $('settings-open').onclick=()=>{$('history-date').value=data.cutoffDate;$('save-large').checked=data.saveLargeImages===true;$('work-order').value=data.workOrder;$('card-size').value=String(prefs.cardSize);$('card-size-value').textContent=prefs.cardSize;$('settings').showModal();};$('close-settings').onclick=()=>$('settings').close();
     $('card-size').oninput=()=>{const value=Number($('card-size').value);$('card-size-value').textContent=value;prefs.setCardSize(value);};
     $('save-large').onchange=async()=>{const next=clone(data);next.saveLargeImages=$('save-large').checked;await save(next,next.saveLargeImages?'已开启「保存大图」：预览作品时会保存原图':'已关闭「保存大图」：预览作品时不再保存原图');};
-    $('history-date').onchange=async()=>{const date=$('history-date').value;if(!/^\d{4}-\d{2}-\d{2}$/.test(date)){ $('history-date').value=data.cutoffDate;return;}const next=clone(data);next.cutoffDate=date;await save(next,'已保存截至日期；点击画师旁的刷新后，该画师数量才会更新。');};
+    $('history-date').onchange=async()=>{const date=$('history-date').value;if(!/^\d{4}-\d{2}-\d{2}$/.test(date)){ $('history-date').value=data.cutoffDate;return;}const next=clone(data);next.cutoffDate=date;await save(next,'已保存截至日期；下次保存画师时会按新日期更新该画师的数量。');};
+    $('work-order').onchange=async()=>{const value=$('work-order').value;if(!WORK_ORDERS.includes(value)){ $('work-order').value=data.workOrder;return;}const next=clone(data);next.workOrder=value;await save(next,'已改为按「'+WORK_ORDER_LABELS[value]+'」采集作品');};
     $('add-artist').onclick=()=>startEdit(null);$('quick-form').onsubmit=e=>{e.preventDefault();detectArtist();};$('quick-input').oninput=quickChanged;$('quick-input').oncompositionend=quickChanged;
     $('quick-manual').onclick=()=>{cancelLookup();startEdit(null);const value=$('quick-input').value.trim();if(value&&draft){try{const p=ArtistLookup.plan(value);if(p.kind==='name')draft.name=p.query;else if(p.kind==='url')draft.artistUrl=p.query;render();}catch{}}};
     $('manage-tags').onclick=()=>{if(!busy){manageFilter.category='';manageFilter.tag='';$('category-search').value='';$('tag-search').value='';showManageTab('category');listCategories();listTags();$('tag-manager').showModal();}};$('close-tags').onclick=()=>$('tag-manager').close();

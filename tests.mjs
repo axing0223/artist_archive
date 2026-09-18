@@ -95,6 +95,27 @@ test('画师候选带回全部笔名，不再只取前五个',async()=>{
  assert.equal(candidates([{id:9,name:'artist_a',other_names:['x','',null,3,'  ','y']}])[0].aliases.length,2,'过滤掉非字符串与空白');
  assert.equal(candidates([{id:9,name:'artist_a'}])[0].aliases.length,0,'没有笔名字段时给空数组');
 });
+test('作品排序可切换，非法值一律退回最新发布',async()=>{
+ const {posts}=require('./app/artist-lookup.js');
+ const asked=[];
+ const fetcher=async value=>{asked.push(new URL(value).searchParams.get('tags'));return {ok:true,json:async()=>[]};};
+ await posts('artist_a',{limit:3,order:'favcount',fetcher});
+ await posts('artist_a',{limit:3,order:'score',fetcher});
+ await posts('artist_a',{limit:3,fetcher});
+ await posts('artist_a',{limit:3,order:'score id:1..2',fetcher});
+ await posts('artist_a',{limit:3,order:'RANK',fetcher});
+ await posts('artist_a',{limit:3,order:'',fetcher});
+ assert.deepEqual(asked,['artist_a order:favcount','artist_a order:score','artist_a order:id_desc','artist_a order:id_desc','artist_a order:id_desc','artist_a order:id_desc'],'默认与非法值都要退回最新发布，不能拼进查询');
+});
+test('画师详情取预览图时也按设置的排序',async()=>{
+ const {details}=require('./app/artist-lookup.js');
+ const asked=[];
+ const fetcher=async value=>{const u=new URL(value);asked.push(u);return {ok:true,json:async()=>u.pathname==='/counts/posts.json'?{counts:{posts:5}}:[]};};
+ await details('artist_a','',{previews:true,order:'favcount',fetcher});
+ const list=asked.filter(u=>u.pathname==='/posts.json');
+ assert.equal(list.length,1,'只请求一次作品列表');
+ assert.equal(list[0].searchParams.get('tags'),'artist_a order:favcount');
+});
 test('作品接口优先走扩展：带登录态才拿得到图片地址，扩展不在或版本过旧时退回页面直连',async()=>{
  const {posts}=require('./app/artist-lookup.js');
  const rows=[{id:5,file_url:'https://cdn.donmai.us/original/a.jpg',preview_file_url:'https://cdn.donmai.us/180x180/a.jpg'}];

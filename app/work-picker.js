@@ -3,7 +3,7 @@
   const el=(tag,cls,text)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n;};
   const btn=(text,fn,cls='action')=>{const b=el('button',cls,text);b.type='button';b.onclick=fn;return b;};
   const LIMIT=20,DEFAULT_ZOOM={thumbHeight:120,setThumbHeight(){},subscribe(){},unsubscribe(){}};
-  function mount(container,{uid,tag,exclude,onPreview=()=>{},zoom=DEFAULT_ZOOM,limit=LIMIT}={}){
+  function mount(container,{uid,tag,exclude,onPreview=()=>{},zoom=DEFAULT_ZOOM,limit=LIMIT,order='id_desc'}={}){
     const group='picker:'+uid;
     const status=el('small','picker-status','正在读取作品…'),grid=el('div','candidate-previews'),tools=el('div','candidate-tools'),counter=el('small','');
     const zoomBar=el('div','picker-zoom'),range=el('input');
@@ -29,7 +29,7 @@
       updateCount();
     };
     const loadMore=async()=>{
-      const batch=await ArtistLookup.posts(tag,{limit,page});
+      const batch=await ArtistLookup.posts(tag,{limit,page,order});
       if(disposed)return works.length;
       if(batch.length<limit)exhausted=true;
       const fresh=batch.filter(w=>!exclude||!exclude.has(w.id));

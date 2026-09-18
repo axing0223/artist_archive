@@ -123,6 +123,8 @@ details pre{margin:0;padding:0 16px 16px;font:12px/1.7 Consolas,monospace;white-
      改由扩展（带 Cookie）解析原图地址，再按 CDN 规则推导其余两档尺寸。 */
   let originalRoute=null,previewExt='webp';
   const apiJson=async url=>{const r=await fetcher(url,{credentials:'omit',headers:{Accept:'application/json'}});if(!r.ok)throw Error('HTTP '+r.status);return r.json();};
+  /* 排序沿用画师库设置里的「采集作品的排序」；取值限定成小写字母与下划线 */
+  const workOrder=()=>{const value=String(data?.workOrder||'');return /^[a-z][a-z_]*$/.test(value)?value:'id_desc';};
   const cdnUrl=(dir,size,ext)=>'https://cdn.donmai.us/'+size+'/'+dir+'.'+ext;
   const parseCdn=value=>{
     const text=String(value||''),m=/^https:\/\/cdn\.donmai\.us\/(?:original|sample|\d+x\d+)\/([a-f0-9]{2})\/([a-f0-9]{2})\/([a-f0-9]{32})\.([a-z0-9]+)$/.exec(text);
@@ -137,7 +139,7 @@ details pre{margin:0;padding:0 16px 16px;font:12px/1.7 Consolas,monospace;white-
       largeUrl:original};
   }
   async function fetchWorks(name){
-    const url=only=>'https://danbooru.donmai.us/posts.json?'+new URLSearchParams({tags:name+' order:id_desc',limit:String(WORKS),...(only?{only}:{})});
+    const url=only=>'https://danbooru.donmai.us/posts.json?'+new URLSearchParams({tags:name+' order:'+workOrder(),limit:String(WORKS),...(only?{only}:{})});
     let rows=null;
     try{rows=await apiJson(url('id,media_asset'));}
     catch(error){log('  列表接口不接受 only= 参数（'+error.message+'），改用默认字段');}
@@ -167,7 +169,7 @@ details pre{margin:0;padding:0 16px 16px;font:12px/1.7 Consolas,monospace;white-
   async function diagnose(name){
     let first=null;
     try{
-      const rows=await apiJson('https://danbooru.donmai.us/posts.json?'+new URLSearchParams({tags:name+' order:id_desc',limit:'1'}));
+      const rows=await apiJson('https://danbooru.donmai.us/posts.json?'+new URLSearchParams({tags:name+' order:'+workOrder(),limit:'1'}));
       first=Array.isArray(rows)?rows[0]:rows;
     }catch(error){log('诊断 · 作品列表读取失败：'+error.message);}
     const asset=first?.media_asset;
