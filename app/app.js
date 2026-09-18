@@ -63,7 +63,10 @@
       if(!remote)throw Error('这张作品没有原图地址');
       if(!$('viewer').open)return;
       img.onload=()=>{$('viewer-caption').textContent=(w.caption?w.caption+' · ':'')+'原图仅本次显示，不会保存到本地';};
-      ArtistImages.bind(img,a.uid,{...w,largeUrl:remote},'viewer','large',error=>$('viewer-caption').textContent='原图未取到：'+error.message+'（当前显示的是缩略图）');
+      ArtistImages.bind(img,a.uid,{...w,largeUrl:remote},'viewer','large',error=>{
+        $('viewer-caption').textContent='原图未取到：'+error.message+'（显示的是缩略图）';
+        ArtistImages.bind(img,a.uid,w,'viewer','thumb');
+      });
     }catch(error){if(error.name!=='AbortError')$('viewer-caption').textContent='原图未取到：'+error.message+'（当前显示的是缩略图）';}
   }
   function card(a){

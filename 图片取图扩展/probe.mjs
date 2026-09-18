@@ -10,12 +10,13 @@ export function postUrl(value){
   if(!match||!Number.isSafeInteger(Number(match[1])))throw Error('请输入有效作品编号或 Danbooru 作品页面链接。');
   return 'https://danbooru.donmai.us/posts/'+match[1]+'.json';
 }
+const mb=n=>(n/1048576).toFixed(1);
 async function limitedBlob(response,limit,signal){
   const declared=Number(response.headers.get('content-length'));
-  if(declared>limit){await response.body?.cancel();throw Error('响应超过大小限制。');}
+  if(declared>limit){await response.body?.cancel();throw Error('响应超过大小限制：'+mb(declared)+' MB，上限 '+mb(limit)+' MB。');}
   if(!response.body)throw Error('服务器没有返回内容。');
   const reader=response.body.getReader(),chunks=[];let size=0;
-  try{while(true){signal.throwIfAborted();const {done,value}=await reader.read();if(done)break;size+=value.byteLength;if(size>limit)throw Error('响应超过大小限制。');chunks.push(value);}}
+  try{while(true){signal.throwIfAborted();const {done,value}=await reader.read();if(done)break;size+=value.byteLength;if(size>limit)throw Error('响应超过大小限制：已超过上限 '+mb(limit)+' MB。');chunks.push(value);}}
   catch(error){await reader.cancel().catch(()=>{});throw error;}finally{reader.releaseLock();}
   if(!size)throw Error('服务器返回空文件。');
   return new Blob(chunks,{type:response.headers.get('content-type')?.split(';')[0].trim().toLowerCase()||''});
