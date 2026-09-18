@@ -79,7 +79,7 @@ details pre{margin:0;padding:0 16px 16px;font:12px/1.7 Consolas,monospace;white-
   const $=id=>document.getElementById(id);
   const CONCURRENCY=3,PER_SECOND=5,BATCH=25,WORKS=3;
 
-  let dir=null,data=null,queue=[],active=[],running=false,stop=false,startedAt=0,processed=0;
+  let dir=null,data=null,queue=[],active=[],running=false,stop=false,startedAt=0,processed=0,diagnosed=false;
   const stats={renamed:0,images:0,failed:0};
   const failures=[],ambiguous=[],imageFailures=[];
 
@@ -119,6 +119,19 @@ details pre{margin:0;padding:0 16px 16px;font:12px/1.7 Consolas,monospace;white-
     $('fail-list').textContent=failures.length?failures.join('\n'):'—';
   }
 
+  /* 一次性诊断：打印 /posts.json 真正返回了哪些字段，用于核对地址为空的原因 */
+  async function diagnose(name){
+    try{
+      const url='https://danbooru.donmai.us/posts.json?'+new URLSearchParams({tags:name+' order:id_desc',limit:'1'});
+      const response=await fetcher(url,{credentials:'omit',headers:{Accept:'application/json'}});
+      const rows=await response.json();
+      const keys=Array.isArray(rows)&&rows[0]?Object.keys(rows[0]).sort().join(', '):'（没有返回帖子）';
+      log('诊断 · /posts.json 字段：'+keys);
+      const variants=rows?.[0]?.media_asset?.variants;
+      log('诊断 · media_asset.variants：'+(Array.isArray(variants)?variants.map(v=>v.type).join(' / '):'缺失'));
+    }catch(error){log('诊断失败（不影响回填）：'+error.message);}
+  }
+
   /* 单个画师：查编号 → 取数量与作品 → 下缩略图 → 改内存记录 */
   async function syncOne(artist){
     const name=artist.name,oldUid=artist.uid;
@@ -132,14 +145,17 @@ details pre{margin:0;padding:0 16px 16px;font:12px/1.7 Consolas,monospace;white-
       else ambiguous.push(name+' → '+(found.map(c=>c.name+' #'+c.id).join(' | ')||'无匹配'));
     }
 
-    const detail=await ArtistLookup.details(name,data.cutoffDate,{fetcher,previews:true});
+    const detail=await ArtistLookup.details(name,data.cutoffDate,{fetcher,previews:false});
     if(detail.countsError)throw Error('作品数量读取失败');
+    if(!diagnosed){diagnosed=true;await diagnose(name);}
+    const listed=await ArtistLookup.posts(name,{limit:WORKS,fetcher});
+    if(listed.length&&listed.every(w=>typeof w.thumbUrl!=='string'))throw Error('作品地址为空：站点未返回预览地址');
 
     const parsed=ArtistId.parse(oldUid);
     const uid=ArtistId.create({seq:parsed?parsed.seq:artist.order,name,danbooruId:id});
     const works=[];
 
-    for(const work of detail.works.slice(0,WORKS)){
+    for(const work of listed.slice(0,WORKS)){
       const copy={...work};
       try{
         await gate();
@@ -197,7 +213,8 @@ details pre{margin:0;padding:0 16px 16px;font:12px/1.7 Consolas,monospace;white-
       dir=await window.showDirectoryPicker({id:'artist-library',mode:'readwrite'});
       setText('folder-line','正在读取画师资料…');
       data=await FolderStore.read(dir);
-      queue=data.artists.filter(a=>!(a.counts&&a.counts.checkedAt));
+      /* 已完成 = 有数量记录，且已有作品的地址可用；地址为空的会被重新排队 */
+      queue=data.artists.filter(a=>!(a.counts&&a.counts.checkedAt)||(a.works||[]).some(w=>typeof w.thumbUrl!=='string'));
       setText('folder-line','当前文件夹：'+dir.name+' · 共 '+data.artists.length+' 位画师，待回填 '+queue.length+' 位。');
       setText('s-total',queue.length);
       if(!queue.length)log('所有画师都已有作品数量记录，无需回填。');

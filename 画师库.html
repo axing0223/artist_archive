@@ -207,7 +207,7 @@ dialog[open]::backdrop{opacity:1}
     return payload.filter(post=>post&&Number.isSafeInteger(post.id)&&post.id>0).map(workOf);
   }
   async function details(name,date,{fetcher=fetch,previews=true}={}){
-    const get=async(endpoint,params)=>{const r=await fetcher(origin+endpoint+'?'+new URLSearchParams(params),{signal:AbortSignal.timeout(15000),credentials:'omit'});if(!r.ok)throw Error('读取受限：'+r.status);return r.json();};
+    const get=async(endpoint,params)=>{const r=await fetcher(origin+endpoint+'?'+new URLSearchParams(params),{signal:AbortSignal.timeout(15000),credentials:'omit',headers:{Accept:'application/json'}});if(!r.ok)throw Error('读取受限：'+r.status);return r.json();};
     const checkedAt=new Date().toISOString();
     const count=async(tags)=>{const j=await get('/counts/posts.json',{tags,estimate_count:'false'});const n=j?.counts?.posts;if(!Number.isSafeInteger(n)||n<0)throw Error('数量未返回');return n;};
     const jobs=[count(name),previews?get('/posts.json',{tags:name+' order:id_desc',limit:'5'}):Promise.resolve([])];

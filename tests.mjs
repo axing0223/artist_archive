@@ -86,6 +86,16 @@ test('刷新只查询当前画师的两项数量，不请求预览图',async()=>
  const result=await details('artist_a','2026-08-01',{previews:false,fetcher:async value=>{const u=new URL(value);requests.push(u);return {ok:true,json:async()=>({counts:{posts:u.searchParams.get('tags').includes('date:')?12:20}})};}});
  assert.equal(requests.length,2);assert.ok(requests.every(u=>u.pathname==='/counts/posts.json'));assert.deepEqual(requests.map(u=>u.searchParams.get('tags')),['artist_a','artist_a date:<2026-08-01']);assert.equal(result.counts.total,20);assert.equal(result.counts.beforeTotal,12);
 });
+test('读取画师详情时统一声明 JSON，预览地址才不会丢成 null',async()=>{
+ const {details}=require('./app/artist-lookup.js');const requests=[];
+ const rows=[{id:9,preview_file_url:'https://cdn.donmai.us/180x180/a.jpg',file_url:'https://cdn.donmai.us/original/a.jpg',media_asset:{variants:[{type:'720x720',url:'https://cdn.donmai.us/720x720/a.jpg'}]}}];
+ const result=await details('artist_a','',{previews:true,fetcher:async(value,init)=>{const u=new URL(value);requests.push({u,init});return {ok:true,json:async()=>u.pathname==='/counts/posts.json'?{counts:{posts:5}}:rows};}});
+ assert.equal(requests.length,2,'不带截止日期时只查数量与作品两件事');
+ assert.ok(requests.every(r=>r.init.headers?.Accept==='application/json'),'每个请求都要声明 JSON；缺了它站点可能只回编号，作品地址全变 null');
+ assert.equal(result.works.length,1);
+ assert.equal(result.works[0].thumbUrl,'https://cdn.donmai.us/360x360/a.jpg');
+ assert.equal(result.works[0].largeUrl,'https://cdn.donmai.us/original/a.jpg');
+});
 test('识别区按页取作品，每张都带缩略图与原图地址，无效条目被丢弃',async()=>{
  const {posts}=require('./app/artist-lookup.js');const requests=[];
  const rows=[
