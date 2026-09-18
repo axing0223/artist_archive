@@ -203,16 +203,28 @@
     },'action primary-action'),bar=el('div','picker-actions');
     bar.append(action,btn('收起',closeWorkPicker));editorHost.append(bar);
   }
+  function morphAway(uid,then){
+    const article=uid?document.querySelector('.artist-slot[data-uid="'+uid+'"] article'):null;
+    if(!article){then();return;}
+    article.classList.add('is-morphing');
+    setTimeout(then,130);
+  }
   function startEdit(a){
     if(busy)return;
+    const previous=editingId;
     closeEditor();
     editingId=a?.uid||null;
     draft=a?clone(a):{uid:uid(),name:'',category:null,tags:[],artistUrl:'',description:'',note:'',works:[]};
     if(editingId)ArtistGallery.pin(editingId,true);
-    render();
-    requestAnimationFrame(()=>{const slot=document.querySelector('.artist-slot[data-uid="'+draft.uid+'"]');if(slot)slot.scrollIntoView({block:'center',behavior:'smooth'});});
+    morphAway(previous||editingId,()=>{
+      render();
+      requestAnimationFrame(()=>{const slot=document.querySelector('.artist-slot[data-uid="'+draft.uid+'"]');if(slot)slot.scrollIntoView({block:'center',behavior:'smooth'});});
+    });
   }
-  function cancelEdit(){if(busy||uploading)return;closeEditor();render();}
+  function cancelEdit(){
+    if(busy||uploading)return;
+    morphAway(editingId,()=>{closeEditor();render();});
+  }
   function closeEditor(){if(editingId)ArtistGallery.pin(editingId,false);closeWorkPicker();editingId=null;draft=null;editorError=null;}
   async function saveDraft(){
     if(busy||uploading)return;
@@ -226,6 +238,7 @@
     const next=clone(data),i=next.artists.findIndex(a=>a.uid===editingId);
     if(i<0){draft.uid=ArtistId.issue(next.artists,{name:draft.name,danbooruId:draft.danbooruId});next.artists.push(draft);}else next.artists[i]=draft;
     next.artists.forEach((a,j)=>a.order=j+1);next.tags=unique([...next.tags,...draft.tags]);
+    await new Promise(resolve=>morphAway(editingId,resolve));
     closeEditor();
     await save(next);
   }
@@ -233,6 +246,7 @@
     if(busy||uploading)return;
     if(!confirm(`删除画师「${draft.name}」及其在此画师库内的图片？`))return;
     const next=clone(data);next.artists=next.artists.filter(a=>a.uid!==editingId);next.artists.forEach((a,i)=>a.order=i+1);
+    await new Promise(resolve=>morphAway(editingId,resolve));
     closeEditor();
     await save(next,'已删除画师');
   }
@@ -375,11 +389,19 @@
     return result;
   }
   const lookupCache=new Map();let activePickers=[];
-  function clearCandidates(){for(const picker of activePickers)picker.dispose();activePickers=[];$('quick-results').replaceChildren();}
+  let clearTimer;
+  function clearCandidates(immediate=false){
+    for(const picker of activePickers)picker.dispose();
+    activePickers=[];
+    const results=$('quick-results');clearTimeout(clearTimer);
+    const flush=()=>{results.replaceChildren();results.classList.remove('is-leaving');};
+    if(immediate||!results.children.length){flush();return;}
+    results.classList.add('is-leaving');clearTimer=setTimeout(flush,140);
+  }
   function cancelLookup(){clearTimeout(lookupTimer);lookupController?.abort();lookupSequence++;}
   function previewWork(name,work,uid){openViewer({title:name+' #'+work.id,uid,work,caption:'候选作品，勾选后才会保存到画师库'});}
   function showCandidates(results,p,sequence){
-    clearCandidates();
+    clearCandidates(true);
     $('quick-status').textContent=results.length?`找到 ${results.length} 位候选，请核对正式标签后勾选要保存的作品。`:'未找到匹配。可以使用站内检索检查别名或主页链接。';
     for(const artist of results){
       const row=el('div','candidate'),detail=el('div','candidate-info');detail.append(el('strong','',artist.name),el('span','',`Danbooru #${artist.id}`));
