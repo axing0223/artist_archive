@@ -242,43 +242,58 @@ const runBatch=async(elements,names,collect=true)=>{
 const findByClass=(node,cls)=>{for(const child of [node,...(node.children||[])]){if(String(child.className).split(/\s+/).includes(cls))return child;}for(const child of node.children||[]){const hit=findByClass(child,cls);if(hit)return hit;}return null;};
 const findAllByClass=(node,cls,out=[])=>{if(String(node.className).split(/\s+/).includes(cls))out.push(node);for(const child of node.children||[])findAllByClass(child,cls,out);return out;};
 const tagRowOf=editor=>findByClass(editor,'tag-editor-row');
-test('编辑卡片的标签：下拉菜单选一个加一个胶囊，× 可移除',async()=>{
+test('编辑卡片的标签：全部标签平铺成按钮，点击勾选、再点取消',async()=>{
   const {elements,state}=await boot();
   elements.get('add-artist').onclick();
   const editor=findByClass(lastRender(state)[0],'tag-editor');
   assert.ok(editor,'编辑卡片里应有标签编辑器');
-  const [picker,input]=tagRowOf(editor).children;
-  assert.equal(String(picker.tagName).toLowerCase(),'select','应有从已有标签中选择的下拉菜单');
-  assert.equal(picker.children[0].textContent,'从已有标签中选择…','下拉首项是占位提示');
-  assert.equal(input.placeholder,'输入新标签后回车','应保留现场新建标签的入口');
-  assert.equal(findAllByClass(editor,'tag-chip').length,0,'新画师默认没有标签');
-  assert.ok(findByClass(editor,'tag-chips-empty'),'没有标签时要给出提示');
+  const initial=findAllByClass(editor,'tag-choice');
+  assert.ok(initial.length>0,'应把所有已有标签平铺成按钮');
+  assert.equal(initial.every(choice=>choice.tagName==='button'),true,'每个标签是一个按钮');
+  assert.equal(initial.every(choice=>choice.className==='tag-choice'),true,'默认全部未勾选');
+  assert.equal(initial.every(choice=>choice['aria-pressed']==='false'),true,'未勾选时 aria-pressed 为 false');
+  assert.equal(String(tagRowOf(editor).children[0].tagName).toLowerCase(),'input','下面留新建标签的输入框');
 
-  const available=picker.children.slice(1).map(option=>option.value);
-  assert.ok(available.length>0,'默认库里有可选标签');
-  picker.value=available[0];picker.onchange();
-  const chips=findAllByClass(editor,'tag-chip');
-  assert.equal(chips.length,1,'从下拉选一个就应出现一个胶囊');
-  assert.equal(chips[0].children[0].textContent,available[0]);
-  assert.equal(picker.children.slice(1).map(o=>o.value).includes(available[0]),false,'已选标签不再出现在下拉里');
-  assert.equal(findAllByClass(editor,'tag-chips-empty').length,0,'有标签时不再显示空提示');
-  chips[0].children[1].onclick();
-  assert.equal(findAllByClass(editor,'tag-chip').length,0,'点 × 应移除该胶囊');
+  initial[0].onclick();
+  const picked=findAllByClass(editor,'tag-choice')[0];
+  assert.equal(String(picked.className).includes('active'),true,'点击后进入勾选态');
+  assert.equal(picked['aria-pressed'],'true');
+  picked.onclick();
+  const cleared=findAllByClass(editor,'tag-choice')[0];
+  assert.equal(cleared.className,'tag-choice','再点一次取消勾选');
+  assert.equal(cleared['aria-pressed'],'false');
 });
-test('编辑卡片的标签：输入新标签回车即可加入，「添加」按钮等效',async()=>{
+test('编辑卡片的标签：勾选结果随保存写进画师资料',async()=>{
+  const {elements,state}=await boot();
+  elements.get('add-artist').onclick();
+  const card=lastRender(state)[0];
+  const nameInput=findByPlaceholder(card,'画师名字（必填）');
+  nameInput.value='带标签的画师';nameInput.oninput();
+  const editor=findByClass(card,'tag-editor'),choices=findAllByClass(editor,'tag-choice');
+  const first=choices[0].textContent,second=choices[1].textContent;
+  choices[0].onclick();
+  findAllByClass(editor,'tag-choice')[1].onclick();
+  await findText(lastRender(state)[0],'保存').onclick();
+  assert.equal(state.rows[0].tags.length,2,'勾选两个标签');
+  assert.equal(state.rows[0].tags.includes(first)&&state.rows[0].tags.includes(second),true,'勾选结果要写进画师资料');
+});
+test('编辑卡片的标签：输入新标签回车即可加入，并立刻变成勾选态的按钮',async()=>{
   const {elements,state}=await boot();
   elements.get('add-artist').onclick();
   const editor=findByClass(lastRender(state)[0],'tag-editor');
-  const [,input,addButton]=tagRowOf(editor).children;
+  const before=findAllByClass(editor,'tag-choice').length;
+  const [input,addButton]=tagRowOf(editor).children;
   input.value='  新风格  ';input.onkeydown({key:'Enter',preventDefault(){}});
-  let chips=findAllByClass(editor,'tag-chip');
-  assert.equal(chips.length,1);
-  assert.equal(chips[0].children[0].textContent,'新风格','首尾空格应被去掉');
+  let choices=findAllByClass(editor,'tag-choice');
+  assert.equal(choices.length,before+1,'新标签应立刻出现在按钮里');
+  const fresh=choices.find(choice=>choice.textContent==='新风格');
+  assert.ok(fresh,'新标签按钮存在，且首尾空格已去掉');
+  assert.equal(String(fresh.className).includes('active'),true,'新建的标签应处于勾选态');
   assert.equal(input.value,'','加入后应清空输入框');
   input.value='新风格';input.onkeydown({key:'Enter',preventDefault(){}});
-  assert.equal(findAllByClass(editor,'tag-chip').length,1,'重复标签不应重复加入');
+  assert.equal(findAllByClass(editor,'tag-choice').length,before+1,'重复标签不应重复加入');
   input.value='另一个';addButton.onclick();
-  assert.equal(findAllByClass(editor,'tag-chip').length,2,'「添加」按钮与回车等效');
+  assert.equal(findAllByClass(editor,'tag-choice').length,before+2,'「添加」按钮与回车等效');
 });
 test('管理标签：平时只显示名字，点「重命名」才就地把该行变输入框',async()=>{
   const {elements}=await boot();

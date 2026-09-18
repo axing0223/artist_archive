@@ -74,11 +74,11 @@ dialog[open]::backdrop{opacity:1}
 .manage-tag-row{flex-wrap:wrap}
 .edit-field-wide{grid-column:1/-1}
 .tag-editor{display:grid;gap:10px;width:100%}
-.tag-chips{display:flex;flex-wrap:wrap;gap:7px;min-height:30px;align-items:center}
-.tag-chips-empty{font-size:13px;color:#98a0b0}
-.tag-chip{display:inline-flex;align-items:center;gap:4px;padding:5px 6px 5px 11px;border-radius:30px;background:#eef1fe;color:#3243a5;font-size:13px;line-height:1.5}
-.tag-chip-remove{border:0;background:transparent;color:#6b78b8;font-size:15px;line-height:1;padding:0 5px;cursor:pointer}
-.tag-chip-remove:hover{color:#b33931}
+.tag-choices{display:flex;flex-wrap:wrap;gap:6px;min-height:30px;align-items:center}
+.tag-choices-empty{font-size:13px;color:#98a0b0}
+.tag-choice{padding:5px 10px;border-radius:30px;border:1px solid #e2e4eb;background:#fff;color:#555b68;font:inherit;font-size:13px;line-height:1.5;cursor:pointer}
+.tag-choice:hover{border-color:#c8d2e4;color:#3b4252}
+.tag-choice.active{border-color:var(--accent);color:var(--accent);background:#f1f4ff}
 .tag-editor-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .tag-editor-row select{flex:1;min-width:150px;width:auto}
 .tag-editor-row input{flex:1;min-width:130px}

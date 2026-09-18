@@ -90,26 +90,25 @@
     const nameInput=el('input');nameInput.value=draft.name;nameInput.maxLength=160;nameInput.placeholder='画师名字（必填）';nameInput.oninput=()=>draft.name=nameInput.value;
     const categorySelect=el('select');categorySelect.append(new Option('待判断',''),...data.categories.map(c=>new Option(c,c)));categorySelect.value=draft.category||'';categorySelect.onchange=()=>draft.category=categorySelect.value||null;
     const urlInput=el('input');urlInput.type='url';urlInput.value=draft.artistUrl||'';urlInput.placeholder='https://…';urlInput.oninput=()=>draft.artistUrl=urlInput.value;
-    const tagEditor=el('div','tag-editor'),tagChips=el('div','tag-chips'),tagRow=el('div','tag-editor-row'),tagPicker=el('select'),tagNew=el('input');
+    const tagEditor=el('div','tag-editor'),tagChoices=el('div','tag-choices'),tagRow=el('div','tag-editor-row'),tagNew=el('input');
     const renderTagEditor=()=>{
-      tagChips.replaceChildren(...draft.tags.map(tag=>{
-        const chip=el('span','tag-chip'),remove=el('button','tag-chip-remove','×');remove.type='button';remove.setAttribute('aria-label','移除标签 '+tag);
-        remove.onclick=()=>{draft.tags=draft.tags.filter(x=>x!==tag);renderTagEditor();};
-        chip.append(el('span','',tag),remove);return chip;
+      const tags=unique([...data.tags,...draft.tags]);
+      tagChoices.replaceChildren(...tags.map(tag=>{
+        const on=draft.tags.includes(tag),choice=el('button',on?'tag-choice active':'tag-choice',tag);
+        choice.type='button';choice.setAttribute('aria-pressed',String(on));
+        choice.onclick=()=>{draft.tags=on?draft.tags.filter(x=>x!==tag):[...draft.tags,tag];renderTagEditor();};
+        return choice;
       }));
-      if(!draft.tags.length)tagChips.append(el('span','tag-chips-empty','还没有标签，从下面选一个，或直接输入新标签。'));
-      tagPicker.replaceChildren(new Option('从已有标签中选择…',''),...data.tags.filter(t=>!draft.tags.includes(t)).map(t=>new Option(t,t)));
-      tagPicker.value='';
+      if(!tags.length)tagChoices.append(el('span','tag-choices-empty','还没有标签，在下面输入新建一个。'));
     };
     const addTag=value=>{const tag=String(value||'').trim().slice(0,40);if(!tag||!/[\p{L}\p{N}]/u.test(tag)||draft.tags.includes(tag))return false;draft.tags=[...draft.tags,tag];renderTagEditor();return true;};
-    tagPicker.setAttribute('aria-label','从已有标签中选择');tagPicker.onchange=()=>addTag(tagPicker.value);
     tagNew.maxLength=40;tagNew.placeholder='输入新标签后回车';tagNew.setAttribute('aria-label','新建标签');
     const tagAdd=el('button','action','添加');tagAdd.type='button';
     const commitNewTag=()=>{if(addTag(tagNew.value))tagNew.value='';tagNew.focus?.();};
     tagAdd.onclick=commitNewTag;
     tagNew.onkeydown=event=>{if(event.key==='Enter'){event.preventDefault();commitNewTag();}};
-    tagRow.append(tagPicker,tagNew,tagAdd);
-    tagEditor.append(tagChips,tagRow);
+    tagRow.append(tagNew,tagAdd);
+    tagEditor.append(tagChoices,tagRow);
     renderTagEditor();
     const descInput=el('textarea');descInput.rows=3;descInput.maxLength=5000;descInput.value=draft.description||'';descInput.placeholder='记录画风和特点';descInput.oninput=()=>draft.description=descInput.value;
     const noteInput=el('textarea');noteInput.rows=2;noteInput.maxLength=5000;noteInput.value=draft.note||'';noteInput.placeholder='备注';noteInput.oninput=()=>draft.note=noteInput.value;
