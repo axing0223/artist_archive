@@ -129,11 +129,17 @@
       const chosen=editorPicker.selected();
       if(!chosen.length){setEditorError('请先勾选要添加的作品。');return;}
       action.disabled=true;action.textContent='正在下载缩略图…';
-      try{const saved=await cacheWorks(draft.uid,chosen);draft.works.push(...saved);closeWorkPicker();render();}
+      try{const saved=await cacheWorks(draft.uid,chosen);draft.works.push(...saved);closeWorkPicker();render();focusEditingCard();}
       catch(error){setEditorError('添加失败：'+error.message);}
       finally{action.disabled=false;action.textContent='添加所选到作品列表';}
     },'action primary-action'),bar=el('div','picker-actions');
-    bar.append(action,btn('收起',closeWorkPicker));editorHost.append(bar);
+    bar.append(action,btn('收起',()=>{closeWorkPicker();focusEditingCard();}));editorHost.append(bar);
+    focusEditingCard();
+  }
+  function focusEditingCard(){
+    if(!draft)return;
+    const uid=draft.uid;
+    requestAnimationFrame(()=>{const slot=document.querySelector('.artist-slot[data-uid="'+uid+'"]');if(slot)slot.scrollIntoView({block:'center',behavior:'smooth'});});
   }
   function morphAway(uid,then){
     const article=uid?document.querySelector('.artist-slot[data-uid="'+uid+'"] article'):null;
@@ -148,10 +154,7 @@
     editingId=a?.uid||null;
     draft=a?clone(a):{uid:uid(),name:'',category:null,tags:[],artistUrl:'',description:'',note:'',works:[]};
     if(editingId)ArtistGallery.pin(editingId,true);
-    morphAway(previous||editingId,()=>{
-      render();
-      requestAnimationFrame(()=>{const slot=document.querySelector('.artist-slot[data-uid="'+draft.uid+'"]');if(slot)slot.scrollIntoView({block:'center',behavior:'smooth'});});
-    });
+    morphAway(previous||editingId,()=>{render();focusEditingCard();});
   }
   function cancelEdit(){
     if(busy||uploading)return;

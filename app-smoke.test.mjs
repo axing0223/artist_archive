@@ -25,8 +25,10 @@ class El{
   querySelectorAll(){return [];}
 }
 async function boot(){
-  const elements=new Map(),state={renders:[]};
-  const document={getElementById:id=>{if(!elements.has(id))elements.set(id,new El());return elements.get(id);},createElement:tag=>new El(tag),querySelector:()=>null,querySelectorAll:()=>[],documentElement:new El('html')};
+  const elements=new Map(),state={renders:[],queried:[],scrolled:[]};
+  const document={getElementById:id=>{if(!elements.has(id))elements.set(id,new El());return elements.get(id);},createElement:tag=>new El(tag),
+    querySelector:selector=>{state.queried.push(selector);return {scrollIntoView:()=>state.scrolled.push(selector),classList:{add(){},remove(){}}};},
+    querySelectorAll:()=>[],documentElement:new El('html')};
   const localStorage={store:new Map(),getItem(key){return this.store.has(key)?this.store.get(key):null;},setItem(key,value){this.store.set(key,String(value));}};
   class IO{constructor(fn){this.fn=fn;}observe(){}unobserve(){}disconnect(){}}
   class RO{observe(){}unobserve(){}disconnect(){}}
@@ -203,6 +205,23 @@ test('删除分类也走按钮二次确认，不再弹系统对话框',async()=>
   assert.equal(remove.textContent,'确认删除？','第一次点击只进入确认态');
   assert.equal(String(remove.className).includes('is-armed'),true);
   assert.equal(state.rows.length,before,'确认前不改动数据');
+});
+test('展开与收起 Danbooru 读取区后，视图重新对准正在编辑的卡片',async()=>{
+  const {elements,state}=await boot();
+  elements.get('add-artist').onclick();
+  await wait(30);
+  const card=lastRender(state)[0];
+  const input=findByPlaceholder(card,'画师名字（必填）');
+  input.value='tester';input.oninput();
+  state.scrolled.length=0;
+  findText(card,'展开读取').onclick();
+  await wait(30);
+  assert.equal(state.scrolled.length>=1,true,'展开后应把视图对准这张卡片');
+  state.scrolled.length=0;
+  findText(lastRender(state)[0],'收起').onclick();
+  await wait(30);
+  assert.equal(state.scrolled.length>=1,true,'收起后同样要重新对准，否则卡片变矮会让滚动位置跑掉');
+  assert.equal(String(state.scrolled[0]).includes('0001')||String(state.scrolled[0]).includes('draft-'),true,'对准的是当前编辑画师的占位');
 });
 test('编辑已有画师时，卡片渲染成编辑态而不是浏览态',async()=>{
   const {elements,state}=await boot();
