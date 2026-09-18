@@ -139,15 +139,29 @@ details pre{margin:0;padding:0 16px 16px;font:12px/1.7 Consolas,monospace;white-
     return {works,via:'逐张详情接口'};
   }
 
-  /* 一次性诊断：确认 only= 是否被接受、是否带回 variants */
+  /* 一次性诊断：直接打印原始返回，确认图片地址到底藏在哪个字段 */
   async function diagnose(name){
-    try{
-      const url='https://danbooru.donmai.us/posts.json?'+new URLSearchParams({tags:name+' order:id_desc',limit:'1',only:POST_ONLY});
-      const rows=await apiJson(url),first=rows?.[0],variants=first?.media_asset?.variants;
-      log('诊断 · only= 被接受，返回字段数 '+Object.keys(first||{}).length);
-      log('诊断 · variants：'+(Array.isArray(variants)?variants.map(v=>v.type).join(' / '):'缺失'));
-      log('诊断 · 解析出的 thumbUrl：'+(ArtistLookup.workOf(first||{}).thumbUrl||'无'));
-    }catch(error){log('诊断 · only= 不被接受：'+error.message+'（将退回逐张详情接口）');}
+    const probe=async(label,url,full)=>{
+      try{
+        const data=await apiJson(url),first=Array.isArray(data)?data[0]:data;
+        if(!first){log(`诊断 · ${label}：没有拿到帖子`);return null;}
+        if(full){const text=JSON.stringify(first);log(`诊断 · ${label}：${text.length>900?text.slice(0,900)+'…':text}`);}
+        else{
+          const keys=Object.keys(first);
+          log(`诊断 · ${label}：共 ${keys.length} 字段`);
+          log(`  含 url/file/media/variant/md5 的字段：${keys.filter(k=>/url|file|media|variant|md5/i.test(k)).join(', ')||'无'}`);
+          log(`  media_asset = ${first.media_asset===undefined?'无':JSON.stringify(first.media_asset).slice(0,600)}`);
+        }
+        return first;
+      }catch(error){log(`诊断 · ${label} 失败：${error.message}`);return null;}
+    };
+    const base='https://danbooru.donmai.us/posts.json?'+new URLSearchParams({tags:name+' order:id_desc',limit:'1'});
+    const first=await probe('列表默认',base,false);
+    await probe('列表 only=id,media_asset',base+'&only=id,media_asset',true);
+    if(first?.id){
+      await probe('单张默认','https://danbooru.donmai.us/posts/'+first.id+'.json',false);
+      await probe('单张 only=media_asset','https://danbooru.donmai.us/posts/'+first.id+'.json?only=media_asset',true);
+    }
   }
 
   /* 单个画师：查编号 → 取数量与作品 → 下缩略图 → 改内存记录 */
