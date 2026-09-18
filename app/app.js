@@ -139,14 +139,14 @@
         target.counts={...prior};if(result.counts.total!==null){target.counts.total=result.counts.total;target.counts.checkedAt=result.counts.checkedAt;}if(result.counts.beforeTotal!==null){target.counts.beforeTotal=result.counts.beforeTotal;target.counts.beforeDate=date;}
         await save(next,result.countsError?'部分数量读取失败，失败项保留原值':'已刷新 '+a.name+' 的作品数量');
       }catch(error){status('刷新失败：'+error.message,true);}finally{refresh.disabled=false;refresh.textContent='刷新';}
-    },'count-refresh');
+    },'action');
     numbers.append(el('span','serial',String(seqOf(a)).padStart(4,'0')),countLabel,refresh);top.append(numbers);info.append(top,el('h2','',a.name),el('span',a.category?'primary':'pending-badge',a.category||'待判断'));
-    if(a.basis)info.append(el('span','basis',a.basis));const ts=el('div','secondary');a.tags.forEach(t=>ts.append(el('span','',t)));info.append(ts,el('p','description',a.description||'点击编辑，记录画风和特点。'));const actions=el('div','artist-actions');if(a.artistUrl)actions.append(link('画师页面 ↗',a.artistUrl,'artist-link'));actions.append(btn('编辑',()=>startEdit(a),'edit-button'));info.append(actions);
+    if(a.basis)info.append(el('span','basis',a.basis));const ts=el('div','secondary');a.tags.forEach(t=>ts.append(el('span','',t)));info.append(ts,el('p','description',a.description||'点击编辑，记录画风和特点。'));
     const works=el('div','works');if(!a.works.length){const empty=el('div','unavailable');empty.append(el('strong','',a.status||'还没有作品图片'),el('span','',a.note||'编辑画师，上传你想参考的作品。'));works.append(empty);}
     FolderStore.previewWorks(a).forEach((w,i)=>{
       if(!w){works.append(el('div','work work-empty'));return;}
       const figure=el('figure','work'),b=btn('',()=>showImage(a,w),'thumb'),img=el('img');if(w.kind==='test')figure.classList.add('is-test');b.setAttribute('aria-label',`查看 ${a.name} 的${w.kind==='test'?'测试风格图片':'作品 '+(i+1)}`);img.alt=a.name+' 的作品';ArtistImages.bind(img,a.uid,w,'card:'+a.uid,'thumb');b.append(img);const caption=el('figcaption');caption.append(el('span','',w.kind==='test'?`测试风格 ${w.testSeq||1}`:w.id?'#'+w.id:'作品 '+(i+1)));if(w.url)caption.append(link('来源 ↗',w.url));figure.append(b,caption);works.append(figure);});
-    if(a.works.length)works.append(el('p','sample-note',a.works.length+' 张图片'+(a.works.length>5?' · 卡片预览前 5 张，编辑可查看全部':'')+(a.note?' · '+a.note:'')));article.append(info,works);return article;
+    const footer=el('div','artist-footer');footer.append(btn('编辑',()=>startEdit(a),'action'));if(a.artistUrl)footer.append(link('画师页面 ↗',a.artistUrl,'action'));article.append(info,works,footer);return article;
   }
   function card(a){return draft&&draft.uid===a.uid?editingCard(a):artistCard(a);}
   function editingCard(a){

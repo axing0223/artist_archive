@@ -33,7 +33,7 @@ async function boot(){
     URL:{createObjectURL:()=>'blob:x',revokeObjectURL(){}},Blob,setTimeout,clearTimeout,requestAnimationFrame:fn=>fn(),
     ArtistImages:{bind(){},dispose(){},setFolder(){},clear(){},dataUrl:async()=>'data:image/jpeg;base64,/9j/2Q==',fetch:async()=>new Blob([])},
     ArtistExtension:{connected:false,check:async()=>{throw Error('测试中未连接扩展');},image:async()=>{throw Error('未连接');},resolve:async()=>{throw Error('未连接');}},
-    ArtistGallery:{render(container,rows,card){state.renders.push(rows.map(row=>card(row)));},clear(){},pin(){},visible:()=>[]},
+    ArtistGallery:{render(container,rows,card){state.card=card;state.renders.push(rows.map(row=>card(row)));},clear(){},pin(){},visible:()=>[]},
     ArtistLookup:{plan(){throw Error('测试中不查询');},lookup:async()=>[],posts:async()=>[],details:async()=>({counts:{total:null,beforeTotal:null}})},
   };
   for(const file of ['artist-id.js','image-cache.js','image-loader.js','folder-store.js','work-picker.js','app.js'])
@@ -50,10 +50,30 @@ test('点击「添加画师」能进入内联编辑态，渲染过程不应抛�
   assert.equal(cards.length,1,'应渲染出一张卡片');
   assert.ok(cards[0].className.includes('is-editing'),'新画师卡片应处于内联编辑态');
 });
+test('浏览态卡片：底部左「编辑」右「画师页面」，且不再显示张数说明',async()=>{
+  const {state}=await boot();
+  const artist={uid:'0001-tester-1',order:1,name:'tester',category:null,tags:[],danbooruId:1,counts:{},artistUrl:'https://danbooru.donmai.us/artists/1',description:'',note:'',basis:'',status:'',works:[{id:'1',thumb:null}]};
+  const card=state.card(artist);
+  const footer=card.children[card.children.length-1];
+  assert.ok(footer.className.includes('artist-footer'),'卡片最后一块应是底部按钮区');
+  assert.equal(footer.children.length,2,'左边编辑、右边画师页面');
+  assert.equal(footer.children[0].textContent,'编辑');
+  assert.equal(footer.children[1].textContent,'画师页面 ↗');
+  assert.equal(footer.children[0].className,'action','两个都要用统一按钮样式');
+  assert.equal(footer.children[1].className,'action');
+  const texts=[];const walk=node=>{if(node._text)texts.push(node._text);for(const child of node.children||[])walk(child);};
+  walk(card);
+  assert.equal(texts.some(t=>String(t).includes('张图片 · 卡片预览')),false,'作品下方的张数说明应已移除');
+});
+test('没有画师页面链接时不显示右下角按钮',async()=>{
+  const {state}=await boot();
+  const artist={uid:'0001-tester-1',order:1,name:'tester',category:null,tags:[],danbooruId:null,counts:{},artistUrl:'',description:'',note:'',basis:'',status:'',works:[]};
+  const footer=state.card(artist).children.slice(-1)[0];
+  assert.equal(footer.children.length,1);
+  assert.equal(footer.children[0].textContent,'编辑');
+});
 test('编辑已有画师时，卡片渲染成编辑态而不是浏览态',async()=>{
   const {elements,state}=await boot();
-  const artist={uid:'0001-tester-1',order:1,name:'tester',category:null,tags:[],danbooruId:1,counts:{},artistUrl:'',description:'',note:'',basis:'',status:'',works:[]};
-  assert.equal(artist.works.length,0);
   elements.get('add-artist').onclick();
   const editing=lastRender(state)[0];
   assert.ok(editing.className.includes('is-editing'));
