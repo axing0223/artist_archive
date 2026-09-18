@@ -38,7 +38,7 @@
       const danbooruId=Number.isSafeInteger(a.danbooruId)&&a.danbooruId>0?a.danbooruId:null,stored=text(a.uid,100);
       const id=ArtistId.valid(stored)&&!ids.has(stored)?stored:ArtistId.issue(issued,{name,danbooruId});
       ids.add(id);issued.push({uid:id});
-      const works=a.works.map(w=>{if(!FolderStore.validWork(w))throw Error(name+' 的图片格式或本地路径无效。');return {id:text(String(w.id??''),100),url:url(w.url),caption:text(w.caption),thumb:imageValue(w.thumb),thumbUrl:httpsValue(w.thumbUrl),previewUrl:httpsValue(w.previewUrl),large:imageValue(w.large),largeUrl:httpsValue(w.largeUrl),...(w.kind==='test'?{kind:'test'}:{})};});
+      const works=a.works.map(w=>{if(!FolderStore.validWork(w))throw Error(name+' 的图片格式或本地路径无效。');return {id:text(String(w.id??''),100),url:url(w.url),caption:text(w.caption),thumb:imageValue(w.thumb),thumbUrl:httpsValue(w.thumbUrl),previewUrl:httpsValue(w.previewUrl),large:imageValue(w.large),largeUrl:httpsValue(w.largeUrl),...(w.kind==='test'?{kind:'test',testSeq:Number.isSafeInteger(w.testSeq)&&w.testSeq>0?w.testSeq:1}:{})};});
       const c=a.counts||{},number=n=>Number.isSafeInteger(n)&&n>=0?n:null;
       return {uid:id,order:i+1,name,category:a.category||null,tags:unique(a.tags||[]).map(t=>t.slice(0,40)),danbooruId,counts:{total:number(c.total),checkedAt:text(c.checkedAt,40),beforeDate:text(c.beforeDate,10),beforeTotal:number(c.beforeTotal)},artistUrl:url(a.artistUrl),description:text(a.description),note:text(a.note),basis:text(a.basis,100),status:text(a.status,100),works};
     });
@@ -143,7 +143,9 @@
     numbers.append(el('span','serial',String(seqOf(a)).padStart(4,'0')),countLabel,refresh);top.append(numbers);info.append(top,el('h2','',a.name),el('span',a.category?'primary':'pending-badge',a.category||'待判断'));
     if(a.basis)info.append(el('span','basis',a.basis));const ts=el('div','secondary');a.tags.forEach(t=>ts.append(el('span','',t)));info.append(ts,el('p','description',a.description||'点击编辑，记录画风和特点。'));const actions=el('div','artist-actions');if(a.artistUrl)actions.append(link('画师页面 ↗',a.artistUrl,'artist-link'));actions.append(btn('编辑',()=>edit(a),'edit-button'));info.append(actions);
     const works=el('div','works');if(!a.works.length){const empty=el('div','unavailable');empty.append(el('strong','',a.status||'还没有作品图片'),el('span','',a.note||'编辑画师，上传你想参考的作品。'));works.append(empty);}
-    FolderStore.previewWorks(a).forEach((w,i)=>{const figure=el('figure','work'),b=btn('',()=>showImage(a,w),'thumb'),img=el('img');if(w.kind==='test')figure.classList.add('is-test');b.setAttribute('aria-label',`查看 ${a.name} 的${w.kind==='test'?'测试风格图片':'作品 '+(i+1)}`);img.alt=a.name+' 的作品';ArtistImages.bind(img,a.uid,w,'card:'+a.uid,'thumb');b.append(img);const caption=el('figcaption');caption.append(el('span','',w.kind==='test'?'测试风格':w.id?'#'+w.id:'作品 '+(i+1)));if(w.url)caption.append(link('来源 ↗',w.url));figure.append(b,caption);works.append(figure);});
+    FolderStore.previewWorks(a).forEach((w,i)=>{
+      if(!w){works.append(el('div','work work-empty'));return;}
+      const figure=el('figure','work'),b=btn('',()=>showImage(a,w),'thumb'),img=el('img');if(w.kind==='test')figure.classList.add('is-test');b.setAttribute('aria-label',`查看 ${a.name} 的${w.kind==='test'?'测试风格图片':'作品 '+(i+1)}`);img.alt=a.name+' 的作品';ArtistImages.bind(img,a.uid,w,'card:'+a.uid,'thumb');b.append(img);const caption=el('figcaption');caption.append(el('span','',w.kind==='test'?`测试风格 ${w.testSeq||1}`:w.id?'#'+w.id:'作品 '+(i+1)));if(w.url)caption.append(link('来源 ↗',w.url));figure.append(b,caption);works.append(figure);});
     if(a.works.length)works.append(el('p','sample-note',a.works.length+' 张图片'+(a.works.length>5?' · 卡片预览前 5 张，编辑可查看全部':'')+(a.note?' · '+a.note:'')));article.append(info,works);return article;
   }
   function render(){
@@ -269,7 +271,7 @@
         if(!['image/jpeg','image/png','image/webp','image/gif','image/avif'].includes(file.type)||file.size>50*1024*1024)throw Error(file.name+'：只支持不超过 50 MB 的 JPG、PNG、WebP、GIF 或 AVIF。');
         const original=await readImage(file),target=next.artists.find(a=>a.uid===targets[i].artist.uid);
         if(!target)continue;
-        target.works.push({id:'',url:'',caption:'',kind:'test',thumb:await thumbnail(original),large:original,thumbUrl:null,largeUrl:null});
+        target.works.push({id:'',url:'',caption:'',kind:'test',testSeq:target.works.filter(w=>w.kind==='test').length+1,thumb:await thumbnail(original),large:original,thumbUrl:null,largeUrl:null});
         done++;
       }
       await save(next,`已为 ${done} 位画师导入测试风格图片`);
@@ -278,9 +280,29 @@
     }catch(error){message.textContent='导入失败：'+error.message;}
     finally{$('test-run').disabled=false;}
   }
+  function renderTestRemoval(){
+    const list=data.artists.map(artist=>({artist,tests:artist.works.filter(w=>w.kind==='test')})).filter(item=>item.tests.length),container=$('test-remove-list');
+    if(!list.length){container.replaceChildren(el('p','field-help','当前没有测试风格图片。'));return;}
+    container.replaceChildren(...list.map(item=>{
+      const row=el('label','test-row'),box=el('input');box.type='checkbox';box.value=item.artist.uid;
+      row.append(box,el('span','test-seq',String(ArtistId.parse(item.artist.uid)?.seq??0).padStart(4,'0')),el('strong','',item.artist.name),el('small','',item.tests.length+' 张'));
+      return row;
+    }));
+  }
+  async function runTestRemove(){
+    if(busy)return;
+    const boxes=[...$('test-remove-list').querySelectorAll('input[type=checkbox]')].filter(box=>box.checked),message=$('test-message');
+    if(!boxes.length){message.textContent='请先勾选要清理的画师。';return;}
+    if(!confirm(`删除所选 ${boxes.length} 位画师的测试风格图片？作品图不会受影响。`))return;
+    const next=clone(data);let removed=0;
+    for(const box of boxes){const target=next.artists.find(a=>a.uid===box.value);if(!target)continue;const before=target.works.length;target.works=target.works.filter(w=>w.kind!=='test');removed+=before-target.works.length;}
+    await save(next,`已删除 ${removed} 张测试风格图片`);
+    message.textContent=`完成：删除了 ${removed} 张测试风格图片。`;
+    renderTestRemoval();
+  }
   function openTestImport(){
     testFiles=[];$('test-files').value='';$('test-start').value='';$('test-preview').replaceChildren();$('test-message').textContent='';
-    refreshTestImport();$('test-import').showModal();
+    refreshTestImport();renderTestRemoval();$('test-import').showModal();
   }
   let lookupTimer,lookupController,lookupSequence=0;
   async function checkExtension(){try{const version=await ArtistExtension.check();$('extension-status').textContent='图片助手已连接 · '+version;$('extension-status').title='扩展取图可用';ArtistImages.clear();}catch(error){$('extension-status').textContent='图片助手未连接 · 点击重试';$('extension-status').title=error.message;status(error.message,true);}}
@@ -359,6 +381,9 @@
     data=normalize(FolderStore.empty());status('请先选择「数据」文件夹，读取或开始整理画师库。');
     $('test-import-open').onclick=openTestImport;$('close-test-import').onclick=()=>$('test-import').close();$('test-cancel').onclick=()=>$('test-import').close();
     $('test-files').onchange=e=>{testFiles=[...e.target.files];refreshTestImport();};$('test-start').oninput=refreshTestImport;$('test-run').onclick=runTestImport;
+    $('test-remove-all').onclick=()=>{for(const box of $('test-remove-list').querySelectorAll('input[type=checkbox]'))box.checked=true;};
+    $('test-remove-none').onclick=()=>{for(const box of $('test-remove-list').querySelectorAll('input[type=checkbox]'))box.checked=false;};
+    $('test-remove-run').onclick=runTestRemove;
     $('settings-open').onclick=()=>{$('history-date').value=data.cutoffDate;$('save-large').checked=data.saveLargeImages===true;$('card-size').value=String(prefs.cardSize);$('card-size-value').textContent=prefs.cardSize;$('settings').showModal();};$('close-settings').onclick=()=>$('settings').close();
     $('card-size').oninput=()=>{const value=Number($('card-size').value);$('card-size-value').textContent=value;prefs.setCardSize(value);};
     $('save-large').onchange=async()=>{const next=clone(data);next.saveLargeImages=$('save-large').checked;await save(next,next.saveLargeImages?'已开启「保存大图」：预览作品时会保存原图':'已关闭「保存大图」：预览作品时不再保存原图');};

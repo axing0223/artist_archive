@@ -22,7 +22,7 @@
 .size-control{display:flex;align-items:center;gap:10px;flex-shrink:0}.size-control input[type=range]{width:180px;padding:0;border:0;background:none;accent-color:var(--accent)}.size-control span{font-size:13px;color:#788496;min-width:38px;text-align:right}
 .works{grid-template-columns:repeat(auto-fill,minmax(var(--card-size,220px),1fr))}.thumb{height:var(--card-size,220px)}
 .work.is-test{position:relative}.work.is-test::after{content:'测试风格';position:absolute;top:0;left:0;z-index:1;background:#e08b1f;color:#fff;font-size:11px;line-height:1;padding:4px 7px;border-radius:7px 0 7px 0}
-.test-preview{display:flex;flex-direction:column;gap:6px}.test-row{display:flex;align-items:baseline;gap:10px;font-size:13px;padding:6px 10px;border:1px solid #e6e9f0;border-radius:7px;background:#f8faff}.test-row .test-seq{font-family:ui-monospace,Consolas,monospace;color:#375af5}.test-row strong{font-size:13px}.test-row small{color:#788496;overflow-wrap:anywhere}
+.test-preview{display:flex;flex-direction:column;gap:6px}.work-empty{border:1px dashed #e3e7ef;border-radius:7px;height:var(--card-size,220px);background:#fafbfd}.test-row{display:flex;align-items:baseline;gap:10px;font-size:13px;padding:6px 10px;border:1px solid #e6e9f0;border-radius:7px;background:#f8faff}.test-row .test-seq{font-family:ui-monospace,Consolas,monospace;color:#375af5}.test-row strong{font-size:13px}.test-row small{color:#788496;overflow-wrap:anywhere}
 #viewer{width:min(1600px,96vw);max-width:96vw;max-height:96vh}.viewer-image{padding:12px;min-height:120px;overflow:auto}.viewer-image img{max-width:100%;max-height:calc(96vh - 160px);width:auto;height:auto;min-height:0;object-fit:contain}
 </style>
 
@@ -49,6 +49,10 @@
     <label>起始画师序号<input id="test-start" type="number" min="1" step="1" placeholder="例如 3"></label>
     <div id="test-preview" class="test-preview"></div>
     <p id="test-message" class="field-help" role="status"></p>
+    <h3 class="manage-heading">批量删除测试风格图片</h3>
+    <p class="field-help">勾选要清理的画师，只会移除该画师的测试风格图片，作品图不受影响。</p>
+    <div id="test-remove-list" class="test-preview"></div>
+    <div class="picker-actions"><button id="test-remove-all" type="button" class="action">全选</button><button id="test-remove-none" type="button" class="action">全不选</button><button id="test-remove-run" type="button" class="action danger">删除所选</button></div>
   </div><div class="form-footer"><button id="test-cancel" type="button" class="action">取消</button><button id="test-run" type="button" class="action primary-action">开始导入</button></div></dialog>
   <dialog id="settings" class="small-dialog" aria-labelledby="settings-title"><div class="viewer-bar"><h2 id="settings-title">设置</h2><button id="close-settings" type="button">关闭 ×</button></div><div class="form-body settings-body">
     <div class="setting-row"><div><strong>数据截至日期</strong><p class="field-help">统计「截至日期数量」时使用的日期，默认 2026-07-01。更改后已读取的数量保持不变，要点对应画师卡片上的「刷新」才会更新。</p></div><input id="history-date" type="date" value="2026-07-01" required></div>
@@ -196,8 +200,21 @@
   const okImage=value=>value==null||(typeof value==='string'&&(imagePathPattern.test(value)||inlinePattern.test(value)||remotePattern.test(value)));
   function validWork(w){return !!w&&typeof w==='object'&&IMAGE_KINDS.every(kind=>okImage(w[kind])&&okImage(w[kind+'Url']))&&okImage(w.previewUrl);}
   function previewWorks(artist,limit=5){
-    const works=Array.isArray(artist?.works)?artist.works:[],tests=works.filter(w=>w.kind==='test'),normals=works.filter(w=>w.kind!=='test'),keep=tests.slice(0,limit);
-    return [...normals.slice(0,Math.max(0,limit-keep.length)),...keep];
+    const works=Array.isArray(artist?.works)?artist.works:[],slots=new Array(limit).fill(null);
+    for(const work of works){
+      if(work.kind!=='test')continue;
+      let index=limit-Math.max(1,Number.isSafeInteger(work.testSeq)&&work.testSeq>0?work.testSeq:1);
+      while(index>=0&&slots[index])index--;
+      if(index>=0)slots[index]=work;
+    }
+    let cursor=0;
+    for(const work of works){
+      if(work.kind==='test')continue;
+      while(cursor<limit&&slots[cursor])cursor++;
+      if(cursor>=limit)break;
+      slots[cursor]=work;cursor++;
+    }
+    return slots;
   }
   function imageOf(work,size){
     if(!work||!SIZES.includes(size))return null;
@@ -480,7 +497,7 @@
       const danbooruId=Number.isSafeInteger(a.danbooruId)&&a.danbooruId>0?a.danbooruId:null,stored=text(a.uid,100);
       const id=ArtistId.valid(stored)&&!ids.has(stored)?stored:ArtistId.issue(issued,{name,danbooruId});
       ids.add(id);issued.push({uid:id});
-      const works=a.works.map(w=>{if(!FolderStore.validWork(w))throw Error(name+' 的图片格式或本地路径无效。');return {id:text(String(w.id??''),100),url:url(w.url),caption:text(w.caption),thumb:imageValue(w.thumb),thumbUrl:httpsValue(w.thumbUrl),previewUrl:httpsValue(w.previewUrl),large:imageValue(w.large),largeUrl:httpsValue(w.largeUrl),...(w.kind==='test'?{kind:'test'}:{})};});
+      const works=a.works.map(w=>{if(!FolderStore.validWork(w))throw Error(name+' 的图片格式或本地路径无效。');return {id:text(String(w.id??''),100),url:url(w.url),caption:text(w.caption),thumb:imageValue(w.thumb),thumbUrl:httpsValue(w.thumbUrl),previewUrl:httpsValue(w.previewUrl),large:imageValue(w.large),largeUrl:httpsValue(w.largeUrl),...(w.kind==='test'?{kind:'test',testSeq:Number.isSafeInteger(w.testSeq)&&w.testSeq>0?w.testSeq:1}:{})};});
       const c=a.counts||{},number=n=>Number.isSafeInteger(n)&&n>=0?n:null;
       return {uid:id,order:i+1,name,category:a.category||null,tags:unique(a.tags||[]).map(t=>t.slice(0,40)),danbooruId,counts:{total:number(c.total),checkedAt:text(c.checkedAt,40),beforeDate:text(c.beforeDate,10),beforeTotal:number(c.beforeTotal)},artistUrl:url(a.artistUrl),description:text(a.description),note:text(a.note),basis:text(a.basis,100),status:text(a.status,100),works};
     });
@@ -585,7 +602,9 @@
     numbers.append(el('span','serial',String(seqOf(a)).padStart(4,'0')),countLabel,refresh);top.append(numbers);info.append(top,el('h2','',a.name),el('span',a.category?'primary':'pending-badge',a.category||'待判断'));
     if(a.basis)info.append(el('span','basis',a.basis));const ts=el('div','secondary');a.tags.forEach(t=>ts.append(el('span','',t)));info.append(ts,el('p','description',a.description||'点击编辑，记录画风和特点。'));const actions=el('div','artist-actions');if(a.artistUrl)actions.append(link('画师页面 ↗',a.artistUrl,'artist-link'));actions.append(btn('编辑',()=>edit(a),'edit-button'));info.append(actions);
     const works=el('div','works');if(!a.works.length){const empty=el('div','unavailable');empty.append(el('strong','',a.status||'还没有作品图片'),el('span','',a.note||'编辑画师，上传你想参考的作品。'));works.append(empty);}
-    FolderStore.previewWorks(a).forEach((w,i)=>{const figure=el('figure','work'),b=btn('',()=>showImage(a,w),'thumb'),img=el('img');if(w.kind==='test')figure.classList.add('is-test');b.setAttribute('aria-label',`查看 ${a.name} 的${w.kind==='test'?'测试风格图片':'作品 '+(i+1)}`);img.alt=a.name+' 的作品';ArtistImages.bind(img,a.uid,w,'card:'+a.uid,'thumb');b.append(img);const caption=el('figcaption');caption.append(el('span','',w.kind==='test'?'测试风格':w.id?'#'+w.id:'作品 '+(i+1)));if(w.url)caption.append(link('来源 ↗',w.url));figure.append(b,caption);works.append(figure);});
+    FolderStore.previewWorks(a).forEach((w,i)=>{
+      if(!w){works.append(el('div','work work-empty'));return;}
+      const figure=el('figure','work'),b=btn('',()=>showImage(a,w),'thumb'),img=el('img');if(w.kind==='test')figure.classList.add('is-test');b.setAttribute('aria-label',`查看 ${a.name} 的${w.kind==='test'?'测试风格图片':'作品 '+(i+1)}`);img.alt=a.name+' 的作品';ArtistImages.bind(img,a.uid,w,'card:'+a.uid,'thumb');b.append(img);const caption=el('figcaption');caption.append(el('span','',w.kind==='test'?`测试风格 ${w.testSeq||1}`:w.id?'#'+w.id:'作品 '+(i+1)));if(w.url)caption.append(link('来源 ↗',w.url));figure.append(b,caption);works.append(figure);});
     if(a.works.length)works.append(el('p','sample-note',a.works.length+' 张图片'+(a.works.length>5?' · 卡片预览前 5 张，编辑可查看全部':'')+(a.note?' · '+a.note:'')));article.append(info,works);return article;
   }
   function render(){
@@ -711,7 +730,7 @@
         if(!['image/jpeg','image/png','image/webp','image/gif','image/avif'].includes(file.type)||file.size>50*1024*1024)throw Error(file.name+'：只支持不超过 50 MB 的 JPG、PNG、WebP、GIF 或 AVIF。');
         const original=await readImage(file),target=next.artists.find(a=>a.uid===targets[i].artist.uid);
         if(!target)continue;
-        target.works.push({id:'',url:'',caption:'',kind:'test',thumb:await thumbnail(original),large:original,thumbUrl:null,largeUrl:null});
+        target.works.push({id:'',url:'',caption:'',kind:'test',testSeq:target.works.filter(w=>w.kind==='test').length+1,thumb:await thumbnail(original),large:original,thumbUrl:null,largeUrl:null});
         done++;
       }
       await save(next,`已为 ${done} 位画师导入测试风格图片`);
@@ -720,9 +739,29 @@
     }catch(error){message.textContent='导入失败：'+error.message;}
     finally{$('test-run').disabled=false;}
   }
+  function renderTestRemoval(){
+    const list=data.artists.map(artist=>({artist,tests:artist.works.filter(w=>w.kind==='test')})).filter(item=>item.tests.length),container=$('test-remove-list');
+    if(!list.length){container.replaceChildren(el('p','field-help','当前没有测试风格图片。'));return;}
+    container.replaceChildren(...list.map(item=>{
+      const row=el('label','test-row'),box=el('input');box.type='checkbox';box.value=item.artist.uid;
+      row.append(box,el('span','test-seq',String(ArtistId.parse(item.artist.uid)?.seq??0).padStart(4,'0')),el('strong','',item.artist.name),el('small','',item.tests.length+' 张'));
+      return row;
+    }));
+  }
+  async function runTestRemove(){
+    if(busy)return;
+    const boxes=[...$('test-remove-list').querySelectorAll('input[type=checkbox]')].filter(box=>box.checked),message=$('test-message');
+    if(!boxes.length){message.textContent='请先勾选要清理的画师。';return;}
+    if(!confirm(`删除所选 ${boxes.length} 位画师的测试风格图片？作品图不会受影响。`))return;
+    const next=clone(data);let removed=0;
+    for(const box of boxes){const target=next.artists.find(a=>a.uid===box.value);if(!target)continue;const before=target.works.length;target.works=target.works.filter(w=>w.kind!=='test');removed+=before-target.works.length;}
+    await save(next,`已删除 ${removed} 张测试风格图片`);
+    message.textContent=`完成：删除了 ${removed} 张测试风格图片。`;
+    renderTestRemoval();
+  }
   function openTestImport(){
     testFiles=[];$('test-files').value='';$('test-start').value='';$('test-preview').replaceChildren();$('test-message').textContent='';
-    refreshTestImport();$('test-import').showModal();
+    refreshTestImport();renderTestRemoval();$('test-import').showModal();
   }
   let lookupTimer,lookupController,lookupSequence=0;
   async function checkExtension(){try{const version=await ArtistExtension.check();$('extension-status').textContent='图片助手已连接 · '+version;$('extension-status').title='扩展取图可用';ArtistImages.clear();}catch(error){$('extension-status').textContent='图片助手未连接 · 点击重试';$('extension-status').title=error.message;status(error.message,true);}}
@@ -801,6 +840,9 @@
     data=normalize(FolderStore.empty());status('请先选择「数据」文件夹，读取或开始整理画师库。');
     $('test-import-open').onclick=openTestImport;$('close-test-import').onclick=()=>$('test-import').close();$('test-cancel').onclick=()=>$('test-import').close();
     $('test-files').onchange=e=>{testFiles=[...e.target.files];refreshTestImport();};$('test-start').oninput=refreshTestImport;$('test-run').onclick=runTestImport;
+    $('test-remove-all').onclick=()=>{for(const box of $('test-remove-list').querySelectorAll('input[type=checkbox]'))box.checked=true;};
+    $('test-remove-none').onclick=()=>{for(const box of $('test-remove-list').querySelectorAll('input[type=checkbox]'))box.checked=false;};
+    $('test-remove-run').onclick=runTestRemove;
     $('settings-open').onclick=()=>{$('history-date').value=data.cutoffDate;$('save-large').checked=data.saveLargeImages===true;$('card-size').value=String(prefs.cardSize);$('card-size-value').textContent=prefs.cardSize;$('settings').showModal();};$('close-settings').onclick=()=>$('settings').close();
     $('card-size').oninput=()=>{const value=Number($('card-size').value);$('card-size-value').textContent=value;prefs.setCardSize(value);};
     $('save-large').onchange=async()=>{const next=clone(data);next.saveLargeImages=$('save-large').checked;await save(next,next.saveLargeImages?'已开启「保存大图」：预览作品时会保存原图':'已关闭「保存大图」：预览作品时不再保存原图');};

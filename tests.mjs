@@ -106,27 +106,27 @@ test('识别区按页取作品，每张都带缩略图与原图地址，无效�
  await assert.rejects(posts('a',{fetcher:async()=>({ok:false,status:429})}),/频繁/);
  await assert.rejects(posts('a',{fetcher:async()=>({ok:true,json:async()=>({})})}),/未返回作品/);
 });
-test('测试风格图片排在作品之后，且不会被作品挤出卡片预览',()=>{
- const works=[1,2,3,4,5,6].map(n=>({id:String(n)}));
- const artist={works:[...works,{id:'',kind:'test'}]};
- const shown=store.previewWorks(artist);
- assert.equal(shown.length,5);
- assert.equal(shown[4].kind,'test','测试风格图片固定在最后一位');
- assert.deepEqual(shown.slice(0,4).map(w=>w.id),['1','2','3','4'],'为了让出位置，作品少显示一张');
- assert.deepEqual(store.previewWorks({works}).map(w=>w.id),['1','2','3','4','5'],'没有测试图时照旧显示前 5 张作品');
- const many={works:[...works,{id:'',kind:'test'},{id:'',kind:'test'},{id:'',kind:'test'},{id:'',kind:'test'},{id:'',kind:'test'},{id:'',kind:'test'}]};
- assert.equal(store.previewWorks(many).filter(w=>w.kind==='test').length,5,'测试图最多占满 5 个位置');
- assert.equal(store.previewWorks(many)[0].kind,'test','作品让位后全部是测试图');
- assert.deepEqual(store.previewWorks({works:[]}),[]);
+test('测试风格图片固定占右侧格子，序号 1 在最右，作品从左往右填空',()=>{
+ const works=n=>Array.from({length:n},(_,i)=>({id:String(i+1)}));
+ const test=seq=>({id:'',kind:'test',testSeq:seq});
+ const mark=slots=>slots.map(w=>w?(w.kind==='test'?'测'+w.testSeq:w.id):'空');
+ assert.deepEqual(mark(store.previewWorks({works:[...works(2),test(1)]})),['1','2','空','空','测1'],'只有 2 张作品时中间留空，测试图仍在最右');
+ assert.deepEqual(mark(store.previewWorks({works:works(5)})),['1','2','3','4','5'],'没有测试图时照旧显示 5 张作品');
+ assert.deepEqual(mark(store.previewWorks({works:[...works(2),test(1),test(2)]})),['1','2','空','测2','测1'],'序号 2 排在序号 1 的左边');
+ assert.deepEqual(mark(store.previewWorks({works:[...works(6),test(1),test(2)]})),['1','2','3','测2','测1'],'作品让出被测试图占用的格子');
+ assert.deepEqual(mark(store.previewWorks({works:works(3)})),['1','2','3','空','空'],'作品不足 5 张时后面留空');
+ assert.deepEqual(mark(store.previewWorks({works:[...works(1),test(9)]})),['1','空','空','空','空'],'序号超出 5 格的测试图不显示');
+ assert.deepEqual(store.previewWorks({works:[]}).length,5,'空画师也要返回 5 个格子');
+ assert.equal(store.previewWorks({works:[...works(1),test(1)]})[4].testSeq,1);
 });
-test('测试风格图片的标记随数据保存、导出与恢复',async()=>{
+test('测试风格图片的标记与序号随保存、导出与恢复',async()=>{
  const dir=new Directory();
- await store.write(dir,{version:1,tags:[],artists:[{uid:'0001-a',name:'a',works:[{id:'1',thumb:png},{id:'',thumb:png,kind:'test'}]}]});
+ await store.write(dir,{version:1,tags:[],artists:[{uid:'0001-a',name:'a',works:[{id:'1',thumb:png},{id:'',thumb:png,kind:'test',testSeq:2}]}]});
  const restored=await store.read(dir);
- assert.equal(restored.artists[0].works.length,2);
- assert.equal(restored.artists[0].works[1].kind,'test','标记不能在保存后丢失');
+ assert.equal(restored.artists[0].works[1].kind,'test');
+ assert.equal(restored.artists[0].works[1].testSeq,2,'序号不能在保存后丢失');
  const chunks=[];await store.exportTo(dir,restored,{write:async s=>chunks.push(s)});
- assert.equal(JSON.parse(chunks.join('')).artists[0].works[1].kind,'test','导出备份也要带上标记');
+ assert.equal(JSON.parse(chunks.join('')).artists[0].works[1].testSeq,2,'导出备份也要带序号');
 });
 test('主分类列表随数据保存与读取，画师可引用自定义分类',async()=>{
  const dir=new Directory();

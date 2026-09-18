@@ -27,8 +27,21 @@
   const okImage=value=>value==null||(typeof value==='string'&&(imagePathPattern.test(value)||inlinePattern.test(value)||remotePattern.test(value)));
   function validWork(w){return !!w&&typeof w==='object'&&IMAGE_KINDS.every(kind=>okImage(w[kind])&&okImage(w[kind+'Url']))&&okImage(w.previewUrl);}
   function previewWorks(artist,limit=5){
-    const works=Array.isArray(artist?.works)?artist.works:[],tests=works.filter(w=>w.kind==='test'),normals=works.filter(w=>w.kind!=='test'),keep=tests.slice(0,limit);
-    return [...normals.slice(0,Math.max(0,limit-keep.length)),...keep];
+    const works=Array.isArray(artist?.works)?artist.works:[],slots=new Array(limit).fill(null);
+    for(const work of works){
+      if(work.kind!=='test')continue;
+      let index=limit-Math.max(1,Number.isSafeInteger(work.testSeq)&&work.testSeq>0?work.testSeq:1);
+      while(index>=0&&slots[index])index--;
+      if(index>=0)slots[index]=work;
+    }
+    let cursor=0;
+    for(const work of works){
+      if(work.kind==='test')continue;
+      while(cursor<limit&&slots[cursor])cursor++;
+      if(cursor>=limit)break;
+      slots[cursor]=work;cursor++;
+    }
+    return slots;
   }
   function imageOf(work,size){
     if(!work||!SIZES.includes(size))return null;

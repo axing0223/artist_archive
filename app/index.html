@@ -31,6 +31,10 @@
     <label>起始画师序号<input id="test-start" type="number" min="1" step="1" placeholder="例如 3"></label>
     <div id="test-preview" class="test-preview"></div>
     <p id="test-message" class="field-help" role="status"></p>
+    <h3 class="manage-heading">批量删除测试风格图片</h3>
+    <p class="field-help">勾选要清理的画师，只会移除该画师的测试风格图片，作品图不受影响。</p>
+    <div id="test-remove-list" class="test-preview"></div>
+    <div class="picker-actions"><button id="test-remove-all" type="button" class="action">全选</button><button id="test-remove-none" type="button" class="action">全不选</button><button id="test-remove-run" type="button" class="action danger">删除所选</button></div>
   </div><div class="form-footer"><button id="test-cancel" type="button" class="action">取消</button><button id="test-run" type="button" class="action primary-action">开始导入</button></div></dialog>
   <dialog id="settings" class="small-dialog" aria-labelledby="settings-title"><div class="viewer-bar"><h2 id="settings-title">设置</h2><button id="close-settings" type="button">关闭 ×</button></div><div class="form-body settings-body">
     <div class="setting-row"><div><strong>数据截至日期</strong><p class="field-help">统计「截至日期数量」时使用的日期，默认 2026-07-01。更改后已读取的数量保持不变，要点对应画师卡片上的「刷新」才会更新。</p></div><input id="history-date" type="date" value="2026-07-01" required></div>
