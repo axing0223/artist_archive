@@ -64,23 +64,19 @@
     const article=el('article','artist'),info=el('div','artist-info'),top=el('div','artist-top');article.dataset.artist=a.name;
     const numbers=el('div','artist-numbers'),countLabel=el('span','work-count','作品数量：'+(a.counts?.total??'未读取')+'（'+(a.counts?.beforeTotal??'未读取')+'）');
     countLabel.title=a.counts?.beforeDate?'括号内数量使用的截至日期：'+a.counts.beforeDate+(a.counts.beforeDate!==data.cutoffDate?'；设置已变更，点击刷新后更新。':''):'括号内为截至日期数量，点击刷新读取。';
-    const refresh=btn('刷新',async()=>{
-      if(busy||refresh.disabled)return;refresh.disabled=true;refresh.textContent='刷新中…';const date=data.cutoffDate;
-      try{const result=await ArtistLookup.details(a.name,date,{previews:false});const next=clone(data),target=next.artists.find(x=>x.uid===a.uid&&x.name===a.name);if(!target)return;const prior=target.counts||{};
-        target.counts={...prior};if(result.counts.total!==null){target.counts.total=result.counts.total;target.counts.checkedAt=result.counts.checkedAt;}if(result.counts.beforeTotal!==null){target.counts.beforeTotal=result.counts.beforeTotal;target.counts.beforeDate=date;}
-        await save(next,result.countsError?'部分数量读取失败，失败项保留原值':'已刷新 '+a.name+' 的作品数量');
-      }catch(error){status('刷新失败：'+error.message,true);}finally{refresh.disabled=false;refresh.textContent='刷新';}
-    },'edit-button');
-    numbers.append(el('span','serial',String(seqOf(a)).padStart(4,'0')),countLabel,refresh);top.append(numbers);info.append(top,el('h2','',a.name),el('span',a.category?'primary':'pending-badge',a.category||'待判断'));
-    if(a.basis)info.append(el('span','basis',a.basis));const ts=el('div','secondary');a.tags.forEach(t=>ts.append(el('span','',t)));info.append(ts,el('p','description',a.description||'点击编辑，记录画风和特点。'));
+    numbers.append(el('span','serial',String(seqOf(a)).padStart(4,'0')),countLabel);top.append(numbers);info.append(top,el('h2','',a.name));
+    if(a.basis)info.append(el('span','basis',a.basis));
+    info.append(el('p','description',a.description||'点击编辑，记录画风和特点。'));
+    const meta=el('div','artist-meta');meta.append(el('span',a.category?'primary':'pending-badge',a.category||'待判断'));
+    if(a.tags.length){const ts=el('div','secondary');a.tags.forEach(t=>ts.append(el('span','',t)));meta.append(ts);}
     const actions=el('div','artist-actions');actions.append(btn('编辑',()=>startEdit(a),'edit-button'));if(a.artistUrl)actions.append(link('画师页面 ↗',a.artistUrl,'edit-button'));info.append(actions);
     const works=el('div','works');if(!a.works.length){const empty=el('div','unavailable');empty.append(el('strong','',a.status||'还没有作品图片'),el('span','',a.note||'编辑画师，上传你想参考的作品。'));works.append(empty);}
     FolderStore.previewWorks(a).forEach((w,i)=>{
       if(!w){works.append(el('div','work work-empty'));return;}
       const figure=el('figure','work'),b=btn('',()=>showImage(a,w),'thumb'),img=el('img');if(w.kind==='test')figure.classList.add('is-test');b.setAttribute('aria-label',`查看 ${a.name} 的${w.kind==='test'?'测试风格图片':'作品 '+(i+1)}`);img.alt=a.name+' 的作品';ArtistImages.bind(img,a.uid,w,'card:'+a.uid,'thumb');b.append(img);const caption=el('figcaption');caption.append(el('span','',w.kind==='test'?`测试风格 ${w.testSeq||1}`:w.id?'#'+w.id:'作品 '+(i+1)));if(w.url)caption.append(link('来源 ↗',w.url));figure.append(b,caption);works.append(figure);});
     if(a.note)works.append(el('p','sample-note',a.note));
-    article.append(info,works);
-    if(Number.isSafeInteger(a.score)&&a.score>=1&&a.score<=5)article.append(el('span','score-badge score-'+a.score,a.score+' 分'));
+    article.append(info,works,meta);
+    if(Number.isSafeInteger(a.score)&&a.score>=1&&a.score<=5)article.append(el('span','score-badge score-'+a.score,String(a.score)));
     return article;
   }
   function card(a){return draft&&draft.uid===a.uid?editingCard(a):artistCard(a);}
@@ -196,6 +192,14 @@
     morphAway(editingId,()=>{closeEditor();render();});
   }
   function closeEditor(){if(editingId)ArtistGallery.pin(editingId,false);closeWorkPicker();editingId=null;draft=null;editorError=null;}
+  /* 读一次作品数量（含截至日期前数量）。失败项保留原值，不覆盖成 null。 */
+  async function refreshCounts(artist){
+    const result=await ArtistLookup.details(artist.name,data.cutoffDate,{previews:false});
+    const counts={...(artist.counts||{})};
+    if(result.counts.total!==null){counts.total=result.counts.total;counts.checkedAt=result.counts.checkedAt;}
+    if(result.counts.beforeTotal!==null){counts.beforeTotal=result.counts.beforeTotal;counts.beforeDate=data.cutoffDate;}
+    return {counts,partial:result.countsError};
+  }
   async function saveDraft(){
     if(busy||uploading)return;
     const name=(draft.name||'').trim();
@@ -205,12 +209,16 @@
     if(draft.works.some(w=>w.url&&!url(w.url))){setEditorError('作品来源链接只支持 http:// 或 https://。');return;}
     if(name!==draft.name){draft.counts=null;draft.danbooruId=null;}
     draft.name=name;draft.artistUrl=url(draft.artistUrl);draft.tags=unique(draft.tags);draft.basis='';draft.status='';draft.works.forEach(w=>w.url=url(w.url));
+    let note='';busy=true;
+    try{status('正在刷新 '+name+' 的作品数量…');const result=await refreshCounts(draft);draft.counts=result.counts;if(result.partial)note='；部分数量未取到，已保留原值';}
+    catch(error){note='；作品数量刷新失败：'+error.message;}
+    finally{busy=false;}
     const next=clone(data),i=next.artists.findIndex(a=>a.uid===editingId);
     if(i<0){draft.uid=ArtistId.issue(next.artists,{name:draft.name,danbooruId:draft.danbooruId});next.artists.push(draft);}else next.artists[i]=draft;
     next.artists.forEach((a,j)=>a.order=j+1);next.tags=unique([...next.tags,...draft.tags]);
     await new Promise(resolve=>morphAway(editingId,resolve));
     closeEditor();
-    await save(next);
+    await save(next,'已保存 '+name+note);
   }
   async function removeArtist(){
     if(busy||uploading||!draft)return;

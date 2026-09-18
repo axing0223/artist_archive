@@ -62,7 +62,7 @@ test('浏览态卡片：artist-info 左下「编辑」右下「画师页面」�
   const {state}=await boot();
   const artist={uid:'0001-tester-1',order:1,name:'tester',category:null,tags:[],danbooruId:1,counts:{},artistUrl:'https://danbooru.donmai.us/artists/1',description:'',note:'',basis:'',status:'',works:[{id:'1',thumb:null}]};
   const card=state.card(artist);
-  assert.equal(card.children.length,2,'卡片应只有信息区与作品区，按钮不再单独占一栏');
+  assert.equal(card.children.length,3,'卡片应是信息区、作品区与顶部标签条');
   const info=card.children[0];
   assert.ok(info.className.includes('artist-info'));
   const actions=info.children[info.children.length-1];
@@ -72,13 +72,23 @@ test('浏览态卡片：artist-info 左下「编辑」右下「画师页面」�
   assert.equal(actions.children[1].textContent,'画师页面 ↗');
   assert.equal(actions.children[0].className,'edit-button','两处都用同一套按钮样式');
   assert.equal(actions.children[1].className,'edit-button');
-  const find=(node,label)=>{for(const child of node.children||[]){if(child._text===label)return child;const hit=find(child,label);if(hit)return hit;}return null;};
-  const refresh=find(info,'刷新');
-  assert.ok(refresh,'标题行应有刷新按钮');
-  assert.equal(refresh.className,'edit-button','刷新也用同一套按钮样式');
+  assert.equal(String(card.children[2].className).includes('artist-meta'),true,'分类与标签移到顶部标签条');
   const texts=[];const walk=node=>{if(node._text)texts.push(node._text);for(const child of node.children||[])walk(child);};
   walk(card);
+  assert.equal(texts.includes('刷新'),false,'刷新按钮已移除，改由保存时自动刷新');
   assert.equal(texts.some(t=>String(t).includes('张图片 · 卡片预览')),false,'作品下方的张数说明应已移除');
+});
+test('画师卡片：主分类与标签搬出信息区，放进顶部标签条',async()=>{
+  const {state}=await boot();
+  const card=state.card(bareArtist({category:'二次元',tags:['厚涂','黑白']}));
+  const texts=node=>{const out=[];const walk=n=>{if(n._text)out.push(n._text);for(const child of n.children||[])walk(child);};walk(node);return out;};
+  const info=texts(card.children[0]),meta=texts(card.children[2]);
+  assert.equal(info.includes('二次元'),false,'分类不再留在信息区');
+  assert.equal(info.includes('厚涂'),false,'标签不再留在信息区');
+  assert.equal(meta.includes('二次元'),true,'分类在顶部标签条里');
+  assert.equal(meta.includes('厚涂')&&meta.includes('黑白'),true,'标签也在顶部标签条里');
+  assert.ok(findByClass(card.children[2],'primary'),'分类沿用原有徽章样式');
+  assert.ok(findByClass(card.children[2],'secondary'),'标签沿用原有样式');
 });
 test('没有画师页面链接时不显示右下角按钮',async()=>{
   const {state}=await boot();
@@ -413,13 +423,13 @@ test('画师卡片：打了分才在左上角显示角标，1-5 各有对应底�
   const {state}=await boot();
   const plain=state.card(bareArtist());
   assert.equal(findAllByClass(plain,'score-badge').length,0,'未评分不显示角标');
-  assert.equal(plain.children.length,2,'没打分时卡片仍然只有信息区与作品区');
+  assert.equal(plain.children.length,3,'没打分时是信息区、作品区、顶部标签条');
   for(const score of [1,2,3,4,5]){
     const card=state.card(bareArtist({score})),badges=findAllByClass(card,'score-badge');
     assert.equal(badges.length,1,'分数 '+score+' 应有且只有一个角标');
     assert.equal(String(badges[0].className).includes('score-'+score),true,'分数 '+score+' 要用对应的底板');
-    assert.equal(badges[0].textContent,score+' 分');
-    assert.equal(card.children.length,3,'有角标时多出一个元素，且不挤占信息区');
+    assert.equal(badges[0].textContent,String(score),'角标只写数字，不带「分」字');
+    assert.equal(card.children.length,4,'有角标时多出一个元素，且不挤占信息区');
   }
 });
 test('画师卡片：越界或非法分数不会渲染出没有底板的角标',async()=>{
@@ -453,6 +463,30 @@ test('编辑卡片：打的分随保存写进画师资料',async()=>{
   await findText(lastRender(state)[0],'保存').onclick();
   assert.equal(state.rows[0].score,3,'选中的 3 分要写进资料');
   assert.equal(findAllByClass(state.card(state.rows[0]),'score-badge').length,1,'保存后卡片上出现角标');
+});
+test('保存画师时自动刷新作品数量，并写进资料',async()=>{
+  const {elements,state,ctx}=await boot();
+  let asked=null;
+  ctx.ArtistLookup={...ctx.ArtistLookup,details:async(name,date,options)=>{asked={name,date,options};return {counts:{checkedAt:'2026-01-01T00:00:00.000Z',total:321,beforeDate:date,beforeTotal:300},countsError:false};}};
+  elements.get('add-artist').onclick();
+  const card=lastRender(state)[0],nameInput=findByPlaceholder(card,'画师名字（必填）');
+  nameInput.value='自动刷新测试';nameInput.oninput();
+  await findText(lastRender(state)[0],'保存').onclick();
+  assert.equal(asked.name,'自动刷新测试','保存时要按画师名字查一次数量');
+  assert.equal(asked.options.previews,false,'只查数量，不请求预览图');
+  assert.equal(state.rows[0].counts.total,321,'数量要写进资料');
+  assert.equal(state.rows[0].counts.beforeTotal,300,'截至日期数量也要写入');
+});
+test('保存时刷新失败不影响保存本身',async()=>{
+  const {elements,state,ctx}=await boot();
+  ctx.ArtistLookup={...ctx.ArtistLookup,details:async()=>{throw Error('测试中故意失败');}};
+  elements.get('add-artist').onclick();
+  const card=lastRender(state)[0],nameInput=findByPlaceholder(card,'画师名字（必填）');
+  nameInput.value='刷新失败也要保存';nameInput.oninput();
+  await findText(lastRender(state)[0],'保存').onclick();
+  assert.equal(state.rows.length,1,'刷新失败不能阻止保存');
+  assert.equal(state.rows[0].name,'刷新失败也要保存');
+  assert.equal(state.rows[0].counts,undefined,'没取到数量就不写，留待下次刷新');
 });
 test('批量导入：默认勾选采集，为每位新画师写入作品数量与最新 3 张作品',async()=>{
   const {elements,state,ctx}=await boot();
