@@ -247,24 +247,15 @@
     const list=Array.isArray(found)?found:[],exact=list.filter(c=>c.name&&c.name.toLowerCase()===name.toLowerCase());
     return exact.length===1?exact[0]:(list.length===1?list[0]:null);
   };
-  /* 读画师的全部笔名；查不到就返回 null，让调用方保留原值。 */
-  async function loadAliases(name){
-    try{const hit=pickCandidate(await ArtistLookup.lookup(ArtistLookup.plan(name)),name);return hit&&hit.aliases.length?hit.aliases:null;}
-    catch{return null;}
-  }
-  /* 读一次作品数量（含截至日期前数量）与笔名。失败项保留原值，不覆盖成 null。
-     两件事并行发出：串行会让每次保存多等一个完整往返。已经有笔名时不再重复查询，
-     那是纯粹的浪费；数量则每次都刷新。 */
-  async function refreshArtist(artist){
-    const wantAliases=!(Array.isArray(artist.aliases)&&artist.aliases.length);
-    const [result,aliases]=await Promise.all([
-      ArtistLookup.details(artist.name,data.cutoffDate,{previews:false}),
-      wantAliases?loadAliases(artist.name):Promise.resolve(null),
-    ]);
+  /* 读一次作品数量（含截至日期前数量）。失败项保留原值，不覆盖成 null。
+     笔名不在这里读：它在「识别添加」和「批量导入」时随画师编号一起取回，只取一次，
+     保存时再查一遍纯属浪费一次完整往返。 */
+  async function refreshCounts(artist){
+    const result=await ArtistLookup.details(artist.name,data.cutoffDate,{previews:false});
     const counts={...(artist.counts||{})};
     if(result.counts.total!==null){counts.total=result.counts.total;counts.checkedAt=result.counts.checkedAt;}
     if(result.counts.beforeTotal!==null){counts.beforeTotal=result.counts.beforeTotal;counts.beforeDate=data.cutoffDate;}
-    return {counts,partial:result.countsError,aliases};
+    return {counts,partial:result.countsError};
   }
   async function saveDraft(){
     if(busy||uploading)return;
@@ -277,12 +268,9 @@
     draft.name=name;draft.artistUrl=url(draft.artistUrl);draft.tags=unique(draft.tags);draft.basis='';draft.status='';draft.works.forEach(w=>w.url=url(w.url));
     let note='';busy=true;
     try{
-      status('正在刷新 '+name+' 的作品数量与笔名…');
-      const result=await refreshArtist(draft);
+      status('正在刷新 '+name+' 的作品数量…');
+      const result=await refreshCounts(draft);
       draft.counts=result.counts;
-      /* 只在还没有笔名时采用读到的列表：否则会把你自定义添加的笔名覆盖掉，
-         删掉的也会被重新塞回来。 */
-      if(!draft.aliases.length&&result.aliases)draft.aliases=result.aliases;
       if(result.partial)note='；部分数量未取到，已保留原值';
     }
     catch(error){note='；刷新失败：'+error.message;}

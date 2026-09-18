@@ -34,12 +34,16 @@ async function boot(){
   class IO{constructor(fn){this.fn=fn;}observe(){}unobserve(){}disconnect(){}}
   class RO{observe(){}unobserve(){}disconnect(){}}
   class Option{constructor(text,value){this.textContent=text;this.value=value;}}
+/* URL 要有真的构造函数：代码里用 new URL() 解析链接，只给 createObjectURL 的假对象
+   会让所有带链接的画师在保存校验处静默失败。 */
+class FileUrl extends URL{}
+FileUrl.createObjectURL=()=>'blob:x';FileUrl.revokeObjectURL=()=>{};
   const ctx={
     window:{addEventListener(){},innerWidth:1200,innerHeight:800},document,localStorage,
     IntersectionObserver:IO,ResizeObserver:RO,Option,
     crypto:{randomUUID:()=>'uuid-'+Math.random().toString(36).slice(2)},
     fetch:async()=>{throw Error('测试中不应联网');},
-    URL:{createObjectURL:()=>'blob:x',revokeObjectURL(){}},Blob,structuredClone,setTimeout,clearTimeout,requestAnimationFrame:fn=>fn(),
+    URL:FileUrl,Blob,structuredClone,setTimeout,clearTimeout,requestAnimationFrame:fn=>fn(),
     ArtistImages:{bind(){},dispose(){},setFolder(){},clear(){},dataUrl:async()=>'data:image/jpeg;base64,/9j/2Q==',fetch:async()=>new Blob([])},
     ArtistExtension:{connected:false,check:async()=>{throw Error('测试中未连接扩展');},image:async()=>{throw Error('未连接');},resolve:async()=>{throw Error('未连接');}},
     ArtistGallery:{render(container,rows,card){state.card=card;state.rows=rows;state.renders.push(rows.map(row=>card(row)));},clear(){},pin(){},visible:()=>[],mount(uid){state.mounted.push(uid);return true;}},
@@ -259,20 +263,23 @@ test('保存时的刷新并行发出两项请求，不串行等待',async()=>{
   const elapsed=Date.now()-start;
   assert.ok(elapsed<260,'两项请求并行时约 150ms；串行会超过 300ms，实测 '+elapsed+'ms');
 });
-test('已有笔名时保存不再重复查笔名，但数量每次都刷新',async()=>{
+test('导入画师时读一次笔名，保存时不再查询',async()=>{
   const {elements,state,ctx}=await boot();
   let lookups=0,details=0;
-  stub(ctx,{lookup:async()=>{lookups++;return [{id:7,name:'tester',aliases:['甲'],pageUrl:''}];},
-    details:async()=>{details++;return {counts:{total:null,beforeTotal:null},countsError:false};}});
-  await createArtist(state,elements,'tester');
-  assert.equal(lookups,1,'首次保存要读笔名');
-  assert.equal(details,1);
+  stub(ctx,{lookup:async()=>{lookups++;return [{id:7,name:'tester',aliases:['甲','乙','丙'],pageUrl:''}];},
+    details:async()=>{details++;return {counts:{checkedAt:'x',total:1},works:[],countsError:false};}});
+  const get=id=>{if(!elements.has(id))elements.set(id,new El());return elements.get(id);};
+  get('batch-artists').onclick();get('batch-names').value='tester';get('batch-works').checked=true;
+  await get('batch-form').onsubmit({preventDefault(){}});
+  assert.equal(state.rows[0].aliases.length,3,'导入时读到的笔名要存进资料');
+  assert.equal(lookups,1,'导入时查一次笔名');
+  const before=details;
   findText(lastRender(state)[0],'编辑').onclick();
   await wait(180);
   await findText(lastRender(state)[0],'保存').onclick();
-  assert.equal(lookups,1,'已经有笔名就不再重复查询，省掉一次完整往返');
-  assert.equal(details,2,'数量仍然每次都刷新');
-  assert.equal(state.rows[0].aliases.length,1,'跳过查询不会把已有笔名弄丢');
+  assert.equal(lookups,1,'保存时不再查询笔名，省掉一次完整往返');
+  assert.equal(details,before+1,'数量仍然每次保存都刷新');
+  assert.equal(state.rows[0].aliases.length,3,'不查笔名也不会把已有的弄丢');
 });
 test('批量导入可以只对本次改排序，默认跟随设置',async()=>{
   const {elements,state,ctx}=await boot();
@@ -536,11 +543,13 @@ test('画师卡片：选用的笔名显示在名字下方，没选用就不显�
   assert.equal(info.children[1]._text,'tester','第二位是画师名字');
   assert.equal(String(info.children[2].className).includes('alias'),true,'笔名紧跟在名字下方');
 });
-test('保存画师时一并读取笔名，选用的笔名随保存写进资料',async()=>{
+test('编辑有笔名的画师：单选一个，保存写进资料并显示在卡片上',async()=>{
   const {elements,state,ctx}=await boot();
-  stub(ctx,{lookup:async()=>[{id:7,name:'tester',aliases:['甲','乙','丙'],pageUrl:''}],details:async()=>({counts:{total:null,beforeTotal:null},countsError:false})});
-  await createArtist(state,elements,'tester');
-  assert.equal(state.rows[0].aliases.length,3,'保存时读到的笔名要存进资料');
+  stub(ctx,{lookup:async()=>[{id:7,name:'tester',aliases:['甲','乙','丙'],pageUrl:''}],details:async()=>({counts:{checkedAt:'x',total:1},works:[],countsError:false})});
+  const get=id=>{if(!elements.has(id))elements.set(id,new El());return elements.get(id);};
+  get('batch-artists').onclick();get('batch-names').value='tester';get('batch-works').checked=true;
+  await get('batch-form').onsubmit({preventDefault(){}});
+  assert.equal(state.rows[0].aliases.length,3,'导入时读到的笔名要存进资料');
   findText(lastRender(state)[0],'编辑').onclick();
   await wait(180);
   const picker=findByClass(lastRender(state)[0],'alias-picker');
@@ -589,18 +598,20 @@ test('编辑卡片：可以自己添加笔名，也能移除',async()=>{
 });
 test('编辑卡片：自定义笔名不会被保存时读到的列表覆盖',async()=>{
   const {elements,state,ctx}=await boot();
-  stub(ctx,{lookup:async()=>[{id:7,name:'tester',aliases:['甲','乙'],pageUrl:''}],details:async()=>({counts:{total:null,beforeTotal:null},countsError:false})});
-  await createArtist(state,elements,'tester');
-  assert.equal(state.rows[0].aliases.length,2,'首次保存读到 Danbooru 的笔名');
+  stub(ctx,{lookup:async()=>[{id:7,name:'tester',aliases:['甲','乙'],pageUrl:''}],details:async()=>({counts:{checkedAt:'x',total:1},works:[],countsError:false})});
+  const get=id=>{if(!elements.has(id))elements.set(id,new El());return elements.get(id);};
+  get('batch-artists').onclick();get('batch-names').value='tester';get('batch-works').checked=true;
+  await get('batch-form').onsubmit({preventDefault(){}});
+  assert.equal(state.rows[0].aliases.length,2,'导入时读到 Danbooru 的笔名');
   findText(lastRender(state)[0],'编辑').onclick();
   await wait(180);
   const editor=findByClass(lastRender(state)[0],'alias-editor'),[input]=findByClass(editor,'alias-row').children;
   input.value='我的叫法';input.onkeydown({key:'Enter',preventDefault(){}});
   await findText(lastRender(state)[0],'保存').onclick();
   const aliases=[...state.rows[0].aliases];
-  assert.equal(aliases.length,3,'自己加的笔名要保留，不能被读到的列表覆盖');
+  assert.equal(aliases.length,3,'自己加的笔名要保留');
   assert.equal(aliases.includes('我的叫法'),true);
-  assert.equal(aliases.includes('甲')&&aliases.includes('乙'),true,'Danbooru 读到的也还在');
+  assert.equal(aliases.includes('甲')&&aliases.includes('乙'),true,'导入时读到的也还在');
 });
 test('编辑卡片：还没读到笔名时给出说明，不留空白',async()=>{
   const {elements,state}=await boot();
