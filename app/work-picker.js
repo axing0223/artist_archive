@@ -3,7 +3,7 @@
   const el=(tag,cls,text)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n;};
   const btn=(text,fn,cls='action')=>{const b=el('button',cls,text);b.type='button';b.onclick=fn;return b;};
   const LIMIT=20,DEFAULT_ZOOM={thumbHeight:120,setThumbHeight(){},subscribe(){},unsubscribe(){}};
-  function mount(container,{uid,tag,exclude,onPreview=()=>{},zoom=DEFAULT_ZOOM,limit=LIMIT,order='id_desc'}={}){
+  function mount(container,{uid,tag,exclude,onPreview=()=>{},zoom=DEFAULT_ZOOM,limit=LIMIT,order='id_desc',orderOptions=[]}={}){
     const group='picker:'+uid;
     const status=el('small','picker-status','正在读取作品…'),grid=el('div','candidate-previews'),tools=el('div','candidate-tools'),counter=el('small','');
     const zoomBar=el('div','picker-zoom'),range=el('input');
@@ -42,7 +42,24 @@
       catch(error){status.textContent='读取失败：'+error.message;}
       finally{more.disabled=false;more.textContent='加载更多';more.hidden=exhausted;}
     });
-    tools.append(zoomBar,counter,btn('全选',()=>{works.forEach(w=>picked.add(w.id));render();}),btn('全不选',()=>{picked.clear();render();}),more);
+    const orderBar=el('div','picker-order'),orderSelect=el('select');
+    const orderLabel=()=>orderOptions.find(option=>option.value===order)?.label||order;
+    orderSelect.setAttribute('aria-label','作品排序');
+    orderSelect.replaceChildren(...orderOptions.map(option=>new Option(option.label,option.value)));
+    orderSelect.value=order;
+    orderSelect.onchange=async()=>{
+      order=orderSelect.value;
+      /* 换了排序，原来的列表整体作废。勾选也要一起清空：selected() 只认当前列表里的作品，
+         留着会出现「已选 N 张」却一张也看不到的情况。 */
+      picked.clear();works=[];page=1;exhausted=false;more.hidden=false;
+      render();status.textContent='正在按新排序读取作品…';
+      try{status.textContent=`已按「${orderLabel()}」读取 ${await loadMore()} 张作品，之前的勾选已清空。`;}
+      catch(error){status.textContent='读取失败：'+error.message;}
+    };
+    orderBar.append(el('small','','排序'),orderSelect);
+    tools.append(zoomBar);
+    if(orderOptions.length)tools.append(orderBar);
+    tools.append(counter,btn('全选',()=>{works.forEach(w=>picked.add(w.id));render();}),btn('全不选',()=>{picked.clear();render();}),more);
     const ready=loadMore().then(total=>{status.textContent=total?`找到 ${total} 张作品：勾选要保存的，点编号可放大查看。`:'没有可添加的新作品。';})
       .catch(error=>{status.textContent='作品读取失败：'+error.message;});
     return {

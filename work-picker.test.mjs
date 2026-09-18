@@ -78,6 +78,41 @@ test('预览尺寸滑动条改变缩略图大小，识别区与编辑页保持�
   assert.equal(zoom.thumbHeight,90);
   b.dispose();
 });
+test('作品勾选器可以就地换排序，换完重新取并清空勾选',async()=>{
+  const calls=[];
+  class Option{constructor(text,value){this.textContent=text;this.value=value;}}
+  const context={document:{createElement:tag=>new Element(tag)},Option,
+    ArtistLookup:{posts:async(tag,options)=>{calls.push({tag,...options});return page(['1','2','3']);}},
+    ArtistImages:{bind(){},dispose(){}}};
+  vm.runInNewContext(await fs.readFile('app/work-picker.js','utf8'),context);
+  const container=new Element();
+  const picker=context.WorkPicker.mount(container,{uid:'o1',tag:'artist_d',order:'favcount',
+    orderOptions:[{value:'favcount',label:'收藏最多'},{value:'score',label:'评分最高'}]});
+  await picker.ready;
+  const tools=container.children[2],orderBar=tools.children[1],select=orderBar.children[1];
+  assert.equal(orderBar.className,'picker-order','排序选择器与预览大小同一行');
+  assert.equal(select.value,'favcount','初值来自调用方传进来的排序');
+  assert.equal(select.children.map(option=>option.value).join(','),'favcount,score');
+  assert.deepEqual(calls,[{tag:'artist_d',limit:20,page:1,order:'favcount'}],'首屏按传入的排序取');
+  tools.children[3].onclick();
+  assert.equal(picker.selected().length,3,'先勾满，验证换排序会清空');
+  select.value='score';await select.onchange();
+  assert.deepEqual(calls[1],{tag:'artist_d',limit:20,page:1,order:'score'},'换排序后重新从第一页取');
+  assert.equal(picker.selected().length,0,'换排序要清空勾选，否则会出现「已选」却看不到');
+  assert.equal(String(container.children[0].textContent).includes('评分最高'),true,'提示里说明按哪个排序');
+  assert.equal(tools.children.length,6,'没传排序选项时不插入多余控件');
+});
+test('没传排序选项时不出现排序控件，工具栏位置不变',async()=>{
+  const {context}=await setup(async()=>page(['1','2']));
+  const container=new Element();
+  const picker=context.WorkPicker.mount(container,{uid:'o2',tag:'artist_e'});
+  await picker.ready;
+  const tools=container.children[2];
+  assert.equal(tools.children.length,5,'只有预览大小、计数、全选、全不选、加载更多');
+  assert.equal(tools.children[0].className,'picker-zoom');
+  assert.equal(tools.children[1].textContent.includes('已选'),true,'计数紧跟在预览大小后面');
+  picker.dispose();
+});
 test('作品列表读取失败时如实提示，不抛到调用方',async()=>{
   const {context}=await setup(async()=>{throw Error('作品列表读取失败（429）。');});
   const container=new Element();

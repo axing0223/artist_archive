@@ -7,6 +7,7 @@
   const WORK_ORDERS=['favcount','score','rank','id_desc'];
   const WORK_ORDER_LABELS={favcount:'收藏最多（热度）',score:'评分最高',rank:'综合热度（评分 + 新鲜度）',id_desc:'最新发布'};
   const DEFAULT_WORK_ORDER='favcount';
+  const WORK_ORDER_OPTIONS=WORK_ORDERS.map(value=>({value,label:WORK_ORDER_LABELS[value]}));
   const $=id=>document.getElementById(id), clone=v=>structuredClone(v);
   const uid=()=>'draft-'+(crypto.randomUUID?crypto.randomUUID():Date.now()+'-'+Math.random().toString(36).slice(2));
   const el=(tag,cls,text)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n;};
@@ -191,7 +192,7 @@
     setEditorError('');
     editorHost=el('div','work-picker');expand.append(editorHost);
     const exclude=new Set(draft.works.map(w=>w.id).filter(Boolean));
-    editorPicker=WorkPicker.mount(editorHost,{uid:draft.uid,tag,exclude,zoom:prefs,order:data.workOrder,onPreview:work=>previewWork(draft.name,work,draft.uid)});
+    editorPicker=WorkPicker.mount(editorHost,{uid:draft.uid,tag,exclude,zoom:prefs,order:data.workOrder,orderOptions:WORK_ORDER_OPTIONS,onPreview:work=>previewWork(draft.name,work,draft.uid)});
     const action=btn('添加所选到作品列表',async()=>{
       const chosen=editorPicker.selected();
       if(!chosen.length){setEditorError('请先勾选要添加的作品。');return;}
@@ -425,7 +426,7 @@
   }
   const BATCH_CHUNK=25,BATCH_WORKS=3;
   let batchStop=false;const batchFailed=[];
-  async function enrichArtists(names){
+  async function enrichArtists(names,order=DEFAULT_WORK_ORDER){
     const message=$('batch-message'),total=names.length;
     let done=0,failed=0,renamed=0,images=0;
     const report=()=>{message.textContent=`正在采集 ${done} / ${total} · 补编号 ${renamed} · 缩略图 ${images} 张${failed?` · 失败 ${failed}`:''}`;};
@@ -436,7 +437,7 @@
         const artist=next.artists.find(a=>a.name===name);done++;
         if(!artist||(artist.counts&&artist.counts.checkedAt)){report();continue;}
         try{
-          const detail=await ArtistLookup.details(name,next.cutoffDate,{previews:true,order:next.workOrder});
+          const detail=await ArtistLookup.details(name,next.cutoffDate,{previews:true,order});
           if(detail.countsError)throw Error('作品数量读取失败');
           let id=null,aliases=null;
           try{const hit=pickCandidate(await ArtistLookup.lookup(ArtistLookup.plan(name)),name);if(hit){id=hit.id;if(hit.aliases.length)aliases=hit.aliases;}}catch{}
@@ -456,7 +457,7 @@
   }
   async function batch(e){
     e.preventDefault();if(busy)return;const names=unique($('batch-names').value.split(/\r?\n/));if(!names.length)return;if(names.some(n=>n.length>160)){$('batch-message').textContent='名字不能超过 160 个字符，请检查是否每行一位。';return;}
-    const collect=$('batch-works').checked;
+    const collect=$('batch-works').checked,order=WORK_ORDERS.includes($('batch-order').value)?$('batch-order').value:data.workOrder;
     const next=clone(data),seen=new Set(next.artists.map(a=>a.name.toLowerCase())),added=[];let count=0;
     for(const name of names){if(seen.has(name.toLowerCase()))continue;seen.add(name.toLowerCase());if(next.artists.length>=20000){$('batch-message').textContent='最多支持 20,000 位画师。';return;}next.artists.push({uid:ArtistId.issue(next.artists,{name}),order:next.artists.length+1,name,category:null,score:null,aliases:[],alias:null,tags:[],artistUrl:'https://danbooru.donmai.us/posts?tags='+encodeURIComponent(name),description:'',note:'',works:[]});added.push(name);count++;}
     batchStop=false;batchFailed.length=0;
@@ -464,7 +465,7 @@
     const summary=`已添加 ${count} 位，跳过 ${names.length-count} 个重复名字`;
     if(collect&&added.length){
       $('batch-message').textContent=`开始采集 ${added.length} 位画师的最新 ${BATCH_WORKS} 张作品…`;
-      const result=await enrichArtists(added);
+      const result=await enrichArtists(added,order);
       $('batch-message').textContent=`${summary}。采集 ${result.done} 位 · 补编号 ${result.renamed} · 缩略图 ${result.images} 张${result.failed?` · 失败 ${result.failed}（${batchFailed.join('；')}）`:''}${batchStop?' · 已中止，再次提交同一名单会跳过已采集的画师':''}。`;
     }else $('batch-message').textContent=summary+'。';
     if($('batch-dialog').open&&!batchStop)$('batch-dialog').close();
@@ -516,7 +517,7 @@
       const countLine=el('small','','作品数量：读取中…');detail.append(countLine);
       const body=el('div','candidate-body');detail.append(body);
       const previewUid='preview-'+artist.id;
-      const picker=WorkPicker.mount(body,{uid:previewUid,tag:artist.name,zoom:prefs,order:data.workOrder,onPreview:work=>previewWork(artist.name,work,previewUid)});activePickers.push(picker);
+      const picker=WorkPicker.mount(body,{uid:previewUid,tag:artist.name,zoom:prefs,order:data.workOrder,orderOptions:WORK_ORDER_OPTIONS,onPreview:work=>previewWork(artist.name,work,previewUid)});activePickers.push(picker);
       ArtistLookup.details(artist.name,'',{previews:false}).then(result=>{if(sequence===lookupSequence)countLine.textContent='作品数量：'+(result.counts.total??'读取失败');}).catch(()=>{if(sequence===lookupSequence)countLine.textContent='作品数量：读取失败';});
       const exists=()=>data.artists.some(a=>a.danbooruId===artist.id||a.name.toLowerCase()===artist.name.toLowerCase());
       const add=btn(exists()?'已在画师库中':'添加此画师',async()=>{
@@ -560,6 +561,7 @@
     applyCardSize();
     data=normalize(FolderStore.empty());status('请先选择「数据」文件夹，读取或开始整理画师库。');
     $('work-order').replaceChildren(...WORK_ORDERS.map(order=>new Option(WORK_ORDER_LABELS[order],order)));
+    $('batch-order').replaceChildren(...WORK_ORDERS.map(order=>new Option(WORK_ORDER_LABELS[order],order)));
     ArtistTestImages.init({getData:()=>data,getBusy:()=>busy,readImage,thumbnail,save});
     $('test-import-open').onclick=()=>ArtistTestImages.open();$('close-test-import').onclick=()=>$('test-import').close();$('test-cancel').onclick=()=>$('test-import').close();
     $('test-files').onchange=e=>{ArtistTestImages.files=[...e.target.files];ArtistTestImages.refresh();};
@@ -579,7 +581,7 @@
     $('category-search').oninput=e=>{manageFilter.category=e.target.value.trim().toLowerCase();listCategories();};
     $('tag-search').oninput=e=>{manageFilter.tag=e.target.value.trim().toLowerCase();listTags();};
     $('category-form').onsubmit=async e=>{e.preventDefault();if(busy)return;const name=$('new-category').value.trim();if(!name)return;if(data.categories.includes(name)){alert('这个分类已存在。');return;}const next=clone(data);next.categories.push(name);await save(next);$('new-category').value='';listCategories();};$('tag-form').onsubmit=async e=>{e.preventDefault();if(busy)return;const t=$('new-tag').value.trim();if(!t)return;if(data.tags.includes(t)){alert('这个标签已存在。');return;}const next=clone(data);next.tags.push(t);await save(next);$('new-tag').value='';listTags();};
-    $('batch-artists').onclick=()=>{if(busy)return;$('batch-names').value='';$('batch-message').textContent='';$('batch-dialog').showModal();};$('close-batch').onclick=()=>$('batch-dialog').close();$('batch-dialog').addEventListener('close',()=>{batchStop=true;});$('batch-form').onsubmit=batch;$('names-file').onchange=async e=>{try{const f=e.target.files[0];if(f){if(f.size>5*1024*1024)throw Error('TXT 名单不能超过 5 MB。');$('batch-names').value=await f.text();}}catch(error){$('batch-message').textContent=error.message;}finally{e.target.value='';}};
+    $('batch-artists').onclick=()=>{if(busy)return;$('batch-names').value='';$('batch-message').textContent='';$('batch-order').value=data.workOrder;$('batch-dialog').showModal();};$('close-batch').onclick=()=>$('batch-dialog').close();$('batch-dialog').addEventListener('close',()=>{batchStop=true;});$('batch-form').onsubmit=batch;$('names-file').onchange=async e=>{try{const f=e.target.files[0];if(f){if(f.size>5*1024*1024)throw Error('TXT 名单不能超过 5 MB。');$('batch-names').value=await f.text();}}catch(error){$('batch-message').textContent=error.message;}finally{e.target.value='';}};
     $('export-data').onclick=exportData;$('import-data').onclick=()=>{if(!busy)$('import-file').click();};$('import-file').onchange=importData;
     let searchTimer;$('search').oninput=e=>{state.query=e.target.value.trim().toLowerCase();clearTimeout(searchTimer);searchTimer=setTimeout(render,150);};$('reset').onclick=()=>{reset();render();};$('close-viewer').onclick=()=>$('viewer').close();
     ArtistViewer.init({getData:()=>data,getFolder:()=>folder,save,notify:status});

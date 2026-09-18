@@ -19,6 +19,9 @@
 .candidate-previews{flex-wrap:wrap;overflow:visible;gap:10px}.pick{position:relative;display:flex;flex-direction:column;gap:4px;padding:6px;border:1px solid #e0e5f0;border-radius:8px;background:#fff;cursor:pointer}.pick input{position:absolute;top:8px;left:8px;width:18px;height:18px;margin:0;cursor:pointer}.pick img{height:var(--pick-size,120px);width:auto;aspect-ratio:3/4;object-fit:cover;border-radius:6px}.pick a{font-size:11px;color:#375af5;text-align:center}.pick:has(input:checked){border-color:#375af5;box-shadow:0 0 0 1px #375af5}.candidate-tools{display:flex;gap:10px;align-items:center;flex-wrap:wrap;flex-basis:100%;padding-top:4px}.candidate-tools .action{padding:5px 12px;font-size:12px}.candidate-tools small{color:#788496;font-size:12px}
 .candidate-body{flex-basis:100%;display:flex;flex-direction:column;gap:6px;min-width:0}.picker-status{color:#788496;font-size:12px}.pick-id{background:none;border:none;padding:0;color:#375af5;font-size:11px;cursor:pointer;text-decoration:underline}.pick-id:hover{color:#1f3fd0}.picker-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding-top:10px;border-top:1px solid #e7ebf2;margin-top:10px}.work-picker{display:flex;flex-direction:column;gap:8px;border:1px solid #e0e5f0;border-radius:10px;padding:14px;margin-top:12px;background:#f8faff}.work-picker[hidden]{display:none}
 .picker-zoom{display:flex;align-items:center;gap:8px}.picker-zoom small{color:#788496;font-size:12px;white-space:nowrap}.picker-zoom input[type=range]{flex:none;width:130px;padding:0;border:0;background:none;accent-color:var(--accent)}
+.picker-order{display:flex;align-items:center;gap:8px}
+.picker-order small{color:#788496;font-size:12px;white-space:nowrap}
+.picker-order select{flex:none;width:auto;max-width:190px;padding:6px 8px;font-size:13px}
 .settings-body{gap:0}.setting-row{display:flex;gap:16px;align-items:flex-start;justify-content:space-between;padding:14px 0;border-bottom:1px solid #eef0f4}.setting-row:last-child{border-bottom:0;padding-bottom:0}.setting-row strong{display:block;font-size:14px;margin-bottom:5px}.setting-row .field-help{margin:0}.setting-row>button{flex-shrink:0}.setting-row input[type=date]{width:auto;min-width:160px}.setting-row select{width:auto;min-width:180px;flex-shrink:0}.switch{position:relative;display:inline-flex;flex-shrink:0;margin-top:2px}.switch input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer}.switch span{display:block;width:46px;height:26px;border-radius:13px;background:#d5d9e2;transition:background .2s}.switch span::after{content:'';position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px #0003;transition:transform .2s}.switch input:checked+span{background:var(--accent)}.switch input:checked+span::after{transform:translateX(20px)}
 .size-control{display:flex;align-items:center;gap:10px;flex-shrink:0}.size-control input[type=range]{width:180px;padding:0;border:0;background:none;accent-color:var(--accent)}.size-control span{font-size:13px;color:#788496;min-width:38px;text-align:right}
 .works{grid-template-columns:repeat(auto-fill,minmax(var(--card-size,220px),1fr))}.thumb{height:var(--card-size,220px)}
@@ -187,7 +190,7 @@ dialog[open]::backdrop{opacity:1}
     <p id="tag-empty" class="manage-empty" role="status" hidden></p>
     </div>
   </div></dialog>
-  <dialog id="batch-dialog" class="small-dialog" aria-labelledby="batch-title"><form id="batch-form"><div class="viewer-bar"><h2 id="batch-title">批量导入画师名字</h2><button type="button" id="close-batch">取消 ×</button></div><div class="form-body"><p class="field-help">每行一位，也可读取「画师表.txt」。自动跳过重名；新画师保持未分类。</p><label class="action upload-label">读取 TXT 名单<input id="names-file" type="file" accept=".txt" hidden></label><textarea id="batch-names" rows="10" aria-label="一行一个画师名字" required></textarea><div class="setting-row"><div><strong>同时采集最新 3 张作品与数量</strong><p class="field-help">为每位新画师补齐 Danbooru 编号、作品总数，并保存最新 3 张作品的缩略图。名字很多时会持续较久；中途点「取消」会保留已采集的进度，再次提交同一名单会自动跳过。</p></div><label class="switch"><input id="batch-works" type="checkbox" checked><span></span></label></div><p id="batch-message" role="status"></p></div><div class="form-footer"><button class="action primary-action">添加到画师库</button></div></form></dialog>
+  <dialog id="batch-dialog" class="small-dialog" aria-labelledby="batch-title"><form id="batch-form"><div class="viewer-bar"><h2 id="batch-title">批量导入画师名字</h2><button type="button" id="close-batch">取消 ×</button></div><div class="form-body"><p class="field-help">每行一位，也可读取「画师表.txt」。自动跳过重名；新画师保持未分类。</p><label class="action upload-label">读取 TXT 名单<input id="names-file" type="file" accept=".txt" hidden></label><textarea id="batch-names" rows="10" aria-label="一行一个画师名字" required></textarea><div class="setting-row"><div><strong>本次采集的作品排序</strong><p class="field-help">只对这一次导入生效，默认用「设置」里的排序。收藏最多、评分最高与综合热度依赖站点的排序元标签，作品特别多的画师可能超时失败。</p></div><select id="batch-order" aria-label="本次采集的作品排序"></select></div><div class="setting-row"><div><strong>同时采集 3 张作品与数量</strong><p class="field-help">为每位新画师补齐 Danbooru 编号、作品总数，并保存 3 张作品的缩略图（按上面选的排序）。名字很多时会持续较久；中途点「取消」会保留已采集的进度，再次提交同一名单会自动跳过。</p></div><label class="switch"><input id="batch-works" type="checkbox" checked><span></span></label></div><p id="batch-message" role="status"></p></div><div class="form-footer"><button class="action primary-action">添加到画师库</button></div></form></dialog>
 <script>(function(root){
   'use strict';
   const MAX=100,NAME_MAX=60,DEFAULT_NAME='artist';
@@ -571,7 +574,7 @@ dialog[open]::backdrop{opacity:1}
   const el=(tag,cls,text)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n;};
   const btn=(text,fn,cls='action')=>{const b=el('button',cls,text);b.type='button';b.onclick=fn;return b;};
   const LIMIT=20,DEFAULT_ZOOM={thumbHeight:120,setThumbHeight(){},subscribe(){},unsubscribe(){}};
-  function mount(container,{uid,tag,exclude,onPreview=()=>{},zoom=DEFAULT_ZOOM,limit=LIMIT,order='id_desc'}={}){
+  function mount(container,{uid,tag,exclude,onPreview=()=>{},zoom=DEFAULT_ZOOM,limit=LIMIT,order='id_desc',orderOptions=[]}={}){
     const group='picker:'+uid;
     const status=el('small','picker-status','正在读取作品…'),grid=el('div','candidate-previews'),tools=el('div','candidate-tools'),counter=el('small','');
     const zoomBar=el('div','picker-zoom'),range=el('input');
@@ -610,7 +613,24 @@ dialog[open]::backdrop{opacity:1}
       catch(error){status.textContent='读取失败：'+error.message;}
       finally{more.disabled=false;more.textContent='加载更多';more.hidden=exhausted;}
     });
-    tools.append(zoomBar,counter,btn('全选',()=>{works.forEach(w=>picked.add(w.id));render();}),btn('全不选',()=>{picked.clear();render();}),more);
+    const orderBar=el('div','picker-order'),orderSelect=el('select');
+    const orderLabel=()=>orderOptions.find(option=>option.value===order)?.label||order;
+    orderSelect.setAttribute('aria-label','作品排序');
+    orderSelect.replaceChildren(...orderOptions.map(option=>new Option(option.label,option.value)));
+    orderSelect.value=order;
+    orderSelect.onchange=async()=>{
+      order=orderSelect.value;
+      /* 换了排序，原来的列表整体作废。勾选也要一起清空：selected() 只认当前列表里的作品，
+         留着会出现「已选 N 张」却一张也看不到的情况。 */
+      picked.clear();works=[];page=1;exhausted=false;more.hidden=false;
+      render();status.textContent='正在按新排序读取作品…';
+      try{status.textContent=`已按「${orderLabel()}」读取 ${await loadMore()} 张作品，之前的勾选已清空。`;}
+      catch(error){status.textContent='读取失败：'+error.message;}
+    };
+    orderBar.append(el('small','','排序'),orderSelect);
+    tools.append(zoomBar);
+    if(orderOptions.length)tools.append(orderBar);
+    tools.append(counter,btn('全选',()=>{works.forEach(w=>picked.add(w.id));render();}),btn('全不选',()=>{picked.clear();render();}),more);
     const ready=loadMore().then(total=>{status.textContent=total?`找到 ${total} 张作品：勾选要保存的，点编号可放大查看。`:'没有可添加的新作品。';})
       .catch(error=>{status.textContent='作品读取失败：'+error.message;});
     return {
@@ -806,6 +826,7 @@ dialog[open]::backdrop{opacity:1}
   const WORK_ORDERS=['favcount','score','rank','id_desc'];
   const WORK_ORDER_LABELS={favcount:'收藏最多（热度）',score:'评分最高',rank:'综合热度（评分 + 新鲜度）',id_desc:'最新发布'};
   const DEFAULT_WORK_ORDER='favcount';
+  const WORK_ORDER_OPTIONS=WORK_ORDERS.map(value=>({value,label:WORK_ORDER_LABELS[value]}));
   const $=id=>document.getElementById(id), clone=v=>structuredClone(v);
   const uid=()=>'draft-'+(crypto.randomUUID?crypto.randomUUID():Date.now()+'-'+Math.random().toString(36).slice(2));
   const el=(tag,cls,text)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n;};
@@ -990,7 +1011,7 @@ dialog[open]::backdrop{opacity:1}
     setEditorError('');
     editorHost=el('div','work-picker');expand.append(editorHost);
     const exclude=new Set(draft.works.map(w=>w.id).filter(Boolean));
-    editorPicker=WorkPicker.mount(editorHost,{uid:draft.uid,tag,exclude,zoom:prefs,order:data.workOrder,onPreview:work=>previewWork(draft.name,work,draft.uid)});
+    editorPicker=WorkPicker.mount(editorHost,{uid:draft.uid,tag,exclude,zoom:prefs,order:data.workOrder,orderOptions:WORK_ORDER_OPTIONS,onPreview:work=>previewWork(draft.name,work,draft.uid)});
     const action=btn('添加所选到作品列表',async()=>{
       const chosen=editorPicker.selected();
       if(!chosen.length){setEditorError('请先勾选要添加的作品。');return;}
@@ -1224,7 +1245,7 @@ dialog[open]::backdrop{opacity:1}
   }
   const BATCH_CHUNK=25,BATCH_WORKS=3;
   let batchStop=false;const batchFailed=[];
-  async function enrichArtists(names){
+  async function enrichArtists(names,order=DEFAULT_WORK_ORDER){
     const message=$('batch-message'),total=names.length;
     let done=0,failed=0,renamed=0,images=0;
     const report=()=>{message.textContent=`正在采集 ${done} / ${total} · 补编号 ${renamed} · 缩略图 ${images} 张${failed?` · 失败 ${failed}`:''}`;};
@@ -1235,7 +1256,7 @@ dialog[open]::backdrop{opacity:1}
         const artist=next.artists.find(a=>a.name===name);done++;
         if(!artist||(artist.counts&&artist.counts.checkedAt)){report();continue;}
         try{
-          const detail=await ArtistLookup.details(name,next.cutoffDate,{previews:true,order:next.workOrder});
+          const detail=await ArtistLookup.details(name,next.cutoffDate,{previews:true,order});
           if(detail.countsError)throw Error('作品数量读取失败');
           let id=null,aliases=null;
           try{const hit=pickCandidate(await ArtistLookup.lookup(ArtistLookup.plan(name)),name);if(hit){id=hit.id;if(hit.aliases.length)aliases=hit.aliases;}}catch{}
@@ -1255,7 +1276,7 @@ dialog[open]::backdrop{opacity:1}
   }
   async function batch(e){
     e.preventDefault();if(busy)return;const names=unique($('batch-names').value.split(/\r?\n/));if(!names.length)return;if(names.some(n=>n.length>160)){$('batch-message').textContent='名字不能超过 160 个字符，请检查是否每行一位。';return;}
-    const collect=$('batch-works').checked;
+    const collect=$('batch-works').checked,order=WORK_ORDERS.includes($('batch-order').value)?$('batch-order').value:data.workOrder;
     const next=clone(data),seen=new Set(next.artists.map(a=>a.name.toLowerCase())),added=[];let count=0;
     for(const name of names){if(seen.has(name.toLowerCase()))continue;seen.add(name.toLowerCase());if(next.artists.length>=20000){$('batch-message').textContent='最多支持 20,000 位画师。';return;}next.artists.push({uid:ArtistId.issue(next.artists,{name}),order:next.artists.length+1,name,category:null,score:null,aliases:[],alias:null,tags:[],artistUrl:'https://danbooru.donmai.us/posts?tags='+encodeURIComponent(name),description:'',note:'',works:[]});added.push(name);count++;}
     batchStop=false;batchFailed.length=0;
@@ -1263,7 +1284,7 @@ dialog[open]::backdrop{opacity:1}
     const summary=`已添加 ${count} 位，跳过 ${names.length-count} 个重复名字`;
     if(collect&&added.length){
       $('batch-message').textContent=`开始采集 ${added.length} 位画师的最新 ${BATCH_WORKS} 张作品…`;
-      const result=await enrichArtists(added);
+      const result=await enrichArtists(added,order);
       $('batch-message').textContent=`${summary}。采集 ${result.done} 位 · 补编号 ${result.renamed} · 缩略图 ${result.images} 张${result.failed?` · 失败 ${result.failed}（${batchFailed.join('；')}）`:''}${batchStop?' · 已中止，再次提交同一名单会跳过已采集的画师':''}。`;
     }else $('batch-message').textContent=summary+'。';
     if($('batch-dialog').open&&!batchStop)$('batch-dialog').close();
@@ -1315,7 +1336,7 @@ dialog[open]::backdrop{opacity:1}
       const countLine=el('small','','作品数量：读取中…');detail.append(countLine);
       const body=el('div','candidate-body');detail.append(body);
       const previewUid='preview-'+artist.id;
-      const picker=WorkPicker.mount(body,{uid:previewUid,tag:artist.name,zoom:prefs,order:data.workOrder,onPreview:work=>previewWork(artist.name,work,previewUid)});activePickers.push(picker);
+      const picker=WorkPicker.mount(body,{uid:previewUid,tag:artist.name,zoom:prefs,order:data.workOrder,orderOptions:WORK_ORDER_OPTIONS,onPreview:work=>previewWork(artist.name,work,previewUid)});activePickers.push(picker);
       ArtistLookup.details(artist.name,'',{previews:false}).then(result=>{if(sequence===lookupSequence)countLine.textContent='作品数量：'+(result.counts.total??'读取失败');}).catch(()=>{if(sequence===lookupSequence)countLine.textContent='作品数量：读取失败';});
       const exists=()=>data.artists.some(a=>a.danbooruId===artist.id||a.name.toLowerCase()===artist.name.toLowerCase());
       const add=btn(exists()?'已在画师库中':'添加此画师',async()=>{
@@ -1359,6 +1380,7 @@ dialog[open]::backdrop{opacity:1}
     applyCardSize();
     data=normalize(FolderStore.empty());status('请先选择「数据」文件夹，读取或开始整理画师库。');
     $('work-order').replaceChildren(...WORK_ORDERS.map(order=>new Option(WORK_ORDER_LABELS[order],order)));
+    $('batch-order').replaceChildren(...WORK_ORDERS.map(order=>new Option(WORK_ORDER_LABELS[order],order)));
     ArtistTestImages.init({getData:()=>data,getBusy:()=>busy,readImage,thumbnail,save});
     $('test-import-open').onclick=()=>ArtistTestImages.open();$('close-test-import').onclick=()=>$('test-import').close();$('test-cancel').onclick=()=>$('test-import').close();
     $('test-files').onchange=e=>{ArtistTestImages.files=[...e.target.files];ArtistTestImages.refresh();};
@@ -1378,7 +1400,7 @@ dialog[open]::backdrop{opacity:1}
     $('category-search').oninput=e=>{manageFilter.category=e.target.value.trim().toLowerCase();listCategories();};
     $('tag-search').oninput=e=>{manageFilter.tag=e.target.value.trim().toLowerCase();listTags();};
     $('category-form').onsubmit=async e=>{e.preventDefault();if(busy)return;const name=$('new-category').value.trim();if(!name)return;if(data.categories.includes(name)){alert('这个分类已存在。');return;}const next=clone(data);next.categories.push(name);await save(next);$('new-category').value='';listCategories();};$('tag-form').onsubmit=async e=>{e.preventDefault();if(busy)return;const t=$('new-tag').value.trim();if(!t)return;if(data.tags.includes(t)){alert('这个标签已存在。');return;}const next=clone(data);next.tags.push(t);await save(next);$('new-tag').value='';listTags();};
-    $('batch-artists').onclick=()=>{if(busy)return;$('batch-names').value='';$('batch-message').textContent='';$('batch-dialog').showModal();};$('close-batch').onclick=()=>$('batch-dialog').close();$('batch-dialog').addEventListener('close',()=>{batchStop=true;});$('batch-form').onsubmit=batch;$('names-file').onchange=async e=>{try{const f=e.target.files[0];if(f){if(f.size>5*1024*1024)throw Error('TXT 名单不能超过 5 MB。');$('batch-names').value=await f.text();}}catch(error){$('batch-message').textContent=error.message;}finally{e.target.value='';}};
+    $('batch-artists').onclick=()=>{if(busy)return;$('batch-names').value='';$('batch-message').textContent='';$('batch-order').value=data.workOrder;$('batch-dialog').showModal();};$('close-batch').onclick=()=>$('batch-dialog').close();$('batch-dialog').addEventListener('close',()=>{batchStop=true;});$('batch-form').onsubmit=batch;$('names-file').onchange=async e=>{try{const f=e.target.files[0];if(f){if(f.size>5*1024*1024)throw Error('TXT 名单不能超过 5 MB。');$('batch-names').value=await f.text();}}catch(error){$('batch-message').textContent=error.message;}finally{e.target.value='';}};
     $('export-data').onclick=exportData;$('import-data').onclick=()=>{if(!busy)$('import-file').click();};$('import-file').onchange=importData;
     let searchTimer;$('search').oninput=e=>{state.query=e.target.value.trim().toLowerCase();clearTimeout(searchTimer);searchTimer=setTimeout(render,150);};$('reset').onclick=()=>{reset();render();};$('close-viewer').onclick=()=>$('viewer').close();
     ArtistViewer.init({getData:()=>data,getFolder:()=>folder,save,notify:status});

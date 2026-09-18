@@ -244,6 +244,27 @@ test('设置里可以切换采集排序，编辑卡片按它取作品',async()=>
   assert.equal(asked[0].tag,'tester');
   assert.match(await fs.readFile('app/index.html','utf8'),/id="work-order" aria-label="采集作品的排序"/,'设置里要有这一栏');
 });
+test('批量导入可以只对本次改排序，默认跟随设置',async()=>{
+  const {elements,state,ctx}=await boot();
+  const asked=[];
+  stub(ctx,{lookup:async()=>[],details:async(name,date,options)=>{asked.push(options.order);return {counts:{checkedAt:'x',total:1},works:[],countsError:false};}});
+  const get=id=>{if(!elements.has(id))elements.set(id,new El());return elements.get(id);};
+  const select=get('batch-order');
+  assert.equal(select.children.map(option=>option.value).join(','),'favcount,score,rank,id_desc','四档排序，收藏最多排第一');
+  const submit=async names=>{get('batch-names').value=names;get('batch-works').checked=true;await get('batch-form').onsubmit({preventDefault(){}});};
+  get('batch-artists').onclick();
+  assert.equal(select.value,'favcount','打开时默认用设置里的排序');
+  await submit('甲画师');
+  assert.deepEqual(asked,['favcount'],'默认跟随设置');
+  asked.length=0;
+  get('batch-artists').onclick();
+  select.value='rank';
+  await submit('乙画师');
+  assert.deepEqual(asked,['rank'],'这一次可以单独换排序');
+  assert.equal(get('batch-order').value,'rank','改过的排序在本次对话框里保留');
+  get('batch-artists').onclick();
+  assert.equal(get('batch-order').value,'favcount','重新打开会重置回设置里的默认');
+});
 test('展开与收起 Danbooru 读取区后，视图重新对准正在编辑的卡片',async()=>{
   const {elements,state}=await boot();
   elements.get('add-artist').onclick();
