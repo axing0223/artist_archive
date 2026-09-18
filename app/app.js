@@ -252,13 +252,19 @@
     try{const hit=pickCandidate(await ArtistLookup.lookup(ArtistLookup.plan(name)),name);return hit&&hit.aliases.length?hit.aliases:null;}
     catch{return null;}
   }
-  /* 读一次作品数量（含截至日期前数量）与笔名。失败项保留原值，不覆盖成 null。 */
+  /* 读一次作品数量（含截至日期前数量）与笔名。失败项保留原值，不覆盖成 null。
+     两件事并行发出：串行会让每次保存多等一个完整往返。已经有笔名时不再重复查询，
+     那是纯粹的浪费；数量则每次都刷新。 */
   async function refreshArtist(artist){
-    const result=await ArtistLookup.details(artist.name,data.cutoffDate,{previews:false});
+    const wantAliases=!(Array.isArray(artist.aliases)&&artist.aliases.length);
+    const [result,aliases]=await Promise.all([
+      ArtistLookup.details(artist.name,data.cutoffDate,{previews:false}),
+      wantAliases?loadAliases(artist.name):Promise.resolve(null),
+    ]);
     const counts={...(artist.counts||{})};
     if(result.counts.total!==null){counts.total=result.counts.total;counts.checkedAt=result.counts.checkedAt;}
     if(result.counts.beforeTotal!==null){counts.beforeTotal=result.counts.beforeTotal;counts.beforeDate=data.cutoffDate;}
-    return {counts,partial:result.countsError,aliases:await loadAliases(artist.name)};
+    return {counts,partial:result.countsError,aliases};
   }
   async function saveDraft(){
     if(busy||uploading)return;

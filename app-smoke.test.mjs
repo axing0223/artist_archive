@@ -245,6 +245,35 @@ test('设置里可以切换采集排序，编辑卡片按它取作品',async()=>
   assert.equal(asked[0].tag,'tester');
   assert.match(await fs.readFile('app/index.html','utf8'),/id="work-order" aria-label="采集作品的排序"/,'设置里要有这一栏');
 });
+test('保存时的刷新并行发出两项请求，不串行等待',async()=>{
+  const {elements,state,ctx}=await boot();
+  const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+  ctx.ArtistLookup={plan:value=>({query:String(value)}),posts:async()=>[],
+    details:async()=>{await delay(150);return {counts:{total:null,beforeTotal:null},countsError:false};},
+    lookup:async()=>{await delay(150);return [];}};
+  elements.get('add-artist').onclick();
+  const card=lastRender(state)[0],nameInput=findByPlaceholder(card,'画师名字（必填）');
+  nameInput.value='tester';nameInput.oninput();
+  const start=Date.now();
+  await findText(lastRender(state)[0],'保存').onclick();
+  const elapsed=Date.now()-start;
+  assert.ok(elapsed<260,'两项请求并行时约 150ms；串行会超过 300ms，实测 '+elapsed+'ms');
+});
+test('已有笔名时保存不再重复查笔名，但数量每次都刷新',async()=>{
+  const {elements,state,ctx}=await boot();
+  let lookups=0,details=0;
+  stub(ctx,{lookup:async()=>{lookups++;return [{id:7,name:'tester',aliases:['甲'],pageUrl:''}];},
+    details:async()=>{details++;return {counts:{total:null,beforeTotal:null},countsError:false};}});
+  await createArtist(state,elements,'tester');
+  assert.equal(lookups,1,'首次保存要读笔名');
+  assert.equal(details,1);
+  findText(lastRender(state)[0],'编辑').onclick();
+  await wait(180);
+  await findText(lastRender(state)[0],'保存').onclick();
+  assert.equal(lookups,1,'已经有笔名就不再重复查询，省掉一次完整往返');
+  assert.equal(details,2,'数量仍然每次都刷新');
+  assert.equal(state.rows[0].aliases.length,1,'跳过查询不会把已有笔名弄丢');
+});
 test('批量导入可以只对本次改排序，默认跟随设置',async()=>{
   const {elements,state,ctx}=await boot();
   const asked=[];
