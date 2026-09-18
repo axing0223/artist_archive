@@ -26,7 +26,10 @@ test('缩略图与原图分别落进 缩略图/ 大图/，imageOf 本地优先�
  assert.match(large,/^大图\/[a-f0-9]{24}\.jpeg$/);
  assert.deepEqual(store.imageOf({thumb,thumbUrl:'https://cdn.donmai.us/a.jpg'},'thumb'),{kind:'local',path:thumb});
  assert.deepEqual(store.imageOf({thumbUrl:'https://cdn.donmai.us/a.jpg'},'thumb'),{kind:'remote',url:'https://cdn.donmai.us/a.jpg'});
- assert.deepEqual(store.imageOf({},'large'),null);
+ assert.deepEqual(store.imageOf({previewUrl:'https://cdn.donmai.us/720x720/a.jpg'},'preview'),{kind:'remote',url:'https://cdn.donmai.us/720x720/a.jpg'});
+ assert.deepEqual(store.imageOf({largeUrl:'https://cdn.donmai.us/original/a.jpg'},'preview'),{kind:'remote',url:'https://cdn.donmai.us/original/a.jpg'},'没有中图时放大回退到原图');
+ assert.equal(store.imageOf({thumbUrl:'https://cdn.donmai.us/180x180/a.jpg'},'preview'),null,'不会把缩略图当成放大图');
+ assert.equal(store.imageOf({},'large'),null);
  assert.deepEqual(await bytesOf(await store.readImage(dir,'0001-a-1',large)),Uint8Array.from([4,5,6,7]));
  await assert.rejects(()=>store.saveImage(dir,'0001-a-1','large',new Blob([],{type:'image/jpeg'})),/空/);
  await assert.rejects(()=>store.saveImage(dir,'0001-a-1','large',new Blob([Uint8Array.from([1])],{type:'image/tiff'})),/不支持/);
@@ -86,7 +89,7 @@ test('刷新只查询当前画师的两项数量，不请求预览图',async()=>
 test('识别区按页取作品，每张都带缩略图与原图地址，无效条目被丢弃',async()=>{
  const {posts}=require('./app/artist-lookup.js');const requests=[];
  const rows=[
-  {id:3,preview_file_url:'https://cdn.donmai.us/180x180/a.jpg',file_url:'https://cdn.donmai.us/original/a.jpg'},
+  {id:3,preview_file_url:'https://cdn.donmai.us/180x180/a.jpg',file_url:'https://cdn.donmai.us/original/a.jpg',media_asset:{variants:[{type:'720x720',url:'https://cdn.donmai.us/720x720/a.jpg'}]}},
   {id:2,media_asset:{variants:[{type:'180x180',url:'https://cdn.donmai.us/180x180/b.jpg'},{type:'original',url:'https://cdn.donmai.us/original/b.jpg'}]}},
   {id:1,large_file_url:'https://cdn.donmai.us/sample/c.jpg'},
   {id:0},null
@@ -96,8 +99,8 @@ test('识别区按页取作品，每张都带缩略图与原图地址，无效�
  assert.equal(requests[0].searchParams.get('tags'),'artist_a order:id_desc');
  assert.equal(requests[0].searchParams.get('limit'),'20');assert.equal(requests[0].searchParams.get('page'),'2');
  assert.equal(works.length,3,'编号非法的条目被丢弃');
- assert.deepEqual(works[0],{id:'3',url:'https://danbooru.donmai.us/posts/3',caption:'',thumbUrl:'https://cdn.donmai.us/180x180/a.jpg',largeUrl:'https://cdn.donmai.us/original/a.jpg'});
- assert.deepEqual(works[1],{id:'2',url:'https://danbooru.donmai.us/posts/2',caption:'',thumbUrl:'https://cdn.donmai.us/180x180/b.jpg',largeUrl:'https://cdn.donmai.us/original/b.jpg'});
+ assert.deepEqual(works[0],{id:'3',url:'https://danbooru.donmai.us/posts/3',caption:'',thumbUrl:'https://cdn.donmai.us/180x180/a.jpg',previewUrl:'https://cdn.donmai.us/720x720/a.jpg',largeUrl:'https://cdn.donmai.us/original/a.jpg'});
+ assert.deepEqual(works[1],{id:'2',url:'https://danbooru.donmai.us/posts/2',caption:'',thumbUrl:'https://cdn.donmai.us/180x180/b.jpg',previewUrl:null,largeUrl:'https://cdn.donmai.us/original/b.jpg'},'没有中图时留空');
  assert.equal(works[2].largeUrl,'https://cdn.donmai.us/sample/c.jpg','没有原图地址时回退到 large_file_url');
  assert.equal(works[2].thumbUrl,null);
  await assert.rejects(posts('a',{fetcher:async()=>({ok:false,status:429})}),/频繁/);

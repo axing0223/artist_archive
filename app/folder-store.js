@@ -1,7 +1,7 @@
 (function(root){
   'use strict';
   const ArtistId=root.ArtistId||(typeof module!=='undefined'?require('./artist-id.js'):null);
-  const IMAGE_KINDS=['thumb','large'],FOLDER_OF={thumb:'缩略图',large:'大图'},LEGACY_FOLDER='预览图',MAX_IMAGE_BYTES=50*1024*1024;
+  const IMAGE_KINDS=['thumb','large'],SIZES=['thumb','preview','large'],FOLDER_OF={thumb:'缩略图',large:'大图'},LEGACY_FOLDER='预览图',MAX_IMAGE_BYTES=50*1024*1024;
   const TYPES={jpeg:'image/jpeg',png:'image/png',webp:'image/webp',gif:'image/gif',avif:'image/avif'};
   const imageNamePattern=/^[a-f0-9]{24}\.(jpeg|png|webp|gif|avif)$/;
   const imagePathPattern=/^(?:缩略图|大图)\/[a-f0-9]{24}\.(?:jpeg|png|webp|gif|avif)$/;
@@ -25,13 +25,14 @@
     return new Blob([bytes],{type:'image/'+m[1]});
   }
   const okImage=value=>value==null||(typeof value==='string'&&(imagePathPattern.test(value)||inlinePattern.test(value)||remotePattern.test(value)));
-  function validWork(w){return !!w&&typeof w==='object'&&IMAGE_KINDS.every(kind=>okImage(w[kind])&&okImage(w[kind+'Url']));}
+  function validWork(w){return !!w&&typeof w==='object'&&IMAGE_KINDS.every(kind=>okImage(w[kind])&&okImage(w[kind+'Url']))&&okImage(w.previewUrl);}
   function imageOf(work,size){
-    if(!work||!IMAGE_KINDS.includes(size))return null;
+    if(!work||!SIZES.includes(size))return null;
     const file=work[size],url=work[size+'Url'];
     if(typeof file==='string'&&imagePathPattern.test(file))return {kind:'local',path:file};
     if(typeof file==='string'&&inlinePattern.test(file))return {kind:'inline',data:file};
     if(typeof url==='string'&&remotePattern.test(url))return {kind:'remote',url};
+    if(size==='preview'&&typeof work.largeUrl==='string'&&remotePattern.test(work.largeUrl))return {kind:'remote',url:work.largeUrl};
     if(typeof url==='string'&&inlinePattern.test(url))return {kind:'inline',data:url};
     return null;
   }
@@ -134,6 +135,6 @@
     for(const oldUid of moved.values())if(ArtistId.valid(oldUid)&&!ids.has(oldUid))try{await artists.removeEntry(oldUid,{recursive:true});}catch(error){warn('旧目录 '+oldUid+' 删除失败（'+error.message+'）');}
     return result;
   }
-  root.FolderStore={read,write,readImage,saveImage,imageOf,validWork,exportTo,remember,empty,takeWarnings,IMAGE_KINDS,FOLDER_OF,MAX_IMAGE_BYTES};
+  root.FolderStore={read,write,readImage,saveImage,imageOf,validWork,exportTo,remember,empty,takeWarnings,IMAGE_KINDS,SIZES,FOLDER_OF,MAX_IMAGE_BYTES};
   if(typeof module!=='undefined')module.exports=root.FolderStore;
 })(globalThis);

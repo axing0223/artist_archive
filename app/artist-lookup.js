@@ -41,6 +41,7 @@
     const https=value=>typeof value==='string'&&value.startsWith('https://')?value:null;
     return {id:String(post.id),url:origin+'/posts/'+post.id,caption:'',
       thumbUrl:https(post.preview_file_url)||https(pick('180x180')),
+      previewUrl:https(pick('720x720'))||https(pick('360x360')),
       largeUrl:https(post.file_url)||https(pick('original'))||https(post.large_file_url)||https(pick('720x720'))};
   };
   async function posts(name,{limit=20,page=1,signal,fetcher=fetch}={}){
