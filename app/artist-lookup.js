@@ -33,7 +33,7 @@
   }
   function candidates(payload){
     const rows=Array.isArray(payload)?payload:[payload];const seen=new Set();
-    return rows.filter(a=>a&&Number.isSafeInteger(a.id)&&a.id>0&&typeof a.name==='string'&&a.name.trim()&&!a.is_deleted&&!seen.has(a.id)&&seen.add(a.id)).slice(0,12).map(a=>({id:a.id,name:a.name,aliases:Array.isArray(a.other_names)?a.other_names.filter(x=>typeof x==='string').slice(0,5):[],pageUrl:origin+'/artists/'+a.id}));
+    return rows.filter(a=>a&&Number.isSafeInteger(a.id)&&a.id>0&&typeof a.name==='string'&&a.name.trim()&&!a.is_deleted&&!seen.has(a.id)&&seen.add(a.id)).slice(0,12).map(a=>({id:a.id,name:a.name,aliases:Array.isArray(a.other_names)?a.other_names.filter(x=>typeof x==='string'&&x.trim()).slice(0,60):[],pageUrl:origin+'/artists/'+a.id}));
   }
   async function lookup(p,{signal,fetcher=defaultFetcher}={}){
     const response=await fetcher(p.apiUrl,{signal,credentials:'omit',headers:{Accept:'application/json'}});

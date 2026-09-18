@@ -40,7 +40,7 @@
       ids.add(id);issued.push({uid:id});
       const works=a.works.map(w=>{if(!FolderStore.validWork(w))throw Error(name+' 的图片格式或本地路径无效。');return {id:text(String(w.id??''),100),url:url(w.url),caption:text(w.caption),thumb:imageValue(w.thumb),thumbUrl:httpsValue(w.thumbUrl),previewUrl:httpsValue(w.previewUrl),large:imageValue(w.large),largeUrl:httpsValue(w.largeUrl),...(w.kind==='test'?{kind:'test',testSeq:Number.isSafeInteger(w.testSeq)&&w.testSeq>0?w.testSeq:1}:{})};});
       const c=a.counts||{},number=n=>Number.isSafeInteger(n)&&n>=0?n:null;
-      return {uid:id,order:i+1,name,category:a.category||null,score:Number.isSafeInteger(a.score)&&a.score>=1&&a.score<=5?a.score:null,tags:unique(a.tags||[]).map(t=>t.slice(0,40)),danbooruId,counts:{total:number(c.total),checkedAt:text(c.checkedAt,40),beforeDate:text(c.beforeDate,10),beforeTotal:number(c.beforeTotal)},artistUrl:url(a.artistUrl),description:text(a.description),note:text(a.note),basis:text(a.basis,100),status:text(a.status,100),works};
+      return {uid:id,order:i+1,name,category:a.category||null,score:Number.isSafeInteger(a.score)&&a.score>=1&&a.score<=5?a.score:null,aliases:unique(Array.isArray(a.aliases)?a.aliases:[]).map(x=>x.slice(0,60)),alias:typeof a.alias==='string'&&a.alias.trim()?a.alias.trim().slice(0,60):null,tags:unique(a.tags||[]).map(t=>t.slice(0,40)),danbooruId,counts:{total:number(c.total),checkedAt:text(c.checkedAt,40),beforeDate:text(c.beforeDate,10),beforeTotal:number(c.beforeTotal)},artistUrl:url(a.artistUrl),description:text(a.description),note:text(a.note),basis:text(a.basis,100),status:text(a.status,100),works};
     });
     return {version:1,categories:categoryList,cutoffDate:/^\d{4}-\d{2}-\d{2}$/.test(raw.cutoffDate)?raw.cutoffDate:'2026-07-01',saveLargeImages:raw.saveLargeImages===true,date:text(raw.date,40),method:text(raw.method,12000),tags:unique([...(Array.isArray(raw.tags)?raw.tags:defaults),...artists.flatMap(a=>a.tags)]).map(t=>t.slice(0,40)),artists};
   }
@@ -65,6 +65,7 @@
     const numbers=el('div','artist-numbers'),countLabel=el('span','work-count','作品数量：'+(a.counts?.total??'未读取')+'（'+(a.counts?.beforeTotal??'未读取')+'）');
     countLabel.title=a.counts?.beforeDate?'括号内数量使用的截至日期：'+a.counts.beforeDate+(a.counts.beforeDate!==data.cutoffDate?'；设置已变更，点击刷新后更新。':''):'括号内为截至日期数量，点击刷新读取。';
     numbers.append(el('span','serial',String(seqOf(a)).padStart(4,'0')),countLabel);top.append(numbers);info.append(top,el('h2','',a.name));
+    if(a.alias)info.append(el('span','alias','笔名：'+a.alias));
     if(a.basis)info.append(el('span','basis',a.basis));
     if(a.description)info.append(el('p','description',a.description));
     const meta=el('div','artist-meta');meta.append(el('span',a.category?'primary':'pending-badge',a.category||'待判断'));
@@ -121,9 +122,22 @@
     };
     renderScore();
     const scoreField=el('div','edit-field');scoreField.append(el('span','edit-label','参考分数'),scorePicker);
+    const aliasPicker=el('div','alias-picker');
+    const renderAliases=()=>{
+      const nodes=(draft.aliases||[]).map(name=>{
+        const on=draft.alias===name,pick=el('button',on?'tag-choice alias-choice active':'tag-choice alias-choice',name);
+        pick.type='button';pick.setAttribute('aria-pressed',String(on));
+        pick.onclick=()=>{draft.alias=on?null:name;renderAliases();};
+        return pick;
+      });
+      if(!nodes.length)nodes.push(el('span','tag-choices-empty','保存时会从 Danbooru 读取这位画师的笔名。'));
+      aliasPicker.replaceChildren(...nodes);
+    };
+    renderAliases();
+    const aliasField=el('div','edit-field edit-field-wide');aliasField.append(el('span','edit-label','笔名（选用一个显示在名字下方）'),aliasPicker);
     const descInput=el('textarea');descInput.rows=3;descInput.maxLength=5000;descInput.value=draft.description||'';descInput.placeholder='记录画风和特点';descInput.oninput=()=>draft.description=descInput.value;
     const noteInput=el('textarea');noteInput.rows=2;noteInput.maxLength=5000;noteInput.value=draft.note||'';noteInput.placeholder='备注';noteInput.oninput=()=>draft.note=noteInput.value;
-    const grid=el('div','edit-grid');grid.append(field('画师名字',nameInput),field('主分类',categorySelect),field('画师页面链接',urlInput),scoreField,fieldBox('标签',tagEditor));
+    const grid=el('div','edit-grid');grid.append(field('画师名字',nameInput),field('主分类',categorySelect),field('画师页面链接',urlInput),scoreField,fieldBox('标签',tagEditor),aliasField);
     editorError=el('p','error');info.append(grid,field('画风描述',descInput),field('备注',noteInput),editorError);
     const actions=el('div','artist-actions');actions.append(btn('保存',saveDraft,'action primary-action'),btn('取消',cancelEdit,'action'));
     const remove=removeButton();if(!editingId)remove.hidden=true;actions.append(remove);info.append(actions);
@@ -194,7 +208,7 @@
     const previous=editingId;
     closeEditor();
     editingId=a?.uid||null;
-    draft=a?clone(a):{uid:uid(),name:'',category:null,score:null,tags:[],artistUrl:'',description:'',note:'',works:[]};
+    draft=a?clone(a):{uid:uid(),name:'',category:null,score:null,aliases:[],alias:null,tags:[],artistUrl:'',description:'',note:'',works:[]};
     if(editingId)ArtistGallery.pin(editingId,true);
     morphAway(previous||editingId,()=>{render();focusEditingCard();});
   }
@@ -203,13 +217,24 @@
     morphAway(editingId,()=>{closeEditor();render();});
   }
   function closeEditor(){if(editingId)ArtistGallery.pin(editingId,false);closeWorkPicker();editingId=null;draft=null;editorError=null;}
-  /* 读一次作品数量（含截至日期前数量）。失败项保留原值，不覆盖成 null。 */
-  async function refreshCounts(artist){
+  /* 从候选里挑出唯一可信的那一位：名字完全一致优先，只有一位候选时也接受。
+     其余情况返回 null —— 宁可没有编号，也不写错。 */
+  const pickCandidate=(found,name)=>{
+    const list=Array.isArray(found)?found:[],exact=list.filter(c=>c.name&&c.name.toLowerCase()===name.toLowerCase());
+    return exact.length===1?exact[0]:(list.length===1?list[0]:null);
+  };
+  /* 读画师的全部笔名；查不到就返回 null，让调用方保留原值。 */
+  async function loadAliases(name){
+    try{const hit=pickCandidate(await ArtistLookup.lookup(ArtistLookup.plan(name)),name);return hit&&hit.aliases.length?hit.aliases:null;}
+    catch{return null;}
+  }
+  /* 读一次作品数量（含截至日期前数量）与笔名。失败项保留原值，不覆盖成 null。 */
+  async function refreshArtist(artist){
     const result=await ArtistLookup.details(artist.name,data.cutoffDate,{previews:false});
     const counts={...(artist.counts||{})};
     if(result.counts.total!==null){counts.total=result.counts.total;counts.checkedAt=result.counts.checkedAt;}
     if(result.counts.beforeTotal!==null){counts.beforeTotal=result.counts.beforeTotal;counts.beforeDate=data.cutoffDate;}
-    return {counts,partial:result.countsError};
+    return {counts,partial:result.countsError,aliases:await loadAliases(artist.name)};
   }
   async function saveDraft(){
     if(busy||uploading)return;
@@ -218,11 +243,16 @@
     if(data.artists.some(a=>a.uid!==editingId&&a.name.toLowerCase()===name.toLowerCase())){setEditorError('已有同名画师。');return;}
     if(draft.artistUrl&&!url(draft.artistUrl)){setEditorError('画师页面链接只支持 http:// 或 https://。');return;}
     if(draft.works.some(w=>w.url&&!url(w.url))){setEditorError('作品来源链接只支持 http:// 或 https://。');return;}
-    if(name!==draft.name){draft.counts=null;draft.danbooruId=null;}
+    if(name!==draft.name){draft.counts=null;draft.danbooruId=null;draft.aliases=[];draft.alias=null;}
     draft.name=name;draft.artistUrl=url(draft.artistUrl);draft.tags=unique(draft.tags);draft.basis='';draft.status='';draft.works.forEach(w=>w.url=url(w.url));
     let note='';busy=true;
-    try{status('正在刷新 '+name+' 的作品数量…');const result=await refreshCounts(draft);draft.counts=result.counts;if(result.partial)note='；部分数量未取到，已保留原值';}
-    catch(error){note='；作品数量刷新失败：'+error.message;}
+    try{
+      status('正在刷新 '+name+' 的作品数量与笔名…');
+      const result=await refreshArtist(draft);
+      draft.counts=result.counts;if(result.aliases)draft.aliases=result.aliases;
+      if(result.partial)note='；部分数量未取到，已保留原值';
+    }
+    catch(error){note='；刷新失败：'+error.message;}
     finally{busy=false;}
     const next=clone(data),i=next.artists.findIndex(a=>a.uid===editingId);
     if(i<0){draft.uid=ArtistId.issue(next.artists,{name:draft.name,danbooruId:draft.danbooruId});next.artists.push(draft);}else next.artists[i]=draft;
@@ -383,12 +413,13 @@
         try{
           const detail=await ArtistLookup.details(name,next.cutoffDate,{previews:true});
           if(detail.countsError)throw Error('作品数量读取失败');
-          let id=null;
-          try{const found=await ArtistLookup.lookup(ArtistLookup.plan(name)),exact=found.filter(c=>c.name.toLowerCase()===name.toLowerCase());id=exact.length===1?exact[0].id:(found.length===1?found[0].id:null);}catch{}
+          let id=null,aliases=null;
+          try{const hit=pickCandidate(await ArtistLookup.lookup(ArtistLookup.plan(name)),name);if(hit){id=hit.id;if(hit.aliases.length)aliases=hit.aliases;}}catch{}
           const parsed=ArtistId.parse(artist.uid);
           if(id!==null){artist.danbooruId=id;artist.uid=ArtistId.create({seq:parsed?parsed.seq:artist.order,name,danbooruId:id});renamed++;}
           const works=await cacheWorks(artist.uid,detail.works.slice(0,BATCH_WORKS));
           images+=works.filter(w=>typeof w.thumb==='string'&&w.thumb.startsWith('data:')).length;
+          if(aliases)artist.aliases=aliases;
           artist.counts={...detail.counts};artist.works=works;
         }catch(error){failed++;if(batchFailed.length<5)batchFailed.push(name+'：'+error.message);}
         report();
@@ -402,7 +433,7 @@
     e.preventDefault();if(busy)return;const names=unique($('batch-names').value.split(/\r?\n/));if(!names.length)return;if(names.some(n=>n.length>160)){$('batch-message').textContent='名字不能超过 160 个字符，请检查是否每行一位。';return;}
     const collect=$('batch-works').checked;
     const next=clone(data),seen=new Set(next.artists.map(a=>a.name.toLowerCase())),added=[];let count=0;
-    for(const name of names){if(seen.has(name.toLowerCase()))continue;seen.add(name.toLowerCase());if(next.artists.length>=20000){$('batch-message').textContent='最多支持 20,000 位画师。';return;}next.artists.push({uid:ArtistId.issue(next.artists,{name}),order:next.artists.length+1,name,category:null,tags:[],artistUrl:'https://danbooru.donmai.us/posts?tags='+encodeURIComponent(name),description:'',note:'',works:[]});added.push(name);count++;}
+    for(const name of names){if(seen.has(name.toLowerCase()))continue;seen.add(name.toLowerCase());if(next.artists.length>=20000){$('batch-message').textContent='最多支持 20,000 位画师。';return;}next.artists.push({uid:ArtistId.issue(next.artists,{name}),order:next.artists.length+1,name,category:null,score:null,aliases:[],alias:null,tags:[],artistUrl:'https://danbooru.donmai.us/posts?tags='+encodeURIComponent(name),description:'',note:'',works:[]});added.push(name);count++;}
     batchStop=false;batchFailed.length=0;
     reset();await save(next,`已添加 ${count} 位，跳过 ${names.length-count} 个重复名字`);
     const summary=`已添加 ${count} 位，跳过 ${names.length-count} 个重复名字`;
@@ -456,7 +487,7 @@
     $('quick-status').textContent=results.length?`找到 ${results.length} 位候选，请核对正式标签后勾选要保存的作品。`:'未找到匹配。可以使用站内检索检查别名或主页链接。';
     for(const artist of results){
       const row=el('div','candidate'),detail=el('div','candidate-info');detail.append(el('strong','',artist.name),el('span','',`Danbooru #${artist.id}`));
-      if(artist.aliases.length)detail.append(el('small','',`别名：${artist.aliases.join('、')}`));detail.append(link('核对画师资料 ↗',artist.pageUrl));
+      if(artist.aliases.length)detail.append(el('small','',`笔名（${artist.aliases.length}）：${artist.aliases.slice(0,5).join('、')}${artist.aliases.length>5?' 等':''}`));detail.append(link('核对画师资料 ↗',artist.pageUrl));
       const countLine=el('small','','作品数量：读取中…');detail.append(countLine);
       const body=el('div','candidate-body');detail.append(body);
       const previewUid='preview-'+artist.id;
@@ -475,7 +506,7 @@
           const next=clone(data),uid=ArtistId.issue(next.artists,{name:artist.name,danbooruId:artist.id});
           const [saved,quantity]=await Promise.all([cacheWorks(uid,chosen),ArtistLookup.details(artist.name,data.cutoffDate,{previews:false})]);
           if(sequence!==lookupSequence||exists())return;
-          next.artists.push({uid,order:next.artists.length+1,name:artist.name,danbooruId:artist.id,counts:{...quantity.counts},category:null,tags:[],artistUrl:artist.pageUrl,description:'',note:'',works:saved});
+          next.artists.push({uid,order:next.artists.length+1,name:artist.name,danbooruId:artist.id,counts:{...quantity.counts},category:null,score:null,aliases:[...artist.aliases],alias:null,tags:[],artistUrl:artist.pageUrl,description:'',note:'',works:saved});
           await save(next,`已添加 ${artist.name} · ${saved.length} 张预览图`);
           if(sequence===lookupSequence){cancelLookup();$('quick-input').value='';clearCandidates();$('quick-site').hidden=true;$('quick-status').textContent=`已添加 ${artist.name}。可继续输入下一位；如列表被筛选，可按名字搜索。`;$('quick-input').focus();}
         }catch(error){add.disabled=false;add.textContent='添加此画师';$('quick-status').textContent='添加失败：'+error.message;}

@@ -86,6 +86,15 @@ test('刷新只查询当前画师的两项数量，不请求预览图',async()=>
  const result=await details('artist_a','2026-08-01',{previews:false,fetcher:async value=>{const u=new URL(value);requests.push(u);return {ok:true,json:async()=>({counts:{posts:u.searchParams.get('tags').includes('date:')?12:20}})};}});
  assert.equal(requests.length,2);assert.ok(requests.every(u=>u.pathname==='/counts/posts.json'));assert.deepEqual(requests.map(u=>u.searchParams.get('tags')),['artist_a','artist_a date:<2026-08-01']);assert.equal(result.counts.total,20);assert.equal(result.counts.beforeTotal,12);
 });
+test('画师候选带回全部笔名，不再只取前五个',async()=>{
+ const {candidates}=require('./app/artist-lookup.js');
+ const names=Array.from({length:12},(_,i)=>'别名'+i);
+ const rows=candidates([{id:9,name:'artist_a',other_names:names,is_deleted:false}]);
+ assert.equal(rows[0].aliases.length,12,'笔名要全部带回，供用户选用');
+ assert.deepEqual([...rows[0].aliases],names);
+ assert.equal(candidates([{id:9,name:'artist_a',other_names:['x','',null,3,'  ','y']}])[0].aliases.length,2,'过滤掉非字符串与空白');
+ assert.equal(candidates([{id:9,name:'artist_a'}])[0].aliases.length,0,'没有笔名字段时给空数组');
+});
 test('作品接口优先走扩展：带登录态才拿得到图片地址，扩展不在或版本过旧时退回页面直连',async()=>{
  const {posts}=require('./app/artist-lookup.js');
  const rows=[{id:5,file_url:'https://cdn.donmai.us/original/a.jpg',preview_file_url:'https://cdn.donmai.us/180x180/a.jpg'}];

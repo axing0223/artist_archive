@@ -432,7 +432,54 @@ test('管理标签：筛选状态下不提供拖动把手，避免顺序歧义',
   search.value='';search.oninput({target:search});
   assert.ok(findByClass(list.children[0],'manage-handle'),'清空筛选后把手回来');
 });
-const bareArtist=extra=>({uid:'0001-tester-1',order:1,name:'tester',category:null,score:null,tags:[],danbooruId:null,counts:{},artistUrl:'',description:'',note:'',basis:'',status:'',works:[{id:'1',thumb:null}],...extra});
+const bareArtist=extra=>({uid:'0001-tester-1',order:1,name:'tester',category:null,score:null,aliases:[],alias:null,tags:[],danbooruId:null,counts:{},artistUrl:'',description:'',note:'',basis:'',status:'',works:[{id:'1',thumb:null}],...extra});
+test('画师卡片：选用的笔名显示在名字下方，没选用就不显示',async()=>{
+  const {state}=await boot();
+  const texts=node=>{const out=[];const walk=n=>{if(n._text)out.push(n._text);for(const child of n.children||[])walk(child);};walk(node);return out;};
+  const plain=state.card(bareArtist({aliases:['甲','乙']}));
+  assert.equal(findAllByClass(plain,'alias').length,0,'没选用笔名时不显示');
+  assert.equal(texts(plain).includes('甲'),false,'未选用的笔名不出现在卡片上');
+  const shown=state.card(bareArtist({aliases:['甲','乙'],alias:'乙'})),marks=findAllByClass(shown,'alias');
+  assert.equal(marks.length,1,'选用后显示一条');
+  assert.equal(marks[0].textContent,'笔名：乙');
+  const info=shown.children[0];
+  assert.equal(info.children[1]._text,'tester','第二位是画师名字');
+  assert.equal(String(info.children[2].className).includes('alias'),true,'笔名紧跟在名字下方');
+});
+test('保存画师时一并读取笔名，选用的笔名随保存写进资料',async()=>{
+  const {elements,state,ctx}=await boot();
+  stub(ctx,{lookup:async()=>[{id:7,name:'tester',aliases:['甲','乙','丙'],pageUrl:''}],details:async()=>({counts:{total:null,beforeTotal:null},countsError:false})});
+  await createArtist(state,elements,'tester');
+  assert.equal(state.rows[0].aliases.length,3,'保存时读到的笔名要存进资料');
+  findText(lastRender(state)[0],'编辑').onclick();
+  await wait(180);
+  const picker=findByClass(lastRender(state)[0],'alias-picker');
+  let picks=findAllByClass(picker,'alias-choice');
+  assert.equal(picks.length,3,'三个笔名都列出来');
+  assert.equal(picks.every(pick=>pick['aria-pressed']==='false'),true,'默认没有选用');
+  picks[1].onclick();
+  picks=findAllByClass(picker,'alias-choice');
+  assert.equal(picks[1]['aria-pressed'],'true');
+  assert.equal(String(picks[1].className).includes('active'),true,'选用态沿用标签的样式');
+  picks[0].onclick();
+  picks=findAllByClass(picker,'alias-choice');
+  assert.equal(picks[0]['aria-pressed'],'true','可以改选另一个');
+  assert.equal(picks[1]['aria-pressed'],'false','只能选一个，上一个自动取消');
+  picks[0].onclick();
+  assert.equal(findAllByClass(picker,'alias-choice')[0]['aria-pressed'],'false','再点同一个取消选用');
+  findAllByClass(picker,'alias-choice')[2].onclick();
+  await findText(lastRender(state)[0],'保存').onclick();
+  assert.equal(state.rows[0].alias,'丙','选用的笔名要写进资料');
+  assert.equal(findAllByClass(state.card(state.rows[0]),'alias')[0].textContent,'笔名：丙','卡片上要显示出来');
+});
+test('编辑卡片：还没读到笔名时给出说明，不留空白',async()=>{
+  const {elements,state}=await boot();
+  elements.get('add-artist').onclick();
+  const picker=findByClass(lastRender(state)[0],'alias-picker');
+  assert.ok(picker,'编辑卡片里应有笔名区');
+  assert.equal(findAllByClass(picker,'alias-choice').length,0);
+  assert.ok(findByClass(picker,'tag-choices-empty'),'没有笔名时要说明什么时候会有');
+});
 test('画师卡片：打了分才在左上角显示角标，1-5 各有对应底板',async()=>{
   const {state}=await boot();
   const plain=state.card(bareArtist());
