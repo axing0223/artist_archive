@@ -46,7 +46,7 @@ async function boot(){
   };
   for(const file of ['artist-id.js','image-cache.js','image-loader.js','folder-store.js','work-picker.js','viewer.js','test-images.js','app.js'])
     vm.runInNewContext(await fs.readFile('app/'+file,'utf8'),ctx);
-  return {elements,state};
+  return {elements,state,ctx};
 }
 const lastRender=state=>state.renders[state.renders.length-1]||[];
 test('点击「添加画师」能进入内联编辑态，渲染过程不应抛错',async()=>{
@@ -229,4 +229,56 @@ test('编辑已有画师时，卡片渲染成编辑态而不是浏览态',async(
   const editing=lastRender(state)[0];
   assert.ok(editing.className.includes('is-editing'));
   assert.equal(editing.children.length>=3,true,'编辑态卡片应有信息区、作品区与展开区');
+});
+const post=id=>({id,url:'https://danbooru.donmai.us/posts/'+id,caption:'',thumbUrl:'https://cdn.donmai.us/360x360/'+id+'.jpg',previewUrl:'https://cdn.donmai.us/720x720/'+id+'.jpg',largeUrl:'https://cdn.donmai.us/original/'+id+'.jpg'});
+const stub=(ctx,{lookup,details})=>{ctx.ArtistLookup={plan:value=>({input:String(value),query:String(value),kind:'name',siteUrl:'',apiUrl:''}),lookup,details,posts:async()=>[]};};
+const runBatch=async(elements,names,collect=true)=>{
+  const get=id=>{if(!elements.has(id))elements.set(id,new El());return elements.get(id);};
+  get('batch-artists').onclick();
+  get('batch-names').value=names;
+  get('batch-works').checked=collect;
+  await get('batch-form').onsubmit({preventDefault(){}});
+};
+test('批量导入：默认勾选采集，为每位新画师写入作品数量与最新 3 张作品',async()=>{
+  const {elements,state,ctx}=await boot();
+  stub(ctx,{lookup:async()=>[{id:196870,name:'iuui',aliases:[],pageUrl:'https://danbooru.donmai.us/artists/196870'}],
+    details:async()=>({counts:{checkedAt:'2026-01-01T00:00:00.000Z',total:1234,beforeDate:'2026-07-01',beforeTotal:100},works:[post('1'),post('2'),post('3'),post('4')],previewError:false,countsError:false})});
+  await runBatch(elements,'iuui\nmodare');
+  assert.equal(state.rows.length,2,'两位画师都应加入');
+  assert.equal(state.rows[0].counts.total,1234,'作品数量要写入');
+  assert.equal(state.rows[0].works.length,3,'只保留最新 3 张，第 4 张丢弃');
+  assert.match(state.rows[0].uid,/^0001-iuui-196870$/,'解析到编号后应补进标识');
+  assert.equal(state.rows[0].works[0].thumb.startsWith('data:'),true,'缩略图应先缓存为内联数据');
+});
+test('批量导入：采集开关在页面上默认勾选，且不再写「不采集作品」的旧说明',async()=>{
+  const html=await fs.readFile('app/index.html','utf8');
+  assert.match(html,/id="batch-works" type="checkbox" checked/,'采集最新 3 张作品应是默认行为');
+  assert.equal(html.includes('不采集作品'),false,'旧提示语要同步改掉，否则与实际行为不符');
+});
+test('批量导入：取消勾选时保持旧行为，不采集作品也不写数量',async()=>{
+  const {elements,state,ctx}=await boot();
+  let queried=0;
+  stub(ctx,{lookup:async()=>{queried++;return [];},details:async()=>{queried++;return {counts:{total:null},works:[],countsError:false};}});
+  await runBatch(elements,'iuui',false);
+  assert.equal(state.rows.length,1);
+  assert.equal(queried,0,'未勾选采集时不应发出任何网络请求');
+  assert.equal(state.rows[0].works.length,0);
+  assert.equal(state.rows[0].counts,undefined,'不写数量，保持与旧版本一致');
+  assert.match(state.rows[0].uid,/^0001-iuui-manual$/);
+});
+test('批量导入：名字匹配不唯一时不写编号，避免写错 Danbooru 编号',async()=>{
+  const {elements,state,ctx}=await boot();
+  stub(ctx,{lookup:async()=>[{id:1,name:'other',aliases:[],pageUrl:''},{id:2,name:'another',aliases:[],pageUrl:''}],
+    details:async()=>({counts:{checkedAt:'x',total:7},works:[post('9')],countsError:false})});
+  await runBatch(elements,'iuui');
+  assert.match(state.rows[0].uid,/^0001-iuui-manual$/,'候选不唯一时必须保留 manual');
+  assert.equal(state.rows[0].counts.total,7,'作品数量照常写入');
+  assert.equal(state.rows[0].works.length,1);
+});
+test('批量导入：数量读取失败时不写数量，留待下次重试',async()=>{
+  const {elements,state,ctx}=await boot();
+  stub(ctx,{lookup:async()=>[],details:async()=>({counts:{total:null},works:[post('5')],countsError:true})});
+  await runBatch(elements,'iuui');
+  assert.equal(state.rows[0].counts,undefined,'失败不写 counts.checkedAt，重新提交同一名单会重试');
+  assert.equal(state.rows[0].works.length,0);
 });

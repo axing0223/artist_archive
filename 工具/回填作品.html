@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>回填画师作品与编号</title>
+<style>
+:root{--line:#e0e5f0;--ink:#1c2434;--dim:#687386;--blue:#375af5;--red:#d64545;--green:#1f9254}
+*{box-sizing:border-box}
+body{margin:0;padding:32px 24px 64px;font:15px/1.7 "Microsoft YaHei",system-ui,sans-serif;color:var(--ink);background:#f4f6fb}
+main{max-width:960px;margin:0 auto}
+h1{font-size:24px;margin:0 0 8px}
+.lead{color:var(--dim);margin:0 0 20px}
+.note{padding:12px 16px;margin:0 0 20px;border-left:4px solid var(--blue);background:#fff;border-radius:0 8px 8px 0;font-size:14px;color:var(--dim)}
+button{padding:10px 18px;font:inherit;color:var(--ink);background:#fff;border:1px solid var(--line);border-radius:8px;cursor:pointer;transition:background .15s,border-color .15s}
+button:hover:not(:disabled){border-color:#b9c3da}
+button:disabled{opacity:.45;cursor:not-allowed}
+button.primary{color:#fff;background:var(--blue);border-color:var(--blue)}
+button.primary:hover:not(:disabled){background:#2a49d8}
+button.danger{color:var(--red);border-color:#eec8c8}
+.controls{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+#folder-line{padding:12px 16px;margin-bottom:20px;background:#fff;border:1px solid var(--line);border-radius:8px;font-size:14px;color:var(--dim);min-height:46px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;margin-bottom:16px}
+.stat{padding:14px 16px;background:#fff;border:1px solid var(--line);border-radius:8px}
+.stat b{display:block;font-size:22px;font-variant-numeric:tabular-nums}
+.stat span{font-size:12px;color:var(--dim)}
+.bar{height:8px;margin-bottom:20px;background:#e6eaf4;border-radius:4px;overflow:hidden}
+#fill{height:100%;width:0;background:var(--blue);border-radius:4px;transition:width .2s ease}
+#log{height:280px;margin:0 0 20px;padding:14px 16px;overflow:auto;font:12px/1.7 Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere;color:#d8e0f0;background:#1c2434;border-radius:8px}
+details{margin-bottom:12px;background:#fff;border:1px solid var(--line);border-radius:8px}
+summary{padding:12px 16px;cursor:pointer;font-size:14px}
+details pre{margin:0;padding:0 16px 16px;font:12px/1.7 Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--dim);max-height:240px;overflow:auto}
+</style>
+</head>
+<body>
+<main>
+  <h1>回填画师作品与编号</h1>
+  <p class="lead">为库中每位画师补齐：真实 Danbooru 编号、作品总数、最新 3 张作品与缩略图。</p>
+  <p class="note">
+    运行前请<strong>关闭 画师库.html</strong>，避免同一文件夹被两个页面同时写入。<br>
+    进度按每 25 位写盘一次，中途关闭或暂停后重新打开会<strong>自动跳过已完成</strong>的画师。<br>
+    需要「图片取图扩展」处于已连接状态（缩略图要经扩展从 Danbooru 下载）。
+  </p>
+
+  <div class="controls">
+    <button id="pick" class="primary">选择「数据」文件夹</button>
+    <button id="dry" disabled>先试跑 1 位</button>
+    <button id="start" disabled>开始全部</button>
+    <button id="stop" class="danger" disabled>暂停</button>
+  </div>
+
+  <div id="folder-line">尚未选择文件夹。</div>
+
+  <div class="stats">
+    <div class="stat"><b id="s-total">0</b><span>待回填</span></div>
+    <div class="stat"><b id="s-done">0</b><span>已完成</span></div>
+    <div class="stat"><b id="s-renamed">0</b><span>已补编号</span></div>
+    <div class="stat"><b id="s-images">0</b><span>已存缩略图</span></div>
+    <div class="stat"><b id="s-failed">0</b><span>失败</span></div>
+    <div class="stat"><b id="s-eta">—</b><span>预计剩余</span></div>
+  </div>
+
+  <div class="bar"><div id="fill"></div></div>
+
+  <pre id="log"></pre>
+
+  <details><summary>名字有歧义 · 未写编号（<span id="amb-count">0</span>）</summary><pre id="amb-list">—</pre></details>
+  <details><summary>失败清单（<span id="fail-count">0</span>）</summary><pre id="fail-list">—</pre></details>
+</main>
+
+<script src="../app/artist-id.js"></script>
+<script src="../app/folder-store.js"></script>
+<script src="../app/artist-lookup.js"></script>
+<script src="../app/extension-bridge.js"></script>
+<script>
+(()=>{
+  'use strict';
+  const $=id=>document.getElementById(id);
+  const CONCURRENCY=3,PER_SECOND=5,BATCH=25,WORKS=3;
+
+  let dir=null,data=null,queue=[],active=[],running=false,stop=false,startedAt=0,processed=0;
+  const stats={renamed:0,images:0,failed:0};
+  const failures=[],ambiguous=[],imageFailures=[];
+
+  const log=line=>{const p=$('log');p.textContent+=line+'\n';p.scrollTop=p.scrollHeight;};
+  const setText=(id,value)=>{$(id).textContent=String(value);};
+
+  /* 全局限速：令牌桶，所有出网请求（API 与图片）共用 */
+  let tokens=PER_SECOND,last=Date.now();
+  async function gate(){
+    for(;;){
+      const now=Date.now();
+      tokens=Math.min(PER_SECOND,tokens+(now-last)/1000*PER_SECOND);last=now;
+      if(tokens>=1){tokens-=1;return;}
+      await new Promise(r=>setTimeout(r,Math.ceil((1-tokens)/PER_SECOND*1000)+1));
+    }
+  }
+  const fetcher=async(url,init)=>{await gate();return fetch(url,init);};
+
+  async function pool(items,size,worker){
+    let cursor=0;
+    await Promise.all(Array.from({length:Math.min(size,items.length)},async()=>{
+      while(cursor<items.length&&!stop){const item=items[cursor++];await worker(item);}
+    }));
+  }
+
+  function refresh(){
+    setText('s-done',processed);setText('s-renamed',stats.renamed);
+    setText('s-images',stats.images);setText('s-failed',stats.failed);
+    $('fill').style.width=active.length?Math.round(processed/active.length*100)+'%':'0%';
+    if(processed&&startedAt){
+      const left=(active.length-processed)*(Date.now()-startedAt)/processed;
+      const min=Math.round(left/60000);
+      setText('s-eta',min>=60?Math.round(min/60)+' 小时':min+' 分钟');
+    }
+    setText('amb-count',ambiguous.length);setText('fail-count',failures.length);
+    $('amb-list').textContent=ambiguous.length?ambiguous.join('\n'):'—';
+    $('fail-list').textContent=failures.length?failures.join('\n'):'—';
+  }
+
+  /* 单个画师：查编号 → 取数量与作品 → 下缩略图 → 改内存记录 */
+  async function syncOne(artist){
+    const name=artist.name,oldUid=artist.uid;
+    let id=Number.isSafeInteger(artist.danbooruId)&&artist.danbooruId>0?artist.danbooruId:null;
+
+    if(id===null){
+      const found=await ArtistLookup.lookup(ArtistLookup.plan(name),{fetcher});
+      const exact=found.filter(c=>c.name.toLowerCase()===name.toLowerCase());
+      if(exact.length===1)id=exact[0].id;
+      else if(found.length===1)id=found[0].id;
+      else ambiguous.push(name+' → '+(found.map(c=>c.name+' #'+c.id).join(' | ')||'无匹配'));
+    }
+
+    const detail=await ArtistLookup.details(name,data.cutoffDate,{fetcher,previews:true});
+    if(detail.countsError)throw Error('作品数量读取失败');
+
+    const parsed=ArtistId.parse(oldUid);
+    const uid=ArtistId.create({seq:parsed?parsed.seq:artist.order,name,danbooruId:id});
+    const works=[];
+
+    for(const work of detail.works.slice(0,WORKS)){
+      const copy={...work};
+      try{
+        await gate();
+        const blob=await ArtistExtension.image(work.thumbUrl);
+        copy.thumb=await FolderStore.saveImage(dir,uid,'thumb',blob);
+        stats.images++;
+      }catch(error){
+        copy.caption='缩略图未能保存：'+error.message;
+        imageFailures.push(name+' #'+work.id+' → '+error.message);
+      }
+      works.push(copy);
+    }
+
+    artist.uid=uid;
+    if(id!==null)artist.danbooruId=id;
+    artist.counts={...detail.counts};
+    artist.works=works;
+    if(uid!==oldUid)stats.renamed++;
+  }
+
+  async function run(list,size){
+    if(running||!list.length)return;
+    running=true;stop=false;startedAt=Date.now();processed=0;active=list;
+    $('start').disabled=true;$('dry').disabled=true;$('pick').disabled=true;$('stop').disabled=false;
+    log('开始处理 '+list.length+' 位画师（并发 '+CONCURRENCY+' · 限速 '+PER_SECOND+' 请求/秒）。');
+
+    for(let i=0;i<list.length;i+=size){
+      if(stop)break;
+      const slice=list.slice(i,i+size);
+      await pool(slice,CONCURRENCY,async artist=>{
+        try{await syncOne(artist);}
+        catch(error){stats.failed++;failures.push(artist.name+' → '+error.message);}
+        processed++;refresh();
+      });
+      try{
+        const warnings=FolderStore.takeWarnings();
+        await FolderStore.write(dir,data);
+        for(const warning of warnings)log('  [警告] '+warning);
+      }catch(error){
+        log('!! 写盘失败，已停止：'+error.message);
+        failures.push('写盘 → '+error.message);stats.failed++;break;
+      }
+      log('已写盘 '+processed+' / '+list.length+' 位 · 累计补编号 '+stats.renamed+' · 缩略图 '+stats.images+' · 失败 '+stats.failed);
+    }
+
+    running=false;
+    $('stop').disabled=true;$('start').disabled=false;$('dry').disabled=false;$('pick').disabled=false;
+    log(stop?'已暂停。重新点「开始全部」会跳过已完成的画师继续。':'本轮结束。');
+    if(imageFailures.length){log('— 缩略图失败 '+imageFailures.length+' 张 —');for(const line of imageFailures.slice(0,50))log('  '+line);}
+    refresh();
+  }
+
+  $('pick').onclick=async()=>{
+    try{
+      dir=await window.showDirectoryPicker({id:'artist-library',mode:'readwrite'});
+      setText('folder-line','正在读取画师资料…');
+      data=await FolderStore.read(dir);
+      queue=data.artists.filter(a=>!(a.counts&&a.counts.checkedAt));
+      setText('folder-line','当前文件夹：'+dir.name+' · 共 '+data.artists.length+' 位画师，待回填 '+queue.length+' 位。');
+      setText('s-total',queue.length);
+      if(!queue.length)log('所有画师都已有作品数量记录，无需回填。');
+      $('start').disabled=!queue.length;$('dry').disabled=!queue.length;
+      log('读取完成：'+data.artists.length+' 位画师，待回填 '+queue.length+' 位。');
+      try{log('扩展已连接，版本 '+await ArtistExtension.check()+'。');}
+      catch(error){
+        log('⚠ 扩展未连接：'+error.message);
+        log('  缩略图必须经扩展下载，请先按扩展说明开启「允许访问文件网址」并重载扩展，再重新选择文件夹。');
+        $('start').disabled=true;$('dry').disabled=true;
+      }
+      refresh();
+    }catch(error){
+      setText('folder-line','选择文件夹失败：'+error.message);
+      log('选择文件夹失败：'+error.message);
+    }
+  };
+
+  $('dry').onclick=()=>run(queue.slice(0,1),1);
+  $('start').onclick=()=>run(queue,BATCH);
+  $('stop').onclick=()=>{stop=true;log('已请求暂停，等当前一批处理完…');};
+  window.addEventListener('beforeunload',event=>{if(running){event.preventDefault();event.returnValue='';}});
+})();
+</script>
+</body>
+</html>
