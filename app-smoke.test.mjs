@@ -249,19 +249,48 @@ test('设置里可以切换采集排序，编辑卡片按它取作品',async()=>
   assert.equal(asked[0].tag,'tester');
   assert.match(await fs.readFile('app/index.html','utf8'),/id="work-order" aria-label="采集作品的排序"/,'设置里要有这一栏');
 });
-test('保存时的刷新并行发出两项请求，不串行等待',async()=>{
+test('保存画师是纯本地的：不发任何网络请求',async()=>{
   const {elements,state,ctx}=await boot();
-  const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
-  ctx.ArtistLookup={plan:value=>({query:String(value)}),posts:async()=>[],
-    details:async()=>{await delay(150);return {counts:{total:null,beforeTotal:null},countsError:false};},
-    lookup:async()=>{await delay(150);return [];}};
+  let calls=0;
+  stub(ctx,{lookup:async()=>{calls++;return [];},details:async()=>{calls++;return {counts:{total:null,beforeTotal:null},countsError:false};}});
   elements.get('add-artist').onclick();
   const card=lastRender(state)[0],nameInput=findByPlaceholder(card,'画师名字（必填）');
   nameInput.value='tester';nameInput.oninput();
   const start=Date.now();
   await findText(lastRender(state)[0],'保存').onclick();
   const elapsed=Date.now()-start;
-  assert.ok(elapsed<260,'两项请求并行时约 150ms；串行会超过 300ms，实测 '+elapsed+'ms');
+  assert.equal(calls,0,'保存不该发任何请求，数量和笔名都不在保存时读');
+  assert.equal(state.rows.length,1,'画师照常保存');
+  assert.equal(state.rows[0].name,'tester');
+  assert.ok(elapsed<80,'不联网的保存应当是即时的，实测 '+elapsed+'ms');
+});
+test('刷新所有画师作品数量：逐个读取并按批写盘',async()=>{
+  const {elements,state,ctx}=await boot();
+  const asked=[];
+  stub(ctx,{lookup:async()=>[],details:async name=>{asked.push(name);return {counts:{checkedAt:'x',total:asked.length*10,beforeDate:'2026-07-01',beforeTotal:1},countsError:false};}});
+  const get=id=>{if(!elements.has(id))elements.set(id,new El());return elements.get(id);};
+  get('batch-artists').onclick();get('batch-names').value='甲\n乙\n丙';get('batch-works').checked=false;
+  await get('batch-form').onsubmit({preventDefault(){}});
+  assert.equal(state.rows.length,3,'先建出三位没有数量的画师');
+  assert.equal(state.rows.every(artist=>!artist.counts),true,'没勾采集时不写数量');
+  await get('refresh-all').onclick();
+  assert.equal(asked.length,3,'三位都要刷');
+  assert.equal(state.rows.every(artist=>artist.counts&&artist.counts.total>0),true,'数量写进资料');
+  assert.equal(get('refresh-all').textContent,'开始刷新','结束后按钮回到初始文案');
+  assert.equal(String(get('refresh-all').className).includes('is-armed'),false,'结束后不再是停止态');
+});
+test('刷新所有画师：中途停下来的部分会保留',async()=>{
+  const {elements,state,ctx}=await boot();
+  let calls=0;
+  const button=()=>{if(!elements.has('refresh-all'))elements.set('refresh-all',new El());return elements.get('refresh-all');};
+  stub(ctx,{lookup:async()=>[],details:async()=>{calls++;if(calls===2)button().onclick();return {counts:{checkedAt:'x',total:5},countsError:false};}});
+  const get=id=>{if(!elements.has(id))elements.set(id,new El());return elements.get(id);};
+  get('batch-artists').onclick();get('batch-names').value='甲\n乙\n丙\n丁';get('batch-works').checked=false;
+  await get('batch-form').onsubmit({preventDefault(){}});
+  await get('refresh-all').onclick();
+  assert.ok(calls<4,'中途停止后不该再继续请求后面的画师，实际请求 '+calls+' 次');
+  assert.ok(state.rows.some(artist=>artist.counts),'停下来之前刷到的部分要保留');
+  assert.equal(String(get('refresh-all').className).includes('is-armed'),false,'停止后按钮要复位');
 });
 test('导入画师时读一次笔名，保存时不再查询',async()=>{
   const {elements,state,ctx}=await boot();
@@ -277,9 +306,10 @@ test('导入画师时读一次笔名，保存时不再查询',async()=>{
   findText(lastRender(state)[0],'编辑').onclick();
   await wait(180);
   await findText(lastRender(state)[0],'保存').onclick();
-  assert.equal(lookups,1,'保存时不再查询笔名，省掉一次完整往返');
-  assert.equal(details,before+1,'数量仍然每次保存都刷新');
+  assert.equal(lookups,1,'保存时不再查询笔名');
+  assert.equal(details,before,'保存时也不再查询数量，一次请求都不发');
   assert.equal(state.rows[0].aliases.length,3,'不查笔名也不会把已有的弄丢');
+  assert.equal(state.rows[0].counts.total,1,'已有的数量也不会被弄丢');
 });
 test('批量导入可以只对本次改排序，默认跟随设置',async()=>{
   const {elements,state,ctx}=await boot();
@@ -666,29 +696,20 @@ test('编辑卡片：打的分随保存写进画师资料',async()=>{
   assert.equal(state.rows[0].score,3,'选中的 3 分要写进资料');
   assert.equal(findAllByClass(state.card(state.rows[0]),'score-badge').length,1,'保存后卡片上出现角标');
 });
-test('保存画师时自动刷新作品数量，并写进资料',async()=>{
+test('改名会把数量清空，交给「刷新所有画师作品数量」补齐',async()=>{
   const {elements,state,ctx}=await boot();
-  let asked=null;
-  ctx.ArtistLookup={...ctx.ArtistLookup,details:async(name,date,options)=>{asked={name,date,options};return {counts:{checkedAt:'2026-01-01T00:00:00.000Z',total:321,beforeDate:date,beforeTotal:300},countsError:false};}};
-  elements.get('add-artist').onclick();
-  const card=lastRender(state)[0],nameInput=findByPlaceholder(card,'画师名字（必填）');
-  nameInput.value='自动刷新测试';nameInput.oninput();
+  const get=id=>{if(!elements.has(id))elements.set(id,new El());return elements.get(id);};
+  stub(ctx,{lookup:async()=>[],details:async()=>({counts:{checkedAt:'x',total:9,beforeTotal:1},countsError:false})});
+  await createArtist(state,elements,'原名');
+  await get('refresh-all').onclick();
+  assert.equal(state.rows[0].counts.total,9,'先刷出数量');
+  findText(lastRender(state)[0],'编辑').onclick();
+  await wait(180);
+  const nameInput=findByPlaceholder(lastRender(state)[0],'画师名字（必填）');
+  nameInput.value='改过的名字';nameInput.oninput();
   await findText(lastRender(state)[0],'保存').onclick();
-  assert.equal(asked.name,'自动刷新测试','保存时要按画师名字查一次数量');
-  assert.equal(asked.options.previews,false,'只查数量，不请求预览图');
-  assert.equal(state.rows[0].counts.total,321,'数量要写进资料');
-  assert.equal(state.rows[0].counts.beforeTotal,300,'截至日期数量也要写入');
-});
-test('保存时刷新失败不影响保存本身',async()=>{
-  const {elements,state,ctx}=await boot();
-  ctx.ArtistLookup={...ctx.ArtistLookup,details:async()=>{throw Error('测试中故意失败');}};
-  elements.get('add-artist').onclick();
-  const card=lastRender(state)[0],nameInput=findByPlaceholder(card,'画师名字（必填）');
-  nameInput.value='刷新失败也要保存';nameInput.oninput();
-  await findText(lastRender(state)[0],'保存').onclick();
-  assert.equal(state.rows.length,1,'刷新失败不能阻止保存');
-  assert.equal(state.rows[0].name,'刷新失败也要保存');
-  assert.equal(state.rows[0].counts,undefined,'没取到数量就不写，留待下次刷新');
+  assert.equal(state.rows[0].counts,null,'换了名字，旧数量不再可信，要清空');
+  assert.equal(state.rows[0].name,'改过的名字');
 });
 test('批量导入：默认勾选采集，为每位新画师写入作品数量与最新 3 张作品',async()=>{
   const {elements,state,ctx}=await boot();
