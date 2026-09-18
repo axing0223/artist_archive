@@ -1,0 +1,13 @@
+{
+  "name": "artist-library",
+  "version": "0.2.0",
+  "private": true,
+  "description": "本地画师库：单文件网页（画师库.html）+ 图片取图扩展",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node --test tests.mjs build.test.mjs image-performance.test.mjs extension-probe.test.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "画师库 · 图片助手",
+  "version": "0.2.0",
+  "description": "为本地画师库获取 Danbooru 预览图，保留单图测试页面。",
+  "host_permissions": ["https://danbooru.donmai.us/*", "https://cdn.donmai.us/*"],
+  "background": {"service_worker": "background.js", "type": "module"},
+  "content_scripts": [{"matches": ["file:///*"], "js": ["content.js"], "run_at": "document_idle", "all_frames": false}],
+  "action": {"default_title": "打开单图取图测试"},
+  "options_page": "test.html",
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'none'; connect-src https://danbooru.donmai.us https://cdn.donmai.us; img-src 'self' blob: data:; base-uri 'none'"
+  }
+}
