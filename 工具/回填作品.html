@@ -119,19 +119,22 @@ details pre{margin:0;padding:0 16px 16px;font:12px/1.7 Consolas,monospace;white-
     $('fail-list').textContent=failures.length?failures.join('\n'):'—';
   }
 
-  /* 站点已不再返回任何图片地址，只剩 media_asset.pixel_hash。
-     先验证 pixel_hash 是否就是 CDN 文件名，验证通过才启用拼接路径。 */
-  let hashRoute=null,previewExt='webp';
+  /* 图片地址字段按请求者身份放行：页面直连是匿名的，取不到。
+     改由扩展（带 Cookie）解析原图地址，再按 CDN 规则推导其余两档尺寸。 */
+  let originalRoute=null,previewExt='webp';
   const apiJson=async url=>{const r=await fetcher(url,{credentials:'omit',headers:{Accept:'application/json'}});if(!r.ok)throw Error('HTTP '+r.status);return r.json();};
-  const cdnDir=hash=>hash.slice(0,2)+'/'+hash.slice(2,4)+'/'+hash;
-  const cdnUrl=(hash,size,ext)=>'https://cdn.donmai.us/'+size+'/'+cdnDir(hash)+'.'+ext;
-  function workFromHash(post){
-    const hash=String(post?.media_asset?.pixel_hash||''),ext=String(post?.media_asset?.file_ext||'jpg');
-    if(!/^[a-f0-9]{32}$/.test(hash))return null;
-    return {id:String(post.id),url:'https://danbooru.donmai.us/posts/'+post.id,caption:'',
-      thumbUrl:cdnUrl(hash,'360x360','jpg'),
-      previewUrl:cdnUrl(hash,'720x720',previewExt),
-      largeUrl:cdnUrl(hash,'original',ext)};
+  const cdnUrl=(dir,size,ext)=>'https://cdn.donmai.us/'+size+'/'+dir+'.'+ext;
+  const parseCdn=value=>{
+    const text=String(value||''),m=/^https:\/\/cdn\.donmai\.us\/(?:original|sample|\d+x\d+)\/([a-f0-9]{2})\/([a-f0-9]{2})\/([a-f0-9]{32})\.([a-z0-9]+)$/.exec(text);
+    return m?{dir:m[1]+'/'+m[2]+'/'+m[3],ext:m[4]}:null;
+  };
+  function workFromOriginal(id,original){
+    const parsed=parseCdn(original);
+    if(!parsed)return null;
+    return {id:String(id),url:'https://danbooru.donmai.us/posts/'+id,caption:'',
+      thumbUrl:cdnUrl(parsed.dir,'360x360','jpg'),
+      previewUrl:cdnUrl(parsed.dir,'720x720',previewExt),
+      largeUrl:original};
   }
   async function fetchWorks(name){
     const url=only=>'https://danbooru.donmai.us/posts.json?'+new URLSearchParams({tags:name+' order:id_desc',limit:String(WORKS),...(only?{only}:{})});
@@ -142,9 +145,15 @@ details pre{margin:0;padding:0 16px 16px;font:12px/1.7 Consolas,monospace;white-
     const posts=rows.filter(p=>p&&Number.isSafeInteger(p.id)&&p.id>0);
     const quick=posts.map(ArtistLookup.workOf);
     if(quick.length&&quick.every(w=>typeof w.thumbUrl==='string'))return {works:quick,via:'列表接口自带地址'};
-    if(hashRoute===true){
-      const hashed=posts.map(workFromHash).filter(Boolean);
-      if(hashed.length===posts.length&&hashed.length)return {works:hashed,via:'列表接口 pixel_hash 拼接'};
+    if(originalRoute===true){
+      const works=[];
+      for(const p of posts.slice(0,WORKS)){
+        try{
+          const work=workFromOriginal(p.id,await ArtistExtension.resolve(String(p.id)));
+          if(work)works.push(work);else log('  作品 '+p.id+' 的原图地址不是预期的 CDN 形式');
+        }catch(error){log('  作品 '+p.id+' 原图解析失败：'+error.message);}
+      }
+      if(works.length)return {works,via:'扩展解析原图 + 推导尺寸'};
     }
     const works=[];
     for(const p of posts.slice(0,WORKS)){
@@ -154,23 +163,28 @@ details pre{margin:0;padding:0 16px 16px;font:12px/1.7 Consolas,monospace;white-
     return {works,via:'逐张详情接口'};
   }
 
-  /* 一次性诊断：验证 media_asset.pixel_hash 是否就是 CDN 文件名 */
+  /* 一次性诊断：确认扩展（带 Cookie）能解析原图地址，并能由它推导出缩略图 */
   async function diagnose(name){
     let first=null;
     try{
       const rows=await apiJson('https://danbooru.donmai.us/posts.json?'+new URLSearchParams({tags:name+' order:id_desc',limit:'1'}));
       first=Array.isArray(rows)?rows[0]:rows;
     }catch(error){log('诊断 · 作品列表读取失败：'+error.message);}
-    const asset=first?.media_asset,hash=String(asset?.pixel_hash||'');
-    if(asset)log('诊断 · media_asset = '+JSON.stringify(asset).slice(0,400));
-    if(!/^[a-f0-9]{32}$/.test(hash)){hashRoute=false;log('诊断 · 没有可用的 pixel_hash，无法拼接 CDN 地址');return;}
-    const thumb=cdnUrl(hash,'360x360','jpg');
-    log('诊断 · 试拼缩略图：'+thumb);
-    try{await gate();await ArtistExtension.image(thumb);log('  ✓ 可下载 —— pixel_hash 就是 CDN 文件名');}
-    catch(error){hashRoute=false;log('  ✗ 不可用：'+error.message);return;}
-    try{await gate();await ArtistExtension.image(cdnUrl(hash,'720x720','webp'));log('  ✓ 预览图 .webp 可下载');previewExt='webp';}
-    catch(error){previewExt='jpg';log('  ✗ 预览图 .webp 不可用（'+error.message+'），改用 .jpg');}
-    hashRoute=true;
+    const asset=first?.media_asset;
+    if(asset)log('诊断 · media_asset = '+JSON.stringify(asset).slice(0,300));
+    if(!first?.id){originalRoute=false;log('诊断 · 没拿到帖子编号，无法继续');return;}
+    try{
+      const original=await ArtistExtension.resolve(String(first.id));
+      log('诊断 · 扩展 resolve('+first.id+') = '+original);
+      const parsed=parseCdn(original);
+      if(!parsed){originalRoute=false;log('诊断 · 原图地址不是预期的 CDN 形式');return;}
+      const thumb=cdnUrl(parsed.dir,'360x360','jpg');
+      log('诊断 · 由原图推导缩略图：'+thumb);
+      try{await gate();await ArtistExtension.image(thumb);log('  ✓ 缩略图可下载 —— 可只凭原图推导三档地址');originalRoute=true;}
+      catch(error){originalRoute=false;log('  ✗ 缩略图不可用：'+error.message);return;}
+      try{await gate();await ArtistExtension.image(cdnUrl(parsed.dir,'720x720','webp'));log('  ✓ 预览图 .webp 可下载');previewExt='webp';}
+      catch(error){previewExt='jpg';log('  ✗ 预览图 .webp 不可用（'+error.message+'），改用 .jpg');}
+    }catch(error){originalRoute=false;log('诊断 · 扩展解析原图失败：'+error.message);}
   }
 
   /* 单个画师：查编号 → 取数量与作品 → 下缩略图 → 改内存记录 */
