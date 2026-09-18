@@ -444,6 +444,15 @@ test('编辑界面刷新：点取消则刷到的内容全部丢弃',async()=>{
   assert.equal(state.rows[0].uid,'0001-betabeet-manual');
   assert.notEqual(state.rows[0].counts&&state.rows[0].counts.total,42,'刷新只改表单，没保存就不该落盘');
 });
+test('设置里的预览图尺寸滑动条可以逐像素调',async()=>{
+  const html=await fs.readFile('app/index.html','utf8');
+  assert.match(html,/id="card-size" type="range" min="140" max="360" step="1"/,'刻度要细到 1，不能是 20');
+  const {elements}=await boot();
+  const get=id=>{if(!elements.has(id))elements.set(id,new El());return elements.get(id);};
+  const size=get('card-size'),label=get('card-size-value');
+  size.value='237';size.oninput();
+  assert.equal(label.textContent,'237','滑到哪就显示哪，不再被吸附到整数十');
+});
 test('画师卡片：点画师名即可复制 tag',async()=>{
   const {state}=await boot();
   const card=state.card(bareArtist({name:'modare'})),nameButton=findByClass(card,'artist-name');
