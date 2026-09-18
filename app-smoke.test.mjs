@@ -50,17 +50,24 @@ test('点击「添加画师」能进入内联编辑态，渲染过程不应抛�
   assert.equal(cards.length,1,'应渲染出一张卡片');
   assert.ok(cards[0].className.includes('is-editing'),'新画师卡片应处于内联编辑态');
 });
-test('浏览态卡片：底部左「编辑」右「画师页面」，且不再显示张数说明',async()=>{
+test('浏览态卡片：artist-info 左下「编辑」右下「画师页面」，且不再显示张数说明',async()=>{
   const {state}=await boot();
   const artist={uid:'0001-tester-1',order:1,name:'tester',category:null,tags:[],danbooruId:1,counts:{},artistUrl:'https://danbooru.donmai.us/artists/1',description:'',note:'',basis:'',status:'',works:[{id:'1',thumb:null}]};
   const card=state.card(artist);
-  const footer=card.children[card.children.length-1];
-  assert.ok(footer.className.includes('artist-footer'),'卡片最后一块应是底部按钮区');
-  assert.equal(footer.children.length,2,'左边编辑、右边画师页面');
-  assert.equal(footer.children[0].textContent,'编辑');
-  assert.equal(footer.children[1].textContent,'画师页面 ↗');
-  assert.equal(footer.children[0].className,'action','两个都要用统一按钮样式');
-  assert.equal(footer.children[1].className,'action');
+  assert.equal(card.children.length,2,'卡片应只有信息区与作品区，按钮不再单独占一栏');
+  const info=card.children[0];
+  assert.ok(info.className.includes('artist-info'));
+  const actions=info.children[info.children.length-1];
+  assert.ok(actions.className.includes('artist-actions'),'按钮应在 artist-info 内部的最下方');
+  assert.equal(actions.children.length,2,'左边编辑、右边画师页面');
+  assert.equal(actions.children[0].textContent,'编辑');
+  assert.equal(actions.children[1].textContent,'画师页面 ↗');
+  assert.equal(actions.children[0].className,'edit-button','两处都用同一套按钮样式');
+  assert.equal(actions.children[1].className,'edit-button');
+  const find=(node,label)=>{for(const child of node.children||[]){if(child._text===label)return child;const hit=find(child,label);if(hit)return hit;}return null;};
+  const refresh=find(info,'刷新');
+  assert.ok(refresh,'标题行应有刷新按钮');
+  assert.equal(refresh.className,'edit-button','刷新也用同一套按钮样式');
   const texts=[];const walk=node=>{if(node._text)texts.push(node._text);for(const child of node.children||[])walk(child);};
   walk(card);
   assert.equal(texts.some(t=>String(t).includes('张图片 · 卡片预览')),false,'作品下方的张数说明应已移除');
@@ -68,9 +75,9 @@ test('浏览态卡片：底部左「编辑」右「画师页面」，且不再�
 test('没有画师页面链接时不显示右下角按钮',async()=>{
   const {state}=await boot();
   const artist={uid:'0001-tester-1',order:1,name:'tester',category:null,tags:[],danbooruId:null,counts:{},artistUrl:'',description:'',note:'',basis:'',status:'',works:[]};
-  const footer=state.card(artist).children.slice(-1)[0];
-  assert.equal(footer.children.length,1);
-  assert.equal(footer.children[0].textContent,'编辑');
+  const info=state.card(artist).children[0],actions=info.children[info.children.length-1];
+  assert.equal(actions.children.length,1);
+  assert.equal(actions.children[0].textContent,'编辑');
 });
 test('编辑已有画师时，卡片渲染成编辑态而不是浏览态',async()=>{
   const {elements,state}=await boot();
