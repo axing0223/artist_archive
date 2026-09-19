@@ -74,6 +74,25 @@ test('排队：清空只丢掉还没开始的，正在跑的那条照跑完',asy
   release();while(!q.idle)await tick();
   assert.deepEqual(order,['开始A','结束A'],'被清掉的 B、C 不该再跑');
 });
+test('排队：能问出「正在跑哪一条」「某条排在第几位」——界面靠它画状态',async()=>{
+  const {sleep}=recorder(),q=queue.create({gap:()=>0,sleep});
+  assert.equal(q.current,null,'没跑的时候没有当前项');
+  assert.equal(q.positionOf(()=>true),0);
+  let release;const gate=new Promise(resolve=>{release=resolve;});
+  q.push({uid:'0001-a',seq:1,run:()=>gate});
+  await tick();
+  assert.equal(q.current?.uid,'0001-a','正在跑的那条要能问出来');
+  assert.equal(q.current?.seq,1);
+  assert.equal(q.positionOf(item=>item.uid==='0001-a'&&item.seq===1),0,'已经在跑的不算排队');
+  q.push({uid:'0002-b',seq:2,run:async()=>{}});
+  q.push({uid:'0003-c',seq:1,run:async()=>{}});
+  assert.equal(q.positionOf(item=>item.uid==='0002-b'&&item.seq===2),1,'排第一');
+  assert.equal(q.positionOf(item=>item.uid==='0003-c'&&item.seq===1),2,'排第二');
+  assert.equal(q.positionOf(item=>item.uid==='0002-b'&&item.seq===1),0,'同一位画师的另一格不算');
+  release();while(!q.idle)await tick();
+  assert.equal(q.current,null,'跑完就清空');
+  assert.equal(q.positionOf(()=>true),0);
+});
 test('间隔就是 5±3 秒，落在 2–8 秒之间',()=>{
   assert.equal(gen.GAP_BASE,5000);assert.equal(gen.GAP_JITTER,3000);
   assert.equal(gen.genGapDelay(()=>0.5),5000,'随机数取中就是 5 秒');

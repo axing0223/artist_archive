@@ -401,6 +401,8 @@ dialog[open]::backdrop{opacity:1}
   async function put(dir,name,value){const f=await dir.getFileHandle(name,{create:true}),s=await f.createWritable();try{await s.write(value);await s.close();}catch(e){try{await s.abort();}catch{}throw e;}}
   const extensionOf=type=>Object.keys(TYPES).find(k=>TYPES[k]===type)||'';
   const hashOf=async bytes=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(x=>x.toString(16).padStart(2,'0')).join('').slice(0,24);
+  /* data: URL → Blob。不用 fetch(data:) 转：扩展页的 CSP（connect-src）会拦住 data:，
+     而这条路正是「选了作品还没保存」时缩略图要走的显示路径。 */
   function blobOf(value){
     const m=inlinePattern.exec(value);
     if(!m)throw Error('图片来源格式错误，只接受 data: 或 https:// 链接');
@@ -607,7 +609,7 @@ dialog[open]::backdrop{opacity:1}
     for(const oldUid of moved.values())if(ArtistId.valid(oldUid)&&!ids.has(oldUid)&&!removed.has(oldUid))try{await artists.removeEntry(oldUid,{recursive:true});removed.add(oldUid);}catch(error){if(error.name!=='NotFoundError')warn('旧目录 '+oldUid+' 删除失败（'+error.message+'）');}
     return result;
   }
-  root.FolderStore={read,write,readImage,saveImage,imageOf,previewWorks,placeWork,nextTestSeq,testImageName,validWork,exportTo,remember,rename,empty,takeWarnings,IMAGE_KINDS,SIZES,FOLDER_OF,MAX_IMAGE_BYTES};
+  root.FolderStore={read,write,readImage,saveImage,imageOf,blobOf,previewWorks,placeWork,nextTestSeq,testImageName,validWork,exportTo,remember,rename,empty,takeWarnings,IMAGE_KINDS,SIZES,FOLDER_OF,MAX_IMAGE_BYTES};
   if(typeof module!=='undefined')module.exports=root.FolderStore;
 })(globalThis);
 </script><script>(() => {
@@ -1052,8 +1054,8 @@ dialog[open]::backdrop{opacity:1}
   /* 生图排队：一次只跑一条，两条之间留一段随机间隔，避免一口气打过去被站点限流。
      队列只管三件事——顺序、间隔、出错不拖累后面的；每条需求自己带着「怎么跑」。 */
   function create({gap=()=>0,sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms)),onChange=()=>{}}={}){
-    const items=[];let running=false,ran=0;
-    const notify=()=>onChange({running,pending:items.length,ran});
+    const items=[];let running=false,ran=0,active=null;
+    const notify=()=>onChange({running,pending:items.length,ran,active});
     const done=()=>!running&&!items.length;
     async function pump(){
       if(running)return;
@@ -1064,11 +1066,12 @@ dialog[open]::backdrop{opacity:1}
           const item=items.shift();
           /* 同一批里的第一条立刻发，之后每一条前都等一段抖动时间。 */
           if(ran>0)await sleep(gap());
+          active=item;notify();
           /* 一条失败不能卡住队列：交给它自己的 onError，再接着跑下一条。 */
           try{await item.run();}catch(error){if(item.onError)item.onError(error);}
-          ran++;notify();
+          active=null;ran++;notify();
         }
-      }finally{running=false;ran=0;notify();}
+      }finally{running=false;active=null;ran=0;notify();}
     }
     return {
       push(item){items.push(item);notify();pump();return items.length;},
@@ -1076,6 +1079,10 @@ dialog[open]::backdrop{opacity:1}
       clear(){const dropped=items.length;items.length=0;notify();return dropped;},
       get running(){return running;},
       get pending(){return items.length;},
+      /* 正在跑的那一条（界面靠它画出「正在生成」），没在跑就是 null。 */
+      get current(){return active;},
+      /* 还在排队的第几条（1 开始），没排到就返回 0。 */
+      positionOf(test){const index=items.findIndex(test);return index<0?0:index+1;},
       get idle(){return done();},
       /* 同一个槽位不要排两次。注意只看得见还没开始的：正在跑的那条已经出队了。 */
       has:test=>items.some(test),
@@ -1109,7 +1116,7 @@ dialog[open]::backdrop{opacity:1}
     return queue.run(async()=>{const existing=cache.get(id);if(existing)return existing;try{
       const ref=refOf(w,size);let blob;
       if(ref.kind==='local'){if(!requestedFolder)throw Error('请先选择数据文件夹');blob=await FolderStore.readImage(requestedFolder,uid,ref.path);}
-      else if(ref.kind==='inline')blob=await (await fetch(ref.data)).blob();
+      else if(ref.kind==='inline')blob=FolderStore.blobOf(ref.data);
       else blob=await ArtistExtension.image(ref.url,signal);
       if(signal?.aborted)throw new DOMException('已取消','AbortError');
       if(requestedEpoch===epoch)cache.set(id,blob);return blob;
@@ -1471,7 +1478,7 @@ dialog[open]::backdrop{opacity:1}
   let data,folder,draft,editingId,busy=false,uploading=false,volatile=false,refreshTimer=null,generating=false;
   /* 生图排队：一次只跑一条，两条之间隔 5±3 秒，避免一口气打过去被站点限流。
      排了长队就得能喊停，所以顶部有一个「排队 N · 清空」，只在真的有人排队时才出现。 */
-  const genQueue=ArtistGenerateQueue.create({gap:()=>ArtistImageGen.genGapDelay(),onChange:paintQueue});
+  const genQueue=ArtistGenerateQueue.create({gap:()=>ArtistImageGen.genGapDelay(),onChange:()=>{paintQueue();/* 队列状态变了，格子上的「正在生成／排队中」要跟着走 */if(!busy&&data)render();}});
   function paintQueue(){
     const node=$('gen-queue'),count=genQueue.pending;
     node.hidden=count===0;
@@ -1621,11 +1628,15 @@ dialog[open]::backdrop{opacity:1}
     finally{uploading=false;}
   }
   /* 空着的固定格：一个「生成」按钮，外加它对应的测试风格序号。
-     按钮自己承担二次确认（第一次点亮、第二次才真发），不再弹系统对话框。 */
+     按钮自己承担二次确认（第一次点亮、第二次才真发），不再弹系统对话框。
+     格子长什么样由队列决定：卡片因为保存被重建时，正在生成/排队的格子也要照旧显示对应状态。 */
   function generateSlot(a,seq){
     const box=el('div','work work-generate'),label=el('span','generate-seq','测试风格 '+seq),button=btn('生成',()=>armGenerate(a,seq,{box,button,label}),'generate-button');
     button.title=`用 NovelAI 生成「测试风格 ${seq}」并回填到这一格`;
     box.append(button,label);
+    const active=genQueue.current;
+    if(active&&active.uid===a.uid&&active.seq===seq)generatingMark(box,'正在请求 NovelAI…');
+    else{const place=genQueue.positionOf(item=>item.uid===a.uid&&item.seq===seq);if(place)queuedMark(box,place);}
     return box;
   }
   let armedSlot=null,armedTimer=null;

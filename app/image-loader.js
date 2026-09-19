@@ -9,7 +9,7 @@
     return queue.run(async()=>{const existing=cache.get(id);if(existing)return existing;try{
       const ref=refOf(w,size);let blob;
       if(ref.kind==='local'){if(!requestedFolder)throw Error('请先选择数据文件夹');blob=await FolderStore.readImage(requestedFolder,uid,ref.path);}
-      else if(ref.kind==='inline')blob=await (await fetch(ref.data)).blob();
+      else if(ref.kind==='inline')blob=FolderStore.blobOf(ref.data);
       else blob=await ArtistExtension.image(ref.url,signal);
       if(signal?.aborted)throw new DOMException('已取消','AbortError');
       if(requestedEpoch===epoch)cache.set(id,blob);return blob;

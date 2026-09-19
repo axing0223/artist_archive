@@ -9,6 +9,9 @@ test('扩展只请求指定网站，本地连接脚本仅匹配文件页面',asy
   assert.equal(m.manifest_version,3);assert.deepEqual(m.host_permissions,['https://danbooru.donmai.us/*','https://cdn.donmai.us/*','https://image.novelai.net/*','https://api.novelai.net/*']);assert.deepEqual(m.content_scripts[0].matches,['file:///*']);assert.equal(m.content_scripts[0].all_frames,false);
   assert.match(m.content_security_policy.extension_pages,/connect-src[^;]*https:\/\/image\.novelai\.net/,'后台要发得出去，CSP 里必须放行生图端点');
   assert.match(m.content_security_policy.extension_pages,/connect-src[^;]*https:\/\/api\.novelai\.net/,'查额度用的是 api 域名，也要放行');
+  assert.match(m.content_security_policy.extension_pages,/connect-src[^;]*data:/,'内联缩略图要能转成 Blob，connect-src 得放行 data:');
+  const loader=await fs.readFile('app/image-loader.js','utf8');
+  assert.equal(loader.includes('FolderStore.blobOf(ref.data)'),true,'内联图片不要走 fetch(data:)：扩展页的 CSP 会拦，缩略图会一直是灰的');
   for(const s of ['https://evil.example/a.jpg','http://cdn.donmai.us/a.jpg','https://cdn.donmai.us.evil.example/a.jpg','https://user:pass@cdn.donmai.us/a.jpg','https://cdn.donmai.us:444/a.jpg'])assert.throws(()=>imageUrl(s));
   assert.equal(postUrl('12036303'),'https://danbooru.donmai.us/posts/12036303.json');assert.throws(()=>postUrl('0'));assert.throws(()=>postUrl('https://evil.example/posts/12036303'));
 });

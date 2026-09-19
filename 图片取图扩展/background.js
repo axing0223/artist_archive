@@ -37,8 +37,19 @@ chrome.action.onClicked.addListener(()=>{showLibrary();});
    真正落盘必须由画师库页面来做（数据在你选的文件夹里，只有页面拿得到那套 File System Access 逻辑），
    所以这里的做法是：页面开着就交给它，没开着就悄悄开一个后台标签页（active:false，不抢焦点），
    等它建完卡把结果回传，再在用户当前所在页面右上角飘一个提示。 */
+/* 菜单要在每次服务工作线程启动时重建（MV3 会被回收）。建的时候要单飞：
+   onInstalled/onStartup 与启动时那一次可能撞在一起，重复 id 会让扩展页面记一条错误。 */
+let buildingMenu=false;
 function buildMenu(){
-  chrome.contextMenus.removeAll(()=>chrome.contextMenus.create({id:MENU_ID,title:'添加到画师库',contexts:['selection']}));
+  if(buildingMenu)return;
+  buildingMenu=true;
+  chrome.contextMenus.removeAll(()=>{
+    if(chrome.runtime.lastError)console.warn('[画师库] 清理右键菜单失败：',chrome.runtime.lastError.message);
+    chrome.contextMenus.create({id:MENU_ID,title:'添加到画师库',contexts:['selection']},()=>{
+      buildingMenu=false;
+      if(chrome.runtime.lastError)console.warn('[画师库] 右键菜单创建失败：',chrome.runtime.lastError.message);
+    });
+  });
 }
 chrome.runtime.onInstalled.addListener(buildMenu);
 chrome.runtime.onStartup.addListener(buildMenu);

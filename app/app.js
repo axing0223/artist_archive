@@ -37,7 +37,7 @@
   let data,folder,draft,editingId,busy=false,uploading=false,volatile=false,refreshTimer=null,generating=false;
   /* 生图排队：一次只跑一条，两条之间隔 5±3 秒，避免一口气打过去被站点限流。
      排了长队就得能喊停，所以顶部有一个「排队 N · 清空」，只在真的有人排队时才出现。 */
-  const genQueue=ArtistGenerateQueue.create({gap:()=>ArtistImageGen.genGapDelay(),onChange:paintQueue});
+  const genQueue=ArtistGenerateQueue.create({gap:()=>ArtistImageGen.genGapDelay(),onChange:()=>{paintQueue();/* 队列状态变了，格子上的「正在生成／排队中」要跟着走 */if(!busy&&data)render();}});
   function paintQueue(){
     const node=$('gen-queue'),count=genQueue.pending;
     node.hidden=count===0;
@@ -187,11 +187,15 @@
     finally{uploading=false;}
   }
   /* 空着的固定格：一个「生成」按钮，外加它对应的测试风格序号。
-     按钮自己承担二次确认（第一次点亮、第二次才真发），不再弹系统对话框。 */
+     按钮自己承担二次确认（第一次点亮、第二次才真发），不再弹系统对话框。
+     格子长什么样由队列决定：卡片因为保存被重建时，正在生成/排队的格子也要照旧显示对应状态。 */
   function generateSlot(a,seq){
     const box=el('div','work work-generate'),label=el('span','generate-seq','测试风格 '+seq),button=btn('生成',()=>armGenerate(a,seq,{box,button,label}),'generate-button');
     button.title=`用 NovelAI 生成「测试风格 ${seq}」并回填到这一格`;
     box.append(button,label);
+    const active=genQueue.current;
+    if(active&&active.uid===a.uid&&active.seq===seq)generatingMark(box,'正在请求 NovelAI…');
+    else{const place=genQueue.positionOf(item=>item.uid===a.uid&&item.seq===seq);if(place)queuedMark(box,place);}
     return box;
   }
   let armedSlot=null,armedTimer=null;

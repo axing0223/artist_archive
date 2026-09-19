@@ -79,6 +79,13 @@ test('同一批里出现重名时往后加序号，不互相覆盖',async()=>{
  const saved=await store.write(dir,data);
  assert.deepEqual(saved.artists[0].works.map(w=>w.large),['大图/a-测试风格1.png','大图/a-测试风格1-2.png']);
 });
+test('data: URL 直接解成 Blob：扩展页的 CSP 会拦 fetch(data:)，缩略图不能走那条路',async()=>{
+ const blob=store.blobOf(png);
+ assert.equal(blob.type,'image/png');
+ assert.deepEqual(new Uint8Array(await blob.arrayBuffer()),Uint8Array.from(Buffer.from(png.split(',')[1],'base64')),'解出来的字节要和原图一致');
+ assert.throws(()=>store.blobOf('https://cdn.donmai.us/a.jpg'),/格式错误/,'只接受 data:');
+ assert.throws(()=>store.blobOf('data:text/plain;base64,aGk='),/格式错误/,'只接受图片类型');
+});
 test('索引里有、盘上没有的画师目录只跳过并记警告，不让整个库打不开',async()=>{
  const dir=new Directory(),artists=new Directory('画师');
  dir.items.set('画师',artists);

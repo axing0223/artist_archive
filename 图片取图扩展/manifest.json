@@ -10,6 +10,6 @@
   "action": {"default_title": "打开画师库（详细：右键 → 选项）"},
   "options_page": "test.html",
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'none'; connect-src https://danbooru.donmai.us https://cdn.donmai.us https://image.novelai.net https://api.novelai.net; img-src 'self' blob: data:; base-uri 'none'"
+    "extension_pages": "script-src 'self'; object-src 'none'; connect-src https://danbooru.donmai.us https://cdn.donmai.us https://image.novelai.net https://api.novelai.net data:; img-src 'self' blob: data:; base-uri 'none'"
   }
 }

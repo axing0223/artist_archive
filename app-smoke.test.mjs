@@ -961,6 +961,38 @@ test('手动选完文件夹会记下来，供下次打开时自动接上',async(
   assert.match(String(getEl(elements,'storage-status').textContent),/已连接文件夹/);
   assert.equal(String(getEl(elements,'storage-status').textContent).includes('记不住'),false,'能记住时不该出现那句提示');
 });
+test('固定格的生成按钮：排队/正在生成时，重建卡片也要显示对应状态而不是变回「生成」',async()=>{
+  const {elements,state,ctx}=await boot();
+  await getEl(elements,'choose-folder').onclick();
+  await createArtist(state,elements,'tester');
+  const toggle=getEl(elements,'fixed-test');toggle.checked=true;await toggle.onchange();
+  const artist=state.rows[0];
+  /* 生图这块换成「挂着不返回」，好让队列停在正在生成的状态 */
+  let release=null;
+  ctx.ArtistImageGen.generate=()=>new Promise(resolve=>{release=resolve;});
+  const boxes=()=>findAllByClass(state.card(artist),'work-generate');
+  /* 同一张卡片上取两格（同一次构建里的节点，点之前先拿到手） */
+  const [left,right]=boxes();
+  const arm=node=>{const button=findByClass(node,'generate-button');button.onclick();button.onclick();};
+  arm(right);
+  /* 1 号图还在跑的时候，把另一格也排上——这正是用户报的场景 */
+  arm(left);
+  /* 关键：卡片被重建（保存、队列变动都会触发）之后，格子不能再变回「生成」 */
+  const rebuilt=boxes();
+  const stateOf=node=>{
+    if(String(node.className).includes('is-generating')||findByClass(node,'gen-spinner'))return 'running';
+    if(String(node.className).includes('is-queued'))return 'queued';
+    return 'plain';
+  };
+  const kinds=rebuilt.map(stateOf);
+  assert.equal(kinds.includes('running'),true,'正在生成的那一格重建后仍要显示正在生成，实际：'+rebuilt.map(node=>node.className).join(' | '));
+  assert.equal(kinds.includes('queued'),true,'排队中的那一格重建后仍要显示排队中');
+  assert.equal(kinds.includes('plain'),false,'这时候不该有任何一格回到可点的「生成」按钮');
+  const queued=rebuilt[kinds.indexOf('queued')];
+  assert.match(String(findByClass(queued,'generate-button')?.textContent),/排队中/, '排队那一格要写清排在第几位');
+  release?.({blob:new Blob([]),prompt:'x',free:true,width:832,height:1216,steps:28,account:null});
+  await wait(30);
+});
 test('右键菜单：能定位到唯一的画师就直接建一张新卡，并把结果回传',async()=>{
   const {elements,state,ctx}=await boot();
   await getEl(elements,'choose-folder').onclick();
