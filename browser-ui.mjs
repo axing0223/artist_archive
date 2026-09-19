@@ -85,6 +85,12 @@ try{
  assert.ok(!String(badgeCover.top).includes('score-badge'),'角标与筛选栏重叠时不能压在栏上（含栏左右内边距之外那条缝）：'+JSON.stringify(badgeCover));
  await evaluate('window.scrollTo(0,0)');await sleep(320);
 
+ /* 筛选栏背景要铺满整屏：连 main 左右内边距那一带也该是栏的背景，
+    否则卡片滚过时仍会在栏外侧露出一条内容。 */
+ const barCover=await evaluate(`(()=>{const bar=document.querySelector('.library-controls');const b=bar.getBoundingClientRect();const y=Math.round((b.top+b.bottom)/2);const cw=document.documentElement.clientWidth;const inBar=n=>!!n&&(n===bar||bar.contains(n));const left=document.elementFromPoint(4,y),right=document.elementFromPoint(cw-6,y);const cs=getComputedStyle(bar,'::before');return {probe:[4,y,cw-6],leftHit:left?(String(left.className).slice(0,26)||left.tagName):null,rightHit:right?(String(right.className).slice(0,26)||right.tagName):null,leftOk:inBar(left),rightOk:inBar(right),before:{width:cs.width,left:cs.left,right:cs.right,background:cs.backgroundColor,zIndex:cs.zIndex,pointerEvents:cs.pointerEvents},scrollWidth:document.documentElement.scrollWidth,clientWidth:cw};})()`);
+ assert.ok(barCover.leftOk&&barCover.rightOk,'筛选栏背景应铺满整屏（含两侧内边距）：'+JSON.stringify(barCover));
+ assert.ok(barCover.scrollWidth<=barCover.clientWidth+1,'铺满整屏不能引入横向溢出：'+JSON.stringify(barCover));
+
  await evaluate('document.getElementById("theme-toggle").click()');await sleep(200);await capture('portrait-light');await evaluate('document.getElementById("theme-toggle").click()');
  await evaluate('document.getElementById("settings-open").click()');await sleep(250);await capture('settings');
  await send('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});await send('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
