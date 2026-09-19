@@ -72,7 +72,7 @@ function makeIndexedDB(remembered){
   return db;
 }
 async function boot(options={}){
-  const elements=new Map(),state={renders:[],queried:[],scrolled:[],mounted:[],copied:[],pageListeners:[],pendingText:options.pendingText||''};
+  const elements=new Map(),state={renders:[],queried:[],scrolled:[],mounted:[],copied:[],pageListeners:[],pageMessages:[],pendingActions:options.actions||[]};
   const document={getElementById:id=>{if(!elements.has(id))elements.set(id,new El());return elements.get(id);},createElement:tag=>new El(tag),
     querySelector:selector=>{state.queried.push(selector);return {scrollIntoView:()=>state.scrolled.push(selector),classList:{add(){},remove(){}},getBoundingClientRect:()=>({top:0,height:0,left:0,width:0})};},
     querySelectorAll:()=>[],documentElement:new El('html')};
@@ -86,8 +86,12 @@ class FileUrl extends URL{}
 FileUrl.createObjectURL=()=>'blob:x';FileUrl.revokeObjectURL=()=>{};
   const ctx={
     window:{innerWidth:1200,innerHeight:800,listeners:{},addEventListener(type,fn){(this.listeners[type]??=[]).push(fn);},showDirectoryPicker:async()=>new FakeDir()},document,localStorage,navigator:{clipboard:{writeText:async text=>{state.copied.push(text);}}},
-    /* 扩展页里才有 chrome.runtime：页面靠它接右键菜单送来的文字，也要主动去要一次待办。 */
-    chrome:{runtime:{onMessage:{addListener:fn=>state.pageListeners.push(fn)},sendMessage:async()=>({text:state.pendingText||''})}},
+    /* 扩展页里才有 chrome.runtime：页面靠它接右键菜单与漂浮提示的消息，也要主动去领一次待办。 */
+    chrome:{runtime:{onMessage:{addListener:fn=>state.pageListeners.push(fn)},sendMessage:async message=>{
+      state.pageMessages.push(message);
+      if(message?.channel==='artist-library-page'&&message.type==='ready')return {actions:state.pendingActions};
+      return null;
+    }}},
     IntersectionObserver:IO,ResizeObserver:RO,Option,AbortController,AbortSignal,
     /* 记忆里的数据文件夹：给了 remembered 就预先塞进这个替身里，模拟「上次用过」。 */
     indexedDB:state.indexedDB=makeIndexedDB(options.remembered),
@@ -575,7 +579,7 @@ test('编辑已有画师时，卡片渲染成编辑态而不是浏览态',async(
   assert.equal(editing.children.length>=3,true,'编辑态卡片应有信息区、作品区与展开区');
 });
 const post=id=>({id,url:'https://danbooru.donmai.us/posts/'+id,caption:'',thumbUrl:'https://cdn.donmai.us/360x360/'+id+'.jpg',previewUrl:'https://cdn.donmai.us/720x720/'+id+'.jpg',largeUrl:'https://cdn.donmai.us/original/'+id+'.jpg'});
-const stub=(ctx,{lookup,details})=>{ctx.ArtistLookup={plan:value=>({input:String(value),query:String(value),kind:'name',siteUrl:'',apiUrl:''}),lookup,details,posts:async()=>[]};};
+const stub=(ctx,{lookup,details,posts})=>{ctx.ArtistLookup={plan:(value,options)=>({input:String(value),query:String(value),kind:options?.match==='id'?'id':'name',siteUrl:'',apiUrl:''}),lookup,details,posts:posts||(async()=>[])};};
 const runBatch=async(elements,names,collect=true)=>{
   const get=id=>{if(!elements.has(id))elements.set(id,new El());return elements.get(id);};
   get('batch-artists').onclick();
@@ -957,32 +961,120 @@ test('手动选完文件夹会记下来，供下次打开时自动接上',async(
   assert.match(String(getEl(elements,'storage-status').textContent),/已连接文件夹/);
   assert.equal(String(getEl(elements,'storage-status').textContent).includes('记不住'),false,'能记住时不该出现那句提示');
 });
-test('右键菜单送来的文字会走一遍「添加下一位画师」：填进输入框并开始识别',async()=>{
+test('右键菜单：能定位到唯一的画师就直接建一张新卡，并把结果回传',async()=>{
   const {elements,state,ctx}=await boot();
+  await getEl(elements,'choose-folder').onclick();
   const asked=[];
-  stub(ctx,{lookup:async plan=>{asked.push(plan.query);return [{id:105704,name:'modare',aliases:[],pageUrl:''}];},details:async()=>({counts:{},works:[]})});
+  stub(ctx,{
+    lookup:async plan=>{asked.push(plan.query);return [{id:105704,name:'modare',aliases:['旧名'],pageUrl:'https://danbooru.donmai.us/artists/105704'}];},
+    posts:async(name,{limit})=>{asked.push(name+' 的前 '+limit+' 张');return [post('1'),post('2'),post('3')];},
+    details:async()=>({counts:{checkedAt:'x',total:1234,beforeDate:'2026-07-01',beforeTotal:100},works:[],countsError:false}),
+  });
   assert.equal(state.pageListeners.length,1,'页面要挂上扩展消息的监听');
-  state.pageListeners[0]({type:'artist-library.add',text:'  modare\n105704 '});
-  assert.equal(getEl(elements,'quick-input').value,'modare 105704','选中的文字要填进「添加下一位画师」的输入框');
-  assert.match(String(getEl(elements,'storage-status').textContent),/右键菜单/,'状态栏要说明这条从哪来');
-  await wait(20);
-  assert.deepEqual(asked,['modare 105704'],'要直接开始识别，不用再手点');
-  /* 空文字不折腾 */
-  const {elements:e2,state:s2}=await boot();
-  s2.pageListeners[0]({type:'artist-library.add',text:'   '});
-  assert.equal(getEl(e2,'quick-input').value,'');
-  assert.match(String(getEl(e2,'storage-status').textContent),/空/);
-  /* 不是我们的消息就不理 */
-  const {elements:e3,state:s3}=await boot();
-  s3.pageListeners[0]({type:'something-else',text:'modare'});
-  assert.equal(getEl(e3,'quick-input').value,'');
+  const replies=[];
+  const keep=state.pageListeners[0]({type:'artist-library.create',text:'  modare\n 105704 ',requestId:'r1',sourceTabId:42},null,value=>replies.push(value));
+  assert.equal(keep,true,'要异步回复结果');
+  await wait(40);
+  assert.equal(replies.length,1);
+  const result=replies[0];
+  assert.equal(result.ok,true,'定位到唯一画师就该建卡成功');
+  assert.equal(result.name,'modare');
+  assert.equal(result.danbooruId,105704,'要索引到 Danbooru 编号');
+  assert.equal(result.works,3,'要带上作品');
+  assert.equal(result.requestId,'r1');assert.equal(result.sourceTabId,42,'回传时要带回来源标签页，好把提示画在那里');
+  assert.deepEqual(asked,['modare 105704','modare 的前 3 张'],'先按名字查画师、再取作品');
+  assert.equal(state.rows.length,1,'画师库里多了一张卡');
+  assert.equal(state.rows[0].uid,result.uid);
+  assert.equal(state.rows[0].works.length,3,'作品要缓存成缩略图一起写进去');
+  assert.equal(state.rows[0].aliases[0],'旧名');
 });
-test('页面加载完成后会向后台要一次待办：菜单点了但页面是刚打开的那种情况',async()=>{
-  const app=await fs.readFile('app/app.js','utf8');
-  assert.match(app,/bindExtensionMessages\(\);/,'init 里要主动领取一次（页面刚打开时菜单那条只在后台存着）');
-  const {elements}=await boot({pendingText:'atdan'});
+test('右键菜单：定位不到、候选不唯一、已存在、没选文件夹时都不建卡，并给出原因',async()=>{
+  /* 没选文件夹 */
+  const noFolder=await boot();
+  const first=[];
+  noFolder.state.pageListeners[0]({type:'artist-library.create',text:'modare'},null,value=>first.push(value));
   await wait(20);
-  assert.equal(getEl(elements,'quick-input').value,'atdan','加载完就该把待办领回来并填进输入框');
+  assert.equal(first[0].ok,false);assert.match(first[0].reason,/数据文件夹/);
+  /* 站点上找不到 */
+  const missing=await boot();
+  await getEl(missing.elements,'choose-folder').onclick();
+  stub(missing.ctx,{lookup:async()=>[],posts:async()=>[],details:async()=>({counts:{}})});
+  const second=[];
+  missing.state.pageListeners[0]({type:'artist-library.create',text:'no-such-artist'},null,value=>second.push(value));
+  await wait(30);
+  assert.equal(second[0].ok,false);assert.match(second[0].reason,/没找到/);
+  assert.equal(missing.state.rows.length,0,'不该凭空建卡');
+  /* 候选不唯一：不能替用户挑一个 */
+  const many=await boot();
+  await getEl(many.elements,'choose-folder').onclick();
+  stub(many.ctx,{lookup:async()=>[{id:1,name:'other',aliases:[],pageUrl:''},{id:2,name:'another',aliases:[],pageUrl:''}],posts:async()=>[],details:async()=>({counts:{}})});
+  const third=[];
+  many.state.pageListeners[0]({type:'artist-library.create',text:'modare'},null,value=>third.push(value));
+  await wait(30);
+  assert.equal(third[0].ok,false);assert.match(third[0].reason,/2 个候选/);
+  assert.equal(many.state.rows.length,0);
+  /* 已经在库里：不重复建卡，并把已有那张的 uid 带回去好定位 */
+  const exists=await boot();
+  await getEl(exists.elements,'choose-folder').onclick();
+  stub(exists.ctx,{lookup:async()=>[{id:105704,name:'modare',aliases:[],pageUrl:''}],posts:async()=>[post('9')],details:async()=>({counts:{}})});
+  const fourth=[];
+  exists.state.pageListeners[0]({type:'artist-library.create',text:'modare'},null,value=>fourth.push(value));
+  await wait(30);
+  const uid=fourth[0].uid;
+  const again=[];
+  exists.state.pageListeners[0]({type:'artist-library.create',text:'modare'},null,value=>again.push(value));
+  await wait(30);
+  assert.equal(again[0].ok,false);assert.match(again[0].reason,/已经在画师库里/);
+  assert.equal(again[0].uid,uid,'要把已有那张卡的 uid 带回去');
+  assert.equal(exists.state.rows.length,1,'不会多出一张重复卡');
+});
+test('右键菜单：整段文字没匹配上时，再试第一个像标签的词',async()=>{
+  const {elements,state,ctx}=await boot();
+  await getEl(elements,'choose-folder').onclick();
+  const tried=[];
+  stub(ctx,{
+    lookup:async plan=>{tried.push(plan.query);return plan.query==='modare'?[{id:105704,name:'modare',aliases:[],pageUrl:''}]:[];},
+    posts:async()=>[post('1')],
+    details:async()=>({counts:{total:5}}),
+  });
+  const replies=[];
+  state.pageListeners[0]({type:'artist-library.create',text:'modare (@modare_105704)'},null,value=>replies.push(value));
+  await wait(30);
+  assert.deepEqual(tried,['modare (@modare_105704)','modare'],'整段失败后用第一个词再试一次');
+  assert.equal(replies[0].ok,true);
+  assert.equal(replies[0].name,'modare');
+  assert.equal(state.rows.length,1);
+});
+test('点漂浮提示回到页面：清掉筛选、滚到新卡片并让它闪一下',async()=>{
+  const {elements,state}=await boot();
+  await createArtist(state,elements,'tester');
+  const uid=state.rows[0].uid;
+  state.pageListeners[0]({type:'artist-library.focus',uid,text:'modare'});
+  assert.equal(state.mounted.includes(uid),true,'要主动把那一段挂载出来');
+  assert.equal(state.scrolled.some(selector=>selector.includes(uid)),true,'要滚到那张卡片');
+  assert.match(String(getEl(elements,'storage-status').textContent),/已定位/);
+  /* 找不到那张卡（比如已被删）时退回「添加下一位画师」，把文字填进识别框 */
+  const gone=await boot();
+  gone.state.pageListeners[0]({type:'artist-library.focus',uid:'不存在',text:'modare'});
+  assert.equal(getEl(gone.elements,'quick-input').value,'modare');
+});
+test('页面是刚被右键菜单打开的那种：等数据文件夹就绪再建卡，然后回传结果',async()=>{
+  const app=await fs.readFile('app/app.js','utf8');
+  assert.match(app,/bindExtensionMessages\(\);/,'init 里要主动领取一次');
+  const {elements,state,ctx}=await boot({actions:[{kind:'create',text:'atdan',requestId:'r9',sourceTabId:7}]});
+  await wait(20);
+  assert.equal(state.rows.length,0,'文件夹还没接上，先不写');
+  assert.equal(state.pageMessages.some(message=>message.type==='created'),false,'也不该急着回一个失败');
+  assert.equal(app.includes('正在准备数据文件夹'),true,'要有「等文件夹就绪」这条提示语');
+  stub(ctx,{lookup:async()=>[{id:7,name:'atdan',aliases:[],pageUrl:''}],posts:async()=>[post('5')],details:async()=>({counts:{total:9}})});
+  await getEl(elements,'choose-folder').onclick();
+  await wait(40);
+  const reply=state.pageMessages.find(message=>message.type==='created');
+  assert.ok(reply,'接上文件夹后要把结果回传后台');
+  assert.equal(reply.result.ok,true);
+  assert.equal(reply.result.requestId,'r9');
+  assert.equal(reply.result.sourceTabId,7,'来源标签页要原样带回去，提示才画得到那个页面上');
+  assert.equal(state.rows.length,1);
 });
 test('生图排队接进了页面：公用一条队列，间隔取 5±3 秒的抖动值',async()=>{
   const html=await fs.readFile('app/index.html','utf8'),app=await fs.readFile('app/app.js','utf8');

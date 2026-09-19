@@ -1,8 +1,9 @@
 import {fetchImage,resolvePost,fetchApi,imageUrl,generateImage,fetchSubscription} from './probe.mjs';
 import {allowedSender} from './bridge-policy.mjs';
-const LIBRARY='app/index.html',MENU_ID='artist-library-add',PENDING_KEY='pendingArtistText',SELECTION_MAX=200;
-/* 找到（或打开）画师库那个标签页。用 getContexts 认自己扩展的页面，不额外要 tabs 权限。 */
-async function libraryTab(){
+const LIBRARY='app/index.html',MENU_ID='artist-library-add',PENDING_KEY='pendingArtistActions',SELECTION_MAX=200;
+/* 找到（或打开）画师库那个标签页。用 getContexts 认自己扩展的页面，不额外要 tabs 权限。
+   background=true 时新开的标签页不抢焦点——右键菜单那条路要的就是「静默」。 */
+async function libraryTab({background=false}={}){
   const url=chrome.runtime.getURL(LIBRARY);
   try{
     if(chrome.runtime.getContexts){
@@ -11,7 +12,7 @@ async function libraryTab(){
       if(open)return {tabId:open.tabId,windowId:open.windowId,existed:true};
     }
   }catch{}
-  try{const tab=await chrome.tabs.create({url});return {tabId:tab?.id,windowId:tab?.windowId,existed:false};}
+  try{const tab=await chrome.tabs.create({url,active:!background});return {tabId:tab?.id,windowId:tab?.windowId,existed:false};}
   catch{return {tabId:null,windowId:null,existed:false};}
 }
 async function focusTab(found){
@@ -19,37 +20,81 @@ async function focusTab(found){
   try{if(found.tabId!=null)await chrome.tabs.update(found.tabId,{active:true});}catch{}
   try{if(found.windowId!=null)await chrome.windows.update(found.windowId,{focused:true});}catch{}
 }
+/* 页面还没接管时把待办排在会话存储里（内存态），它加载完成后会来领。
+   MV3 的服务工作线程随时可能被回收，所以不能只放在内存变量里。 */
+async function queueAction(action){
+  try{const store=await chrome.storage.session.get(PENDING_KEY);const list=Array.isArray(store?.[PENDING_KEY])?store[PENDING_KEY]:[];list.push(action);await chrome.storage.session.set({[PENDING_KEY]:list});}catch{}
+}
+async function drainActions(){
+  try{const store=await chrome.storage.session.get(PENDING_KEY);const list=Array.isArray(store?.[PENDING_KEY])?store[PENDING_KEY]:[];if(list.length)await chrome.storage.session.remove(PENDING_KEY);return list;}catch{return [];}
+}
 /* 点扩展图标打开画师库；已经开着就切过去，别开一堆标签页。 */
 chrome.action.onClicked.addListener(async()=>{const found=await libraryTab();await focusTab(found);});
-/* 右键菜单：选中文字 → 添加到画师库（把文字交给画师库的「识别画师」）。
-   菜单要在每次服务工作线程启动时重建（MV3 会被回收），先清空再建，免得重复 id 报错。 */
+/* 右键菜单：选中文字 → 添加到画师库。
+   真正落盘必须由画师库页面来做（数据在你选的文件夹里，只有页面拿得到那套 File System Access 逻辑），
+   所以这里的做法是：页面开着就交给它，没开着就悄悄开一个后台标签页（active:false，不抢焦点），
+   等它建完卡把结果回传，再在用户当前所在页面右上角飘一个提示。 */
 function buildMenu(){
   chrome.contextMenus.removeAll(()=>chrome.contextMenus.create({id:MENU_ID,title:'添加到画师库',contexts:['selection']}));
 }
 chrome.runtime.onInstalled.addListener(buildMenu);
 chrome.runtime.onStartup.addListener(buildMenu);
 buildMenu();
-chrome.contextMenus.onClicked.addListener(async info=>{
+const badge=async(ok,title)=>{
+  try{
+    await chrome.action.setBadgeBackgroundColor({color:ok?'#177a4b':'#c0392b'});
+    await chrome.action.setBadgeText({text:ok?'✓':'✗'});
+    await chrome.action.setTitle({title});
+  }catch{}
+};
+/* 结果优先画在用户当前所在页面的右上角；注入不了就退回角标，别让结果无声无息。 */
+const toast=async payload=>{
+  const tabId=payload?.sourceTabId;
+  if(Number.isInteger(tabId)){
+    try{
+      await chrome.scripting.executeScript({target:{tabId},files:['toast.js']});
+      await chrome.tabs.sendMessage(tabId,{type:'artist-library.toast',payload});
+      return true;
+    }catch{}
+  }
+  await badge(payload?.ok===true,payload?.ok===true?`已添加「${payload?.name||''}」`:'添加失败：'+(payload?.reason||''));
+  return false;
+};
+chrome.contextMenus.onClicked.addListener(async (info,tab)=>{
   if(info.menuItemId!==MENU_ID)return;
   const text=String(info.selectionText||'').replace(/\s+/g,' ').trim().slice(0,SELECTION_MAX);
   if(!text)return;
-  const found=await libraryTab();
-  await focusTab(found);
-  /* 页面开着就直接推给它；刚打开的那个还没加载完，推不过去，就留在会话存储里等它来取。 */
+  const request={text,requestId:Date.now().toString(36)+Math.random().toString(36).slice(2,7),sourceTabId:Number.isInteger(tab?.id)?tab.id:null};
+  try{await chrome.action.setBadgeBackgroundColor({color:'#3b4a63'});await chrome.action.setBadgeText({text:'…'});}catch{}
+  const found=await libraryTab({background:true});
   if(found.existed){
-    try{await chrome.runtime.sendMessage({type:'artist-library.add',text});return;}catch{}
+    /* 页面已经开着：直接问它，结果会以 artist-library-page/created 回来 */
+    try{await chrome.runtime.sendMessage({type:'artist-library.create',...request});return;}catch{}
   }
-  try{await chrome.storage.session.set({[PENDING_KEY]:text});}catch{}
+  /* 刚打开的那个还没接管，先排进待办等它来领 */
+  await queueAction({kind:'create',...request});
 });
-/* 画师库页面加载完成后会来问一次「有没有待办的选中文字」，这里把存着的那条交给它。 */
+/* 画师库页面的消息：加载完成后领取待办；建完卡回传结果。 */
 chrome.runtime.onMessage.addListener((message,sender,respond)=>{
-  if(message?.channel!=='artist-library-page'||message.type!=='ready')return;
+  if(message?.channel!=='artist-library-page')return;
+  if(message.type==='ready'){drainActions().then(actions=>respond({actions}));return true;}
+  if(message.type==='created'){
+    const result=message.result||{};
+    toast(result);
+    if(result.ok)setTimeout(()=>chrome.action.setBadgeText({text:''}).catch(()=>{}),6000);
+  }
+});
+/* 点漂浮提示：打开（或切到）画师库，让它定位到新卡片；失败的那种就把文字送回「添加下一位画师」。 */
+chrome.runtime.onMessage.addListener((message,sender,respond)=>{
+  if(message?.type!=='artist-library.toast-click')return;
   (async()=>{
-    let text='';
-    try{const store=await chrome.storage.session.get(PENDING_KEY);text=String(store?.[PENDING_KEY]||'');if(text)await chrome.storage.session.remove(PENDING_KEY);}catch{}
-    respond({text});
+    try{await chrome.action.setBadgeText({text:''});}catch{}
+    const payload={type:'artist-library.focus',uid:String(message.uid||''),text:String(message.text||''),ok:message.ok===true};
+    const found=await libraryTab();
+    if(found.existed){await focusTab(found);try{await chrome.runtime.sendMessage(payload);return;}catch{}}
+    else await queueAction({kind:'focus',...payload});
+    if(found.existed)await focusTab(found);
   })();
-  return true;
 });
 const CHUNK=4*1024*1024,MAX_BYTES=50*1024*1024,KEEP=120000,GENERATE_URL='https://image.novelai.net/ai/generate-image';
 const jobs=new Map(),queue=[];let active=0;

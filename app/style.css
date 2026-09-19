@@ -60,6 +60,10 @@
 .wide-dialog .form-body{max-height:78vh;overflow-y:auto}
 button.error,.action.error{border-color:#e6b2ae;color:#b4453c}
 .artist.is-editing{grid-template-columns:1fr;background:#fbfcff;border-color:#c9d4f5}
+/* 从漂浮提示点进来时，让新建的那张卡片自己闪一下，好找 */
+.artist.is-focus-flash{animation:focus-flash 3.2s ease-out}
+@keyframes focus-flash{0%,35%{box-shadow:0 0 0 3px var(--accent),0 8px 24px #375af53d;border-color:var(--accent)}100%{box-shadow:0 0 0 0 #375af500}}
+@media(prefers-reduced-motion:reduce){.artist.is-focus-flash{animation:none;box-shadow:0 0 0 3px var(--accent)}}
 .artist.is-editing .artist-info{align-self:stretch}
 .edit-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;width:100%}
 .edit-field{display:grid;gap:6px;width:100%;font-size:13px;color:#525b6b}

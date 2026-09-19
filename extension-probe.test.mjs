@@ -51,9 +51,9 @@ test('额度查询走白名单，只带 token 读订阅信息',async()=>{
   await assert.rejects(fail(200,'<html>challenge</html>','text/html'),/没有返回 JSON/);
   await assert.rejects(fetchSubscription('https://api.novelai.net/user/subscription',{token:'bad token',fetcher:async()=>new Response('{}')}),/token/,'token 形状不对就别发出去');
 });
-test('右键菜单：选中文字 → 添加到画师库，交给页面上的「识别画师」',async()=>{
+test('点扩展图标：没开着就打开画师库，开着就切到那个标签页',async()=>{
   const manifest=JSON.parse(await fs.readFile('图片取图扩展/manifest.json','utf8'));
-  assert.deepEqual(manifest.permissions,['contextMenus','storage'],'右键菜单与会话交接各要一个权限，别多要');
+  assert.deepEqual(manifest.permissions,['contextMenus','storage','scripting','activeTab'],'右键菜单、会话交接、漂浮提示各要各自那一个权限，别多要');
   /* 把 import 行去掉后在沙箱里跑一遍后台脚本：菜单建了没、点了之后东西送到哪。 */
   const code=(await fs.readFile('图片取图扩展/background.js','utf8')).replace(/^import .*$/gm,'');
   const run=async({pageOpen=false}={})=>{
@@ -84,42 +84,7 @@ test('右键菜单：选中文字 → 添加到画师库，交给页面上的「
     return {created,clicked,pushed,createdTabs,stored,focused,iconClicks};
   };
   const fresh=await run();
-  const menu=fresh.clicked.find(item=>item.menu)?.menu;
-  assert.ok(menu,'启动时要建右键菜单');
-  assert.equal(menu.id,'artist-library-add');
-  assert.equal(menu.title,'添加到画师库');
-  assert.equal(menu.contexts.join(','),'selection','只在选中文字时出现');
-  assert.equal(typeof fresh.clicked.find(item=>item.onClick)?.onClick,'function','要处理菜单点击');
-  /* 页面没开着：菜单点击后存起来等页面来取 */
-  const cold=await run({pageOpen:false});
-  await cold.clicked.find(item=>item.onClick).onClick({menuItemId:'artist-library-add',selectionText:'  modare\n 105704 '});
-  assert.deepEqual(cold.createdTabs,['chrome-extension://self/app/index.html'],'没有页面就打开画师库');
-  assert.equal(cold.stored.get('pendingArtistText'),'modare 105704','空白折叠后存下来，等页面加载完来取');
-  /* 页面开着：直接推给它，并且不再重复落盘 */
-  const warm=await run({pageOpen:true});
-  await warm.clicked.find(item=>item.onClick).onClick({menuItemId:'artist-library-add',selectionText:'modare'});
-  assert.equal(warm.pushed.length,1,'页面开着就直接送过去');
-  assert.equal(warm.pushed[0].type,'artist-library.add');
-  assert.equal(warm.pushed[0].text,'modare');
-  assert.equal(warm.stored.has('pendingArtistText'),false,'送成功了就不留在待办里');
-  assert.equal(warm.focused.length,2,'把画师库那个标签页切到前面');
-  assert.equal(warm.focused[0][0],7);assert.equal(warm.focused[0][1].active,true);
-  assert.equal(warm.focused[1][0],3);assert.equal(warm.focused[1][1].focused,true);
-  /* 页面加载完成后主动来取：取到的同时清掉，避免下次刷新又跑一遍 */
-  const handoff=await run({pageOpen:false});
-  await handoff.clicked.find(item=>item.onClick).onClick({menuItemId:'artist-library-add',selectionText:'atdan'});
-  const ready=handoff.clicked.find(item=>item.listener)?.listener;
-  const replies=[];
-  const keep=ready({channel:'artist-library-page',type:'ready'},null,value=>replies.push(value));
-  assert.equal(keep,true,'异步回复要返回 true');
-  while(!replies.length)await new Promise(resolve=>setTimeout(resolve,0));
-  assert.equal(replies.length,1);assert.equal(replies[0].text,'atdan');
-  assert.equal(handoff.stored.has('pendingArtistText'),false,'交给页面后要清掉');
-  /* 别的菜单项与我们无关 */
-  const other=await run();
-  await other.clicked.find(item=>item.onClick).onClick({menuItemId:'something-else',selectionText:'modare'});
-  assert.deepEqual(other.createdTabs,[],'别人的菜单项不该开页面');
-  assert.equal(other.stored.has('pendingArtistText'),false);
+  assert.equal(typeof fresh.iconClicks[0],'function','要处理点图标');
   /* 点扩展图标：没开着就开画师库，开着就切过去 */
   const icon=await run({pageOpen:false});
   await icon.iconClicks[0]();
@@ -128,6 +93,152 @@ test('右键菜单：选中文字 → 添加到画师库，交给页面上的「
   await iconWarm.iconClicks[0]();
   assert.deepEqual(iconWarm.createdTabs,[],'已经开着就不再开新标签页');
   assert.equal(iconWarm.focused[0][0],7);
+});
+test('右键菜单：静默建卡（后台标签页）→ 结果画在当前页面右上角 → 点提示回到画师库',async()=>{
+  const manifest=JSON.parse(await fs.readFile('图片取图扩展/manifest.json','utf8'));
+  assert.equal(manifest.permissions.includes('scripting'),true,'要在用户当前页面画漂浮提示');
+  assert.equal(manifest.permissions.includes('activeTab'),true,'只在你主动用菜单的那一页临时取权限，不要全站权限');
+  const code=(await fs.readFile('图片取图扩展/background.js','utf8')).replace(/^import .*$/gm,'');
+  const run=async({pageOpen=false}={})=>{
+    const messages=[],createdTabs=[],injected=[],sentToTabs=[],badges=[],stored=new Map();
+    const chrome={
+      runtime:{
+        id:'self',
+        getURL:path=>'chrome-extension://self/'+path,
+        getContexts:async()=>(pageOpen?[{tabId:7,windowId:3,documentUrl:'chrome-extension://self/app/index.html'}]:[]),
+        sendMessage:async message=>{messages.push(message);if(!pageOpen)throw Error('没有接收方');return null;},
+        onMessage:{addListener:fn=>messages.push({listener:fn})},
+        onInstalled:{addListener:()=>{}},onStartup:{addListener:()=>{}},
+        getManifest:()=>({version:'0.5.0'}),
+      },
+      tabs:{create:async options=>{createdTabs.push(options);return {id:9,windowId:4};},update:async()=>{},sendMessage:async(id,message)=>{sentToTabs.push([id,message]);}},
+      windows:{update:async()=>{}},
+      action:{onClicked:{addListener:()=>{}},setBadgeText:async o=>badges.push(['text',o.text]),setBadgeBackgroundColor:async o=>badges.push(['color',o.color]),setTitle:async o=>badges.push(['title',o.title])},
+      scripting:{executeScript:async o=>{injected.push(o);if(o.target.tabId===666)throw Error('这一页不允许注入');}},
+      contextMenus:{removeAll:cb=>cb&&cb(),create:options=>messages.push({menu:options}),onClicked:{addListener:fn=>messages.push({onMenu:fn})}},
+      storage:{session:{get:async key=>{const value=stored.get(key);return value===undefined?{}:{[key]:value};},set:async obj=>{for(const [key,value] of Object.entries(obj))stored.set(key,value);},remove:async key=>{stored.delete(key);}}},
+    };
+    const sandbox={chrome,setTimeout,clearTimeout,console,URL,fetch:async()=>{throw Error('测试里不该联网');},AbortSignal,Blob,Response,TextDecoder,btoa,
+      /* 取图通道那条监听器要用它：给个「不是自己人」，让它安静让开。 */
+      allowedSender:()=>false};
+    sandbox.globalThis=sandbox;
+    vm.runInNewContext(code,sandbox);
+    const api={messages,createdTabs,injected,sentToTabs,badges,stored,
+      menu:()=>messages.find(item=>item.onMenu).onMenu,
+      /* 真正的 runtime 会把消息派发给所有监听器，替身也照做——后台注册了不止一个监听器。 */
+      receive:(message,respond=()=>{})=>{let returned;for(const item of messages)if(item.listener){const value=item.listener(message,null,respond);if(value!==undefined)returned=value;}return returned;},
+    };
+    return api;
+  };
+  /* 等异步结果：有上限，条件永远不成立时报错而不是把测试挂死。 */
+  const until=async(condition,label)=>{for(let i=0;i<400;i++){if(condition())return;await new Promise(resolve=>setTimeout(resolve,0));}throw Error('等待超时：'+label);};
+  /* 页面没开着：开一个不抢焦点的后台标签页，把待办排进会话存储 */
+  const cold=await run({pageOpen:false});
+  await cold.menu()({menuItemId:'artist-library-add',selectionText:' modare '},{id:42});
+  assert.equal(cold.createdTabs.length,1);
+  assert.equal(cold.createdTabs[0].active,false,'静默：新开的标签页不能抢焦点');
+  assert.match(cold.createdTabs[0].url,/app\/index\.html$/);
+  const queued=cold.stored.get('pendingArtistActions');
+  assert.equal(queued.length,1);
+  assert.equal(queued[0].kind,'create');
+  assert.equal(queued[0].text,'modare');
+  assert.equal(queued[0].sourceTabId,42,'要记住你是在哪个页面点的右键');
+  /* 页面来领待办：领完就清空，避免下次刷新又跑一遍 */
+  const replies=[];
+  cold.receive({channel:'artist-library-page',type:'ready'},value=>replies.push(value));
+  await until(()=>replies.length,'页面领取待办后的回复');
+  assert.equal(replies[0].actions.length,1);
+  assert.equal(replies[0].actions[0].text,'modare');
+  assert.equal(cold.stored.has('pendingArtistActions'),false);
+  /* 页面建完卡回传：在来源标签页里注入漂浮提示 */
+  cold.receive({channel:'artist-library-page',type:'created',result:{ok:true,uid:'0001-modare-105704',name:'modare',danbooruId:105704,works:3,sourceTabId:42}});
+  await until(()=>cold.sentToTabs.length,'把漂浮提示送进来源标签页');
+  assert.equal(cold.injected.length,1,'把提示脚本注入到你右键的那一页');
+  assert.equal(cold.injected[0].files.join(','),'toast.js');
+  assert.equal(cold.injected[0].target.tabId,42);
+  assert.equal(cold.sentToTabs[0][1].type,'artist-library.toast');
+  assert.equal(cold.sentToTabs[0][1].payload.ok,true);
+  assert.equal(cold.sentToTabs[0][1].payload.danbooruId,105704);
+  /* 页面已经开着：直接问它，不再开标签页，也不落盘 */
+  const warm=await run({pageOpen:true});
+  await warm.menu()({menuItemId:'artist-library-add',selectionText:'atdan'},{id:42});
+  assert.deepEqual(warm.createdTabs,[],'已经开着就别再开');
+  assert.equal(warm.messages.some(message=>message.type==='artist-library.create'&&message.text==='atdan'),true,'直接把活交给它');
+  assert.equal(warm.stored.has('pendingArtistActions'),false);
+  /* 菜单本身：只在选中文字时出现，点了别的菜单项不做事 */
+  const menu=cold.messages.find(item=>item.menu)?.menu;
+  assert.equal(menu.title,'添加到画师库');
+  assert.equal(menu.contexts.join(','),'selection');
+  const other=await run();
+  await other.menu()({menuItemId:'something-else',selectionText:'modare'},{id:42});
+  assert.deepEqual(other.createdTabs,[],'别人的菜单项不该开页面');
+  assert.equal(other.stored.has('pendingArtistActions'),false);
+  /* 注入不了（比如那种不允许脚本的页面）：退回角标，别让结果无声无息 */
+  const blocked=await run({pageOpen:false});
+  blocked.receive({channel:'artist-library-page',type:'created',result:{ok:false,reason:'站点上没找到这个画师',sourceTabId:666}});
+  await until(()=>blocked.badges.length,'注入失败时退回角标');
+  assert.equal(blocked.badges.some(item=>item[0]==='text'&&item[1]==='✗'),true,'失败要留个红角标');
+  /* 点漂浮提示：切到画师库（没开着就开一个前台标签页）并让它定位到新卡片 */
+  const click=await run({pageOpen:false});
+  click.receive({type:'artist-library.toast-click',uid:'0001-modare-105704',text:'modare',ok:true});
+  await until(()=>click.createdTabs.length,'点提示时打开画师库');
+  assert.equal(click.createdTabs[0].active,true,'点提示就是要看它，这次要开在前台');
+  const focusAction=click.stored.get('pendingArtistActions');
+  await until(()=>click.stored.get('pendingArtistActions')?.length,'把定位待办排进会话存储');
+  const queued2=click.stored.get('pendingArtistActions');
+  assert.equal(queued2.length>=1,true,'定位待办要排上');
+  assert.equal(queued2[queued2.length-1].kind,'focus');
+  assert.equal(queued2[queued2.length-1].uid,'0001-modare-105704');
+  const warmClick=await run({pageOpen:true});
+  warmClick.receive({type:'artist-library.toast-click',uid:'0001-modare-105704',text:'modare',ok:true});
+  await until(()=>warmClick.messages.some(message=>message.type==='artist-library.focus'),'页面开着时直接推定位消息');
+  assert.equal(warmClick.messages.find(message=>message.type==='artist-library.focus').uid,'0001-modare-105704');
+});
+test('漂浮提示：画在右上角、点一下把结果交回后台',async()=>{
+  const code=await fs.readFile('图片取图扩展/toast.js','utf8');
+  const sent=[],listeners=[],removed=[];
+  const makeNode=()=>{
+    const node={style:{cssText:''},children:[],id:'',hidden:false,textContent:'',
+      attachShadow(){this.shadow=makeNode();return this.shadow;},
+      querySelector(selector){const child=makeNode();child.selector=selector;(this.queried||=[]).push(child);return child;},
+      append(child){this.children.push(child);},
+      addEventListener(type,fn){(this.handlers||={})[type]=fn;},
+      remove(){removed.push(this);},
+      set innerHTML(html){this.html=html;},
+      get innerHTML(){return this.html||'';},
+    };
+    return node;
+  };
+  const document={body:makeNode(),documentElement:makeNode(),createElement:()=>makeNode(),getElementById:()=>null};
+  const sandbox={document,setTimeout,clearTimeout,console,chrome:{runtime:{onMessage:{addListener:fn=>listeners.push(fn)},sendMessage:message=>sent.push(message)}}};
+  sandbox.globalThis=sandbox;
+  vm.runInNewContext(code,sandbox);
+  assert.equal(listeners.length,1,'要挂上消息监听');
+  listeners[0]({type:'artist-library.toast',payload:{ok:true,name:'modare',danbooruId:105704,works:3,uid:'0001-modare-105704',text:'modare'}});
+  const host=document.body.children[0];
+  assert.ok(host,'要往页面里插一个提示节点');
+  assert.match(host.style.cssText,/position:fixed/);
+  assert.match(host.style.cssText,/top:18px/);
+  assert.match(host.style.cssText,/right:18px/);
+  assert.match(host.style.cssText,/z-index:2147483647/,'要盖在页面内容之上');
+  const shadow=host.shadow;
+  const textOf=selector=>shadow.queried.find(node=>node.selector===selector)?.textContent;
+  assert.equal(textOf('strong'),'已添加「modare」');
+  assert.equal(textOf('p'),'Danbooru #105704 · 3 张作品','要写清编号与作品数');
+  assert.match(shadow.innerHTML,/box-shadow/, '提示要有漂浮感');
+  const clickable=shadow.queried.find(node=>node.selector==='.box');
+  assert.equal(typeof clickable.handlers?.click,'function','点提示要能进画师库');
+  clickable.handlers.click();
+  assert.equal(sent[0].type,'artist-library.toast-click');
+  assert.equal(sent[0].uid,'0001-modare-105704');
+  assert.equal(sent[0].ok,true);
+  /* 失败的那种：红底、写原因 */
+  listeners[0]({type:'artist-library.toast',payload:{ok:false,reason:'站点上没找到这个画师',text:'xyz'}});
+  const failed=document.body.children[1];
+  assert.equal(failed.shadow.queried.find(node=>node.selector==='strong')?.textContent,'没能添加画师');
+  assert.equal(failed.shadow.queried.find(node=>node.selector==='p')?.textContent,'站点上没找到这个画师');
+  assert.match(failed.shadow.innerHTML,/c0392b/,'失败用红色');
+  assert.equal(failed.shadow.innerHTML.includes('177a4b'),false,'别把上一次成功的配色带过来');
 });
 test('生图失败时带出服务器原话，且不把错误正文当成图片',async()=>{
   const fail=(status,body,type='application/json')=>generateImage('https://image.novelai.net/ai/generate-image','{}',{token:'pst-abcdefghijklmnop',fetcher:async()=>new Response(body,{status,headers:{'content-type':type}})});

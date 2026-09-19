@@ -88,6 +88,8 @@
     const kept=remember?await ArtistFolderMemory.save(chosen):true;
     const warnings=FolderStore.takeWarnings(),tail=kept?'':'；这个环境记不住文件夹，下次还得重新选';
     status(warnings.length?`已连接文件夹（${from}），但有 ${warnings.length} 处问题：${warnings.join('；')}${tail}`:`已连接文件夹（${from}） · 图片滚动到附近才加载${tail}`,warnings.length>0);
+    /* 文件夹一就绪，就把右键菜单排队等着的那张卡建出来 */
+    if(queuedCreate)runQueuedCreate();
   }
   async function connectFolder(){
     if(busy)return;
@@ -925,12 +927,92 @@
     status(`已从右键菜单收到「${value}」，正在识别画师…`);
     detectArtist();
   }
-  /* 页面自己来找后台要一次待办（菜单点了但页面是刚打开的，就靠这一次领取）。 */
+  /* 右键菜单「添加到画师库」：直接按选中文字建一张新卡（等价于批量导入一位）。
+     只有能定位到唯一的 Danbooru 画师、并且取到作品，才算成功——不做「先建个空卡再说」这种脏数据。 */
+  async function createArtistFromSelection(text){
+    const value=String(text||'').replace(/\s+/g,' ').trim().slice(0,200);
+    if(!value)return {ok:false,reason:'选中的文字是空的。',text:value};
+    if(!folder)return {ok:false,reason:'还没有选择数据文件夹：先打开画师库选一次，之后再右键就直接建卡了。',text:value};
+    if(busy||syncingAll)return {ok:false,reason:'画师库正忙（保存或刷新中），过一会儿再右键一次。',text:value};
+    let plan;try{plan=ArtistLookup.plan(value,{match:'name'});}catch(error){return {ok:false,reason:error.message,text:value};}
+    let found;try{found=await ArtistLookup.lookup(plan);}catch(error){return {ok:false,reason:error.message,text:value};}
+    /* 选中的常常是「tag 编号」「tag（@tag）」这类一整段：整段没匹配上，就再试第一个像标签的词。 */
+    if(!found.length&&plan.kind==='name'&&/\s/.test(value)){
+      const first=value.split(/\s+/)[0].replace(/^@/,'');
+      if(/^[\w-]{2,}$/.test(first)){try{plan=ArtistLookup.plan(first,{match:'name'});found=await ArtistLookup.lookup(plan);}catch{}}
+    }
+    const wanted=String(plan.query||'').toLowerCase(),exact=found.find(item=>item.name.toLowerCase()===wanted);
+    const chosen=plan.kind==='id'?found[0]:(exact||(found.length===1?found[0]:null));
+    if(!chosen)return {ok:false,reason:found.length?`匹配到 ${found.length} 个候选（${found.slice(0,3).map(item=>item.name).join('、')}），需要手动确认`:'站点上没找到这个画师',text:value};
+    const exists=data.artists.find(item=>item.name.toLowerCase()===chosen.name.toLowerCase()||(chosen.id&&item.danbooruId===chosen.id));
+    if(exists)return {ok:false,reason:`「${exists.name}」已经在画师库里了`,uid:exists.uid,text:value};
+    let works=[];try{works=await ArtistLookup.posts(chosen.name,{limit:3,order:data.workOrder});}catch{}
+    if(!works.length)return {ok:false,reason:`找到「${chosen.name}」，但没取到作品（可能都被隐藏了），没有建卡`,text:value};
+    try{
+      const next=clone(data),uid=ArtistId.issue(next.artists,{name:chosen.name,danbooruId:chosen.id});
+      const [saved,quantity]=await Promise.all([cacheWorks(uid,works),ArtistLookup.details(chosen.name,data.cutoffDate,{previews:false,order:data.workOrder})]);
+      next.artists.push({uid,order:next.artists.length+1,name:chosen.name,danbooruId:chosen.id,counts:{...quantity.counts},category:null,score:null,aliases:[...chosen.aliases],alias:null,tags:[],artistUrl:chosen.pageUrl,description:'',note:'',works:saved});
+      await save(next,`右键菜单已添加 ${chosen.name} · ${saved.length} 张作品`);
+      return {ok:true,uid,name:chosen.name,danbooruId:chosen.id,works:saved.length,text:value};
+    }catch(error){return {ok:false,reason:'写入失败：'+error.message,text:value};}
+  }
+  /* 点漂浮提示回到页面时：清掉筛选、滚到那位画师、闪一下边框。 */
+  function focusArtist(uid,text){
+    if(!uid){if(text)addFromSelection(text);return;}
+    const artist=data.artists.find(item=>item.uid===uid);
+    if(!artist){if(text)addFromSelection(text);else status('这张卡片已经不在库里了。',true);return;}
+    reset();state.query='';$('search').value='';render();
+    ArtistGallery.pin(uid,true);
+    const selector='.artist-slot[data-uid="'+((typeof CSS!=='undefined'&&CSS.escape)?CSS.escape(uid):uid)+'"]';
+    const slot=document.querySelector(selector);
+    if(slot?.scrollIntoView)slot.scrollIntoView({block:'center'});
+    ArtistGallery.mount(uid);
+    const card=slot?.firstElementChild||slot?.children?.[0];
+    if(card?.classList){card.classList.add('is-focus-flash');setTimeout(()=>card.classList.remove('is-focus-flash'),3200);}
+    setTimeout(()=>ArtistGallery.pin(uid,false),6000);
+    status(`已定位到「${artist.name}」`);
+  }
+  /* 页面自己来找后台要一次待办（右键时页面还没打开的那种），并把建卡结果回传。 */
   function bindExtensionMessages(){
     const runtime=typeof chrome!=='undefined'?chrome.runtime:null;
     if(!runtime?.onMessage?.addListener)return;
-    runtime.onMessage.addListener(message=>{if(message?.type==='artist-library.add')addFromSelection(message.text);});
-    try{runtime.sendMessage({channel:'artist-library-page',type:'ready'}).then(result=>{if(result?.text)addFromSelection(result.text);}).catch(()=>{});}catch{}
+    runtime.onMessage.addListener((message,sender,respond)=>{
+      if(message?.type==='artist-library.create'){
+        createArtistFromSelection(message.text).then(result=>respond({...result,requestId:message.requestId,sourceTabId:message.sourceTabId}));
+        return true;
+      }
+      if(message?.type==='artist-library.focus'){focusArtist(message.uid,message.text);return;}
+    });
+    const send=payload=>{try{runtime.sendMessage(payload).catch(()=>{});}catch{}};
+    try{
+      runtime.sendMessage({channel:'artist-library-page',type:'ready'}).then(answer=>{
+        for(const action of answer?.actions||[])handleAction(action,send);
+      }).catch(()=>{});
+    }catch{}
+  }
+  /* 待办里的建卡排到「数据文件夹就绪」之后再跑：页面刚被右键菜单打开时，
+     文件夹是这一刻才接上的（可能来自记忆、也可能要用户选一次），急不得。 */
+  let queuedCreate=null,queuedTimer=null;
+  function runCreate(action,send){
+    createArtistFromSelection(action.text).then(result=>send({channel:'artist-library-page',type:'created',result:{...result,requestId:action.requestId,sourceTabId:action.sourceTabId}}));
+  }
+  function runQueuedCreate(){
+    clearTimeout(queuedTimer);queuedTimer=null;
+    const queued=queuedCreate;queuedCreate=null;
+    if(queued)runCreate(queued.action,queued.send);
+  }
+  function handleAction(action,send){
+    if(action?.kind==='create'){
+      if(!folder&&!queuedCreate){
+        queuedCreate={action,send};
+        status('右键菜单要添加一张新卡片：正在准备数据文件夹，接上后立刻写入…');
+        queuedTimer=setTimeout(()=>{if(queuedCreate)runQueuedCreate();},15000);
+        return;
+      }
+      runCreate(action,send);
+      return;
+    }
+    if(action?.kind==='focus')focusArtist(action.uid,action.text);
   }
   /* ---- 生图参数：只存在本机浏览器里，绝不写进画师库数据文件，导出备份也就不会带 token ---- */
   const GEN_LISTS=[['gen-model',()=>ArtistNovelAI.MODELS],['gen-size',()=>ArtistNovelAI.SIZES],['gen-sampler',()=>ArtistNovelAI.SAMPLERS],['gen-uc',()=>ArtistNovelAI.UC_PRESETS]];
