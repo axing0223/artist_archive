@@ -51,6 +51,84 @@ test('额度查询走白名单，只带 token 读订阅信息',async()=>{
   await assert.rejects(fail(200,'<html>challenge</html>','text/html'),/没有返回 JSON/);
   await assert.rejects(fetchSubscription('https://api.novelai.net/user/subscription',{token:'bad token',fetcher:async()=>new Response('{}')}),/token/,'token 形状不对就别发出去');
 });
+test('右键菜单：选中文字 → 添加到画师库，交给页面上的「识别画师」',async()=>{
+  const manifest=JSON.parse(await fs.readFile('图片取图扩展/manifest.json','utf8'));
+  assert.deepEqual(manifest.permissions,['contextMenus','storage'],'右键菜单与会话交接各要一个权限，别多要');
+  /* 把 import 行去掉后在沙箱里跑一遍后台脚本：菜单建了没、点了之后东西送到哪。 */
+  const code=(await fs.readFile('图片取图扩展/background.js','utf8')).replace(/^import .*$/gm,'');
+  const run=async({pageOpen=false}={})=>{
+    const created=[],clicked=[],pushed=[],createdTabs=[],stored=new Map(),focused=[],iconClicks=[];
+    const chrome={
+      runtime:{
+        id:'self',
+        getURL:path=>'chrome-extension://self/'+path,
+        getContexts:async()=>(pageOpen?[{tabId:7,windowId:3,documentUrl:'chrome-extension://self/app/index.html'}]:[]),
+        sendMessage:async message=>{pushed.push(message);if(!pageOpen)throw Error('没有接收方');},
+        onMessage:{addListener:fn=>clicked.push({listener:fn})},
+        onInstalled:{addListener:fn=>created.push({installed:fn})},
+        onStartup:{addListener:fn=>created.push({startup:fn})},
+      },
+      tabs:{create:async({url})=>{createdTabs.push(url);return {id:9,windowId:4};},update:async(id,info)=>focused.push([id,info])},
+      windows:{update:async(id,info)=>focused.push([id,info])},
+      action:{onClicked:{addListener:fn=>iconClicks.push(fn)}},
+      contextMenus:{
+        removeAll:cb=>{created.length=0;cb&&cb();},
+        create:options=>clicked.push({menu:options}),
+        onClicked:{addListener:fn=>clicked.push({onClick:fn})},
+      },
+      storage:{session:{get:async key=>{const value=stored.get(key);return value===undefined?{}:{[key]:value};},set:async obj=>{for(const [key,value] of Object.entries(obj))stored.set(key,value);},remove:async key=>{stored.delete(key);}}},
+    };
+    const sandbox={chrome,setTimeout,clearTimeout,console,URL,fetch:async()=>{throw Error('测试里不该联网');},AbortSignal,Blob,Response,TextDecoder,btoa};
+    sandbox.globalThis=sandbox;
+    vm.runInNewContext(code,sandbox);
+    return {created,clicked,pushed,createdTabs,stored,focused,iconClicks};
+  };
+  const fresh=await run();
+  const menu=fresh.clicked.find(item=>item.menu)?.menu;
+  assert.ok(menu,'启动时要建右键菜单');
+  assert.equal(menu.id,'artist-library-add');
+  assert.equal(menu.title,'添加到画师库');
+  assert.equal(menu.contexts.join(','),'selection','只在选中文字时出现');
+  assert.equal(typeof fresh.clicked.find(item=>item.onClick)?.onClick,'function','要处理菜单点击');
+  /* 页面没开着：菜单点击后存起来等页面来取 */
+  const cold=await run({pageOpen:false});
+  await cold.clicked.find(item=>item.onClick).onClick({menuItemId:'artist-library-add',selectionText:'  modare\n 105704 '});
+  assert.deepEqual(cold.createdTabs,['chrome-extension://self/app/index.html'],'没有页面就打开画师库');
+  assert.equal(cold.stored.get('pendingArtistText'),'modare 105704','空白折叠后存下来，等页面加载完来取');
+  /* 页面开着：直接推给它，并且不再重复落盘 */
+  const warm=await run({pageOpen:true});
+  await warm.clicked.find(item=>item.onClick).onClick({menuItemId:'artist-library-add',selectionText:'modare'});
+  assert.equal(warm.pushed.length,1,'页面开着就直接送过去');
+  assert.equal(warm.pushed[0].type,'artist-library.add');
+  assert.equal(warm.pushed[0].text,'modare');
+  assert.equal(warm.stored.has('pendingArtistText'),false,'送成功了就不留在待办里');
+  assert.equal(warm.focused.length,2,'把画师库那个标签页切到前面');
+  assert.equal(warm.focused[0][0],7);assert.equal(warm.focused[0][1].active,true);
+  assert.equal(warm.focused[1][0],3);assert.equal(warm.focused[1][1].focused,true);
+  /* 页面加载完成后主动来取：取到的同时清掉，避免下次刷新又跑一遍 */
+  const handoff=await run({pageOpen:false});
+  await handoff.clicked.find(item=>item.onClick).onClick({menuItemId:'artist-library-add',selectionText:'atdan'});
+  const ready=handoff.clicked.find(item=>item.listener)?.listener;
+  const replies=[];
+  const keep=ready({channel:'artist-library-page',type:'ready'},null,value=>replies.push(value));
+  assert.equal(keep,true,'异步回复要返回 true');
+  while(!replies.length)await new Promise(resolve=>setTimeout(resolve,0));
+  assert.equal(replies.length,1);assert.equal(replies[0].text,'atdan');
+  assert.equal(handoff.stored.has('pendingArtistText'),false,'交给页面后要清掉');
+  /* 别的菜单项与我们无关 */
+  const other=await run();
+  await other.clicked.find(item=>item.onClick).onClick({menuItemId:'something-else',selectionText:'modare'});
+  assert.deepEqual(other.createdTabs,[],'别人的菜单项不该开页面');
+  assert.equal(other.stored.has('pendingArtistText'),false);
+  /* 点扩展图标：没开着就开画师库，开着就切过去 */
+  const icon=await run({pageOpen:false});
+  await icon.iconClicks[0]();
+  assert.deepEqual(icon.createdTabs,['chrome-extension://self/app/index.html']);
+  const iconWarm=await run({pageOpen:true});
+  await iconWarm.iconClicks[0]();
+  assert.deepEqual(iconWarm.createdTabs,[],'已经开着就不再开新标签页');
+  assert.equal(iconWarm.focused[0][0],7);
+});
 test('生图失败时带出服务器原话，且不把错误正文当成图片',async()=>{
   const fail=(status,body,type='application/json')=>generateImage('https://image.novelai.net/ai/generate-image','{}',{token:'pst-abcdefghijklmnop',fetcher:async()=>new Response(body,{status,headers:{'content-type':type}})});
   await assert.rejects(fail(401,JSON.stringify({message:'Invalid token'})),/token 被拒绝.*Invalid token/);

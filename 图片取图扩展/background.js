@@ -1,19 +1,55 @@
 import {fetchImage,resolvePost,fetchApi,imageUrl,generateImage,fetchSubscription} from './probe.mjs';
 import {allowedSender} from './bridge-policy.mjs';
-/* 点扩展图标打开画师库（跑在扩展页里，直连站点）；已经开着就切过去，别开一堆标签页。
-   没有 getContexts（旧版 Chrome）或还没构建出镜像时，退回到单图测试页。 */
-const LIBRARY='app/index.html';
-chrome.action.onClicked.addListener(async()=>{
+const LIBRARY='app/index.html',MENU_ID='artist-library-add',PENDING_KEY='pendingArtistText',SELECTION_MAX=200;
+/* 找到（或打开）画师库那个标签页。用 getContexts 认自己扩展的页面，不额外要 tabs 权限。 */
+async function libraryTab(){
   const url=chrome.runtime.getURL(LIBRARY);
   try{
     if(chrome.runtime.getContexts){
       const contexts=await chrome.runtime.getContexts({contextTypes:['TAB'],documentUrls:[url]});
       const open=contexts.find(context=>context.tabId!=null&&context.tabId>=0);
-      if(open){await chrome.tabs.update(open.tabId,{active:true});await chrome.windows.update(open.windowId,{focused:true});return;}
+      if(open)return {tabId:open.tabId,windowId:open.windowId,existed:true};
     }
   }catch{}
-  try{await chrome.tabs.create({url});}
-  catch{chrome.tabs.create({url:chrome.runtime.getURL('test.html')});}
+  try{const tab=await chrome.tabs.create({url});return {tabId:tab?.id,windowId:tab?.windowId,existed:false};}
+  catch{return {tabId:null,windowId:null,existed:false};}
+}
+async function focusTab(found){
+  if(!found.existed)return;
+  try{if(found.tabId!=null)await chrome.tabs.update(found.tabId,{active:true});}catch{}
+  try{if(found.windowId!=null)await chrome.windows.update(found.windowId,{focused:true});}catch{}
+}
+/* 点扩展图标打开画师库；已经开着就切过去，别开一堆标签页。 */
+chrome.action.onClicked.addListener(async()=>{const found=await libraryTab();await focusTab(found);});
+/* 右键菜单：选中文字 → 添加到画师库（把文字交给画师库的「识别画师」）。
+   菜单要在每次服务工作线程启动时重建（MV3 会被回收），先清空再建，免得重复 id 报错。 */
+function buildMenu(){
+  chrome.contextMenus.removeAll(()=>chrome.contextMenus.create({id:MENU_ID,title:'添加到画师库',contexts:['selection']}));
+}
+chrome.runtime.onInstalled.addListener(buildMenu);
+chrome.runtime.onStartup.addListener(buildMenu);
+buildMenu();
+chrome.contextMenus.onClicked.addListener(async info=>{
+  if(info.menuItemId!==MENU_ID)return;
+  const text=String(info.selectionText||'').replace(/\s+/g,' ').trim().slice(0,SELECTION_MAX);
+  if(!text)return;
+  const found=await libraryTab();
+  await focusTab(found);
+  /* 页面开着就直接推给它；刚打开的那个还没加载完，推不过去，就留在会话存储里等它来取。 */
+  if(found.existed){
+    try{await chrome.runtime.sendMessage({type:'artist-library.add',text});return;}catch{}
+  }
+  try{await chrome.storage.session.set({[PENDING_KEY]:text});}catch{}
+});
+/* 画师库页面加载完成后会来问一次「有没有待办的选中文字」，这里把存着的那条交给它。 */
+chrome.runtime.onMessage.addListener((message,sender,respond)=>{
+  if(message?.channel!=='artist-library-page'||message.type!=='ready')return;
+  (async()=>{
+    let text='';
+    try{const store=await chrome.storage.session.get(PENDING_KEY);text=String(store?.[PENDING_KEY]||'');if(text)await chrome.storage.session.remove(PENDING_KEY);}catch{}
+    respond({text});
+  })();
+  return true;
 });
 const CHUNK=4*1024*1024,MAX_BYTES=50*1024*1024,KEEP=120000,GENERATE_URL='https://image.novelai.net/ai/generate-image';
 const jobs=new Map(),queue=[];let active=0;

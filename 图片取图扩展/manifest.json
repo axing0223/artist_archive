@@ -4,6 +4,7 @@
   "version": "0.5.0",
   "description": "本地画师库：可以直接在扩展里打开画师库（直连 Danbooru 与 NovelAI），也保留下单图取图测试页。",
   "host_permissions": ["https://danbooru.donmai.us/*", "https://cdn.donmai.us/*", "https://image.novelai.net/*", "https://api.novelai.net/*"],
+  "permissions": ["contextMenus", "storage"],
   "background": {"service_worker": "background.js", "type": "module"},
   "content_scripts": [{"matches": ["file:///*"], "js": ["content.js"], "run_at": "document_idle", "all_frames": false}],
   "action": {"default_title": "打开画师库（详细：右键 → 选项）"},

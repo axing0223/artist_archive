@@ -853,8 +853,7 @@
       },'action primary-action');add.disabled=exists();picker.tools.append(add);row.append(detail);$('quick-results').append(row);
     }
   }
-  async function detectArtist(){
-    cancelLookup();const sequence=lookupSequence,value=$('quick-input').value.trim();clearCandidates();$('quick-site').hidden=true;
+  async function detectArtist(){    cancelLookup();const sequence=lookupSequence,value=$('quick-input').value.trim();clearCandidates();$('quick-site').hidden=true;
     if(!value){$('quick-status').textContent='输入标签或链接，识别后点击候选画师添加。';return;}
     let p;try{p=ArtistLookup.plan(value);}catch(error){$('quick-status').textContent=error.message;return;}
     $('quick-site').href=p.siteUrl;$('quick-site').hidden=false;
@@ -870,6 +869,26 @@
     if(e?.isComposing)return;
     const value=$('quick-input').value.trim();$('quick-status').textContent=value?'等待输入完成…':'输入标签或链接，识别后点击候选画师添加。';
     if(value.length>=2||/^\d$/.test(value))lookupTimer=setTimeout(detectArtist,800);
+  }
+  /* 扩展右键菜单「添加到画师库」：把选中的文字送进「添加下一位画师」这条路——
+     填进输入框、滚到那一块、直接开始识别，接下来和手动输入完全一样。 */
+  function addFromSelection(text){
+    const value=String(text||'').replace(/\s+/g,' ').trim().slice(0,200);
+    if(!value){status('选中的文字是空的，没有可识别的画师。',true);return;}
+    cancelLookup();clearCandidates();
+    const input=$('quick-input');input.value=value;
+    const section=$('quick-add');
+    if(section?.scrollIntoView)section.scrollIntoView({block:'center'});
+    if(input.focus)input.focus();
+    status(`已从右键菜单收到「${value}」，正在识别画师…`);
+    detectArtist();
+  }
+  /* 页面自己来找后台要一次待办（菜单点了但页面是刚打开的，就靠这一次领取）。 */
+  function bindExtensionMessages(){
+    const runtime=typeof chrome!=='undefined'?chrome.runtime:null;
+    if(!runtime?.onMessage?.addListener)return;
+    runtime.onMessage.addListener(message=>{if(message?.type==='artist-library.add')addFromSelection(message.text);});
+    try{runtime.sendMessage({channel:'artist-library-page',type:'ready'}).then(result=>{if(result?.text)addFromSelection(result.text);}).catch(()=>{});}catch{}
   }
   /* ---- 生图参数：只存在本机浏览器里，绝不写进画师库数据文件，导出备份也就不会带 token ---- */
   const GEN_LISTS=[['gen-model',()=>ArtistNovelAI.MODELS],['gen-size',()=>ArtistNovelAI.SIZES],['gen-sampler',()=>ArtistNovelAI.SAMPLERS],['gen-uc',()=>ArtistNovelAI.UC_PRESETS]];
@@ -942,7 +961,7 @@
     $('gen-check').onclick=()=>checkExtension();
     $('history-date').onchange=async()=>{const date=$('history-date').value;if(!/^\d{4}-\d{2}-\d{2}$/.test(date)){ $('history-date').value=data.cutoffDate;return;}const next=clone(data);next.cutoffDate=date;await save(next,'已保存截至日期；下次保存画师时会按新日期更新该画师的数量。');};
     $('work-order').onchange=async()=>{const value=$('work-order').value;if(!WORK_ORDERS.includes(value)){ $('work-order').value=data.workOrder;return;}const next=clone(data);next.workOrder=value;await save(next,'已改为按「'+WORK_ORDER_LABELS[value]+'」采集作品');};
-    $('add-artist').onclick=()=>startEdit(null);$('quick-form').onsubmit=e=>{e.preventDefault();detectArtist();};$('quick-input').oninput=quickChanged;$('quick-input').oncompositionend=quickChanged;
+    $('add-artist').onclick=()=>startEdit(null);$('quick-form').onsubmit=e=>{e.preventDefault();detectArtist();};$('quick-input').oninput=quickChanged;$('quick-input').oncompositionend=quickChanged;bindExtensionMessages();
     $('quick-manual').onclick=()=>{cancelLookup();startEdit(null);const value=$('quick-input').value.trim();if(value&&draft){try{const p=ArtistLookup.plan(value);if(p.kind==='name')draft.name=p.query;else if(p.kind==='url')draft.artistUrl=p.query;render();}catch{}}};
     $('manage-tags').onclick=()=>{if(!busy){manageFilter.category='';manageFilter.tag='';$('category-search').value='';$('tag-search').value='';showManageTab('category');listCategories();listTags();$('tag-manager').showModal();}};$('close-tags').onclick=()=>$('tag-manager').close();
     $('tab-category').onclick=()=>showManageTab('category');$('tab-tag').onclick=()=>showManageTab('tag');

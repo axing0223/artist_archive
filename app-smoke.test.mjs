@@ -46,8 +46,8 @@ class FakeDir{
   async *values(){yield* this.items.values();}
   async removeEntry(name){if(!this.items.has(name))throw new DOMException('找不到','NotFoundError');this.items.delete(name);}
 }
-async function boot(){
-  const elements=new Map(),state={renders:[],queried:[],scrolled:[],mounted:[],copied:[]};
+async function boot(options={}){
+  const elements=new Map(),state={renders:[],queried:[],scrolled:[],mounted:[],copied:[],pageListeners:[],pendingText:options.pendingText||''};
   const document={getElementById:id=>{if(!elements.has(id))elements.set(id,new El());return elements.get(id);},createElement:tag=>new El(tag),
     querySelector:selector=>{state.queried.push(selector);return {scrollIntoView:()=>state.scrolled.push(selector),classList:{add(){},remove(){}},getBoundingClientRect:()=>({top:0,height:0,left:0,width:0})};},
     querySelectorAll:()=>[],documentElement:new El('html')};
@@ -61,7 +61,9 @@ class FileUrl extends URL{}
 FileUrl.createObjectURL=()=>'blob:x';FileUrl.revokeObjectURL=()=>{};
   const ctx={
     window:{innerWidth:1200,innerHeight:800,listeners:{},addEventListener(type,fn){(this.listeners[type]??=[]).push(fn);},showDirectoryPicker:async()=>new FakeDir()},document,localStorage,navigator:{clipboard:{writeText:async text=>{state.copied.push(text);}}},
-    IntersectionObserver:IO,ResizeObserver:RO,Option,
+    /* 扩展页里才有 chrome.runtime：页面靠它接右键菜单送来的文字，也要主动去要一次待办。 */
+    chrome:{runtime:{onMessage:{addListener:fn=>state.pageListeners.push(fn)},sendMessage:async()=>({text:state.pendingText||''})}},
+    IntersectionObserver:IO,ResizeObserver:RO,Option,AbortController,AbortSignal,
     crypto:{randomUUID:()=>'uuid-'+Math.random().toString(36).slice(2)},
     fetch:async()=>{throw Error('测试中不应联网');},
     URL:FileUrl,Blob,structuredClone,setTimeout,clearTimeout,requestAnimationFrame:fn=>fn(),
@@ -875,6 +877,33 @@ test('批量导入勾了生成时：导入照常先跑完，生成需求进后�
   assert.equal(getEl(e2,'gen-queue').hidden,true,'没勾就不该有排队');
   assert.equal(String(getEl(e2,'batch-message').textContent).includes('排入'),false);
   assert.equal(fired,0);
+});
+test('右键菜单送来的文字会走一遍「添加下一位画师」：填进输入框并开始识别',async()=>{
+  const {elements,state,ctx}=await boot();
+  const asked=[];
+  stub(ctx,{lookup:async plan=>{asked.push(plan.query);return [{id:105704,name:'modare',aliases:[],pageUrl:''}];},details:async()=>({counts:{},works:[]})});
+  assert.equal(state.pageListeners.length,1,'页面要挂上扩展消息的监听');
+  state.pageListeners[0]({type:'artist-library.add',text:'  modare\n105704 '});
+  assert.equal(getEl(elements,'quick-input').value,'modare 105704','选中的文字要填进「添加下一位画师」的输入框');
+  assert.match(String(getEl(elements,'storage-status').textContent),/右键菜单/,'状态栏要说明这条从哪来');
+  await wait(20);
+  assert.deepEqual(asked,['modare 105704'],'要直接开始识别，不用再手点');
+  /* 空文字不折腾 */
+  const {elements:e2,state:s2}=await boot();
+  s2.pageListeners[0]({type:'artist-library.add',text:'   '});
+  assert.equal(getEl(e2,'quick-input').value,'');
+  assert.match(String(getEl(e2,'storage-status').textContent),/空/);
+  /* 不是我们的消息就不理 */
+  const {elements:e3,state:s3}=await boot();
+  s3.pageListeners[0]({type:'something-else',text:'modare'});
+  assert.equal(getEl(e3,'quick-input').value,'');
+});
+test('页面加载完成后会向后台要一次待办：菜单点了但页面是刚打开的那种情况',async()=>{
+  const app=await fs.readFile('app/app.js','utf8');
+  assert.match(app,/bindExtensionMessages\(\);/,'init 里要主动领取一次（页面刚打开时菜单那条只在后台存着）');
+  const {elements}=await boot({pendingText:'atdan'});
+  await wait(20);
+  assert.equal(getEl(elements,'quick-input').value,'atdan','加载完就该把待办领回来并填进输入框');
 });
 test('生图排队接进了页面：公用一条队列，间隔取 5±3 秒的抖动值',async()=>{
   const html=await fs.readFile('app/index.html','utf8'),app=await fs.readFile('app/app.js','utf8');
