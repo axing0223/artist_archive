@@ -1,24 +1,27 @@
 import {fetchImage,resolvePost,fetchApi,imageUrl,generateImage,fetchSubscription} from './probe.mjs';
 import {allowedSender} from './bridge-policy.mjs';
 const LIBRARY='app/index.html',MENU_ID='artist-library-add',PENDING_KEY='pendingArtistActions',SELECTION_MAX=200;
-/* 找到（或打开）画师库那个标签页。用 getContexts 认自己扩展的页面，不额外要 tabs 权限。
-   background=true 时新开的标签页不抢焦点——右键菜单那条路要的就是「静默」。 */
-async function libraryTab({background=false}={}){
-  const url=chrome.runtime.getURL(LIBRARY);
+/* 只找已经开着的画师库页面，绝不主动创建（右键菜单那条路不许开页面）。 */
+async function findLibraryTab(){
   try{
     if(chrome.runtime.getContexts){
-      const contexts=await chrome.runtime.getContexts({contextTypes:['TAB'],documentUrls:[url]});
+      const contexts=await chrome.runtime.getContexts({contextTypes:['TAB'],documentUrls:[chrome.runtime.getURL(LIBRARY)]});
       const open=contexts.find(context=>context.tabId!=null&&context.tabId>=0);
       if(open)return {tabId:open.tabId,windowId:open.windowId,existed:true};
     }
   }catch{}
-  try{const tab=await chrome.tabs.create({url,active:!background});return {tabId:tab?.id,windowId:tab?.windowId,existed:false};}
-  catch{return {tabId:null,windowId:null,existed:false};}
+  return null;
 }
-async function focusTab(found){
-  if(!found.existed)return;
-  try{if(found.tabId!=null)await chrome.tabs.update(found.tabId,{active:true});}catch{}
-  try{if(found.windowId!=null)await chrome.windows.update(found.windowId,{focused:true});}catch{}
+/* 用户明确要打开画师库时（点图标、点漂浮提示）才创建，并切到前台。 */
+async function showLibrary(){
+  const found=await findLibraryTab();
+  if(found){
+    try{if(found.tabId!=null)await chrome.tabs.update(found.tabId,{active:true});}catch{}
+    try{if(found.windowId!=null)await chrome.windows.update(found.windowId,{focused:true});}catch{}
+    return found;
+  }
+  try{const tab=await chrome.tabs.create({url:chrome.runtime.getURL(LIBRARY),active:true});return {tabId:tab?.id,windowId:tab?.windowId,existed:false};}
+  catch{return null;}
 }
 /* 页面还没接管时把待办排在会话存储里（内存态），它加载完成后会来领。
    MV3 的服务工作线程随时可能被回收，所以不能只放在内存变量里。 */
@@ -29,7 +32,7 @@ async function drainActions(){
   try{const store=await chrome.storage.session.get(PENDING_KEY);const list=Array.isArray(store?.[PENDING_KEY])?store[PENDING_KEY]:[];if(list.length)await chrome.storage.session.remove(PENDING_KEY);return list;}catch{return [];}
 }
 /* 点扩展图标打开画师库；已经开着就切过去，别开一堆标签页。 */
-chrome.action.onClicked.addListener(async()=>{const found=await libraryTab();await focusTab(found);});
+chrome.action.onClicked.addListener(()=>{showLibrary();});
 /* 右键菜单：选中文字 → 添加到画师库。
    真正落盘必须由画师库页面来做（数据在你选的文件夹里，只有页面拿得到那套 File System Access 逻辑），
    所以这里的做法是：页面开着就交给它，没开着就悄悄开一个后台标签页（active:false，不抢焦点），
@@ -62,19 +65,21 @@ const toast=async payload=>{
   await badge(payload?.ok===true,payload?.ok===true?`已添加「${payload?.name||''}」`:'添加失败：'+(payload?.reason||''));
   return false;
 };
+let handledRequestId=null;
 chrome.contextMenus.onClicked.addListener(async (info,tab)=>{
   if(info.menuItemId!==MENU_ID)return;
   const text=String(info.selectionText||'').replace(/\s+/g,' ').trim().slice(0,SELECTION_MAX);
   if(!text)return;
   const request={text,requestId:Date.now().toString(36)+Math.random().toString(36).slice(2,7),sourceTabId:Number.isInteger(tab?.id)?tab.id:null};
   try{await chrome.action.setBadgeBackgroundColor({color:'#3b4a63'});await chrome.action.setBadgeText({text:'…'});}catch{}
-  const found=await libraryTab({background:true});
-  if(found.existed){
-    /* 页面已经开着：直接问它，结果会以 artist-library-page/created 回来 */
-    try{await chrome.runtime.sendMessage({type:'artist-library.create',...request});return;}catch{}
-  }
-  /* 刚打开的那个还没接管，先排进待办等它来领 */
+  /* 先弹出「正在尝试」，再问开着的画师库；没人接就记下来，等你下次打开画师库时自动添加。
+     全程不主动开页面。 */
+  await toast({state:'pending',text,sourceTabId:request.sourceTabId});
+  try{await chrome.runtime.sendMessage({type:'artist-library.create',...request});return;}
+  catch{}
   await queueAction({kind:'create',...request});
+  await toast({state:'queued',text,sourceTabId:request.sourceTabId});
+  try{await chrome.action.setBadgeText({text:''});}catch{}
 });
 /* 画师库页面的消息：加载完成后领取待办；建完卡回传结果。 */
 chrome.runtime.onMessage.addListener((message,sender,respond)=>{
@@ -82,6 +87,10 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
   if(message.type==='ready'){drainActions().then(actions=>respond({actions}));return true;}
   if(message.type==='created'){
     const result=message.result||{};
+    /* 同一个请求只认第一条结果：万一同时开着两个画师库页面，第二个会报「已经在库里」，
+       不该把已经显示出来的成功提示刷成红的。 */
+    if(result.requestId&&result.requestId===handledRequestId)return;
+    handledRequestId=result.requestId||null;
     toast(result);
     if(result.ok)setTimeout(()=>chrome.action.setBadgeText({text:''}).catch(()=>{}),6000);
   }
@@ -92,10 +101,11 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
   (async()=>{
     try{await chrome.action.setBadgeText({text:''});}catch{}
     const payload={type:'artist-library.focus',uid:String(message.uid||''),text:String(message.text||''),ok:message.ok===true};
-    const found=await libraryTab();
-    if(found.existed){await focusTab(found);try{await chrome.runtime.sendMessage(payload);return;}catch{}}
-    else await queueAction({kind:'focus',...payload});
-    if(found.existed)await focusTab(found);
+    /* 点提示是用户主动要看页面，这时候开页面/切前台都是应该的。 */
+    const found=await showLibrary();
+    if(found?.existed){try{await chrome.runtime.sendMessage(payload);return;}catch{}}
+    /* 页面是刚开的（或者刚才没接住）：排进待办，它加载完成后自己来领。 */
+    await queueAction({kind:'focus',...payload});
   })();
 });
 const CHUNK=4*1024*1024,MAX_BYTES=50*1024*1024,KEEP=120000,GENERATE_URL='https://image.novelai.net/ai/generate-image';

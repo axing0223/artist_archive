@@ -932,7 +932,7 @@
   async function createArtistFromSelection(text){
     const value=String(text||'').replace(/\s+/g,' ').trim().slice(0,200);
     if(!value)return {ok:false,reason:'选中的文字是空的。',text:value};
-    if(!folder)return {ok:false,reason:'还没有选择数据文件夹：先打开画师库选一次，之后再右键就直接建卡了。',text:value};
+    if(!folder)return {ok:false,reason:'还没有可用的数据文件夹（可能上次那个搬走了、或权限被拒了）：点提示打开画师库选一次，之后再右键就不用管了。',text:value};
     if(busy||syncingAll)return {ok:false,reason:'画师库正忙（保存或刷新中），过一会儿再右键一次。',text:value};
     let plan;try{plan=ArtistLookup.plan(value,{match:'name'});}catch(error){return {ok:false,reason:error.message,text:value};}
     let found;try{found=await ArtistLookup.lookup(plan);}catch(error){return {ok:false,reason:error.message,text:value};}
@@ -956,22 +956,35 @@
       return {ok:true,uid,name:chosen.name,danbooruId:chosen.id,works:saved.length,text:value};
     }catch(error){return {ok:false,reason:'写入失败：'+error.message,text:value};}
   }
-  /* 点漂浮提示回到页面时：清掉筛选、滚到那位画师、闪一下边框。 */
+  /* 点漂浮提示回到页面时：清掉筛选、滚到那位画师、闪一下边框。
+     页面在后台时滚动是没用的（浏览器不做布局、IntersectionObserver 也不触发），
+     所以先记下来，等这一页真的可见了再滚。 */
+  let focusPending=null;
   function focusArtist(uid,text){
     if(!uid){if(text)addFromSelection(text);return;}
     const artist=data.artists.find(item=>item.uid===uid);
     if(!artist){if(text)addFromSelection(text);else status('这张卡片已经不在库里了。',true);return;}
+    focusPending={uid,name:artist.name};
+    applyFocus();
+  }
+  function applyFocus(){
+    if(!focusPending)return;
+    if(typeof document!=='undefined'&&document.hidden){status(`切到画师库这一页就会定位到「${focusPending.name}」…`);return;}
+    const {uid,name}=focusPending;focusPending=null;
     reset();state.query='';$('search').value='';render();
     ArtistGallery.pin(uid,true);
     const selector='.artist-slot[data-uid="'+((typeof CSS!=='undefined'&&CSS.escape)?CSS.escape(uid):uid)+'"]';
     const slot=document.querySelector(selector);
-    if(slot?.scrollIntoView)slot.scrollIntoView({block:'center'});
     ArtistGallery.mount(uid);
+    if(slot?.scrollIntoView)slot.scrollIntoView({block:'center'});
+    /* 挂载后卡片高度从估算值变成真实值，位置会动，下一帧再对准一次。 */
+    if(typeof requestAnimationFrame==='function')requestAnimationFrame(()=>{if(slot?.scrollIntoView)slot.scrollIntoView({block:'center'});});
     const card=slot?.firstElementChild||slot?.children?.[0];
     if(card?.classList){card.classList.add('is-focus-flash');setTimeout(()=>card.classList.remove('is-focus-flash'),3200);}
     setTimeout(()=>ArtistGallery.pin(uid,false),6000);
-    status(`已定位到「${artist.name}」`);
+    status(`已定位到「${name}」`);
   }
+  if(typeof document!=='undefined'&&document.addEventListener)document.addEventListener('visibilitychange',()=>{if(!document.hidden)applyFocus();});
   /* 页面自己来找后台要一次待办（右键时页面还没打开的那种），并把建卡结果回传。 */
   function bindExtensionMessages(){
     const runtime=typeof chrome!=='undefined'?chrome.runtime:null;
@@ -1005,8 +1018,9 @@
     if(action?.kind==='create'){
       if(!folder&&!queuedCreate){
         queuedCreate={action,send};
-        status('右键菜单要添加一张新卡片：正在准备数据文件夹，接上后立刻写入…');
-        queuedTimer=setTimeout(()=>{if(queuedCreate)runQueuedCreate();},15000);
+        status('右键菜单要添加一张新卡片：等数据文件夹就绪（可能要点一下「继续使用上次的文件夹」）就立刻写入…');
+        /* 给用户足够时间去点那个「继续使用」，超时才如实说失败。 */
+        queuedTimer=setTimeout(()=>{if(queuedCreate)runQueuedCreate();},60000);
         return;
       }
       runCreate(action,send);

@@ -85,12 +85,15 @@ test('点扩展图标：没开着就打开画师库，开着就切到那个标�
   };
   const fresh=await run();
   assert.equal(typeof fresh.iconClicks[0],'function','要处理点图标');
-  /* 点扩展图标：没开着就开画师库，开着就切过去 */
+  /* 点扩展图标：没开着就开画师库，开着就切过去（都是异步的，等它落地） */
+  const settle=async()=>{for(let i=0;i<50;i++)await new Promise(resolve=>setTimeout(resolve,0));};
   const icon=await run({pageOpen:false});
-  await icon.iconClicks[0]();
+  icon.iconClicks[0]();
+  await settle();
   assert.deepEqual(icon.createdTabs,['chrome-extension://self/app/index.html']);
   const iconWarm=await run({pageOpen:true});
-  await iconWarm.iconClicks[0]();
+  iconWarm.iconClicks[0]();
+  await settle();
   assert.deepEqual(iconWarm.createdTabs,[],'已经开着就不再开新标签页');
   assert.equal(iconWarm.focused[0][0],7);
 });
@@ -132,17 +135,20 @@ test('右键菜单：静默建卡（后台标签页）→ 结果画在当前页�
   };
   /* 等异步结果：有上限，条件永远不成立时报错而不是把测试挂死。 */
   const until=async(condition,label)=>{for(let i=0;i<400;i++){if(condition())return;await new Promise(resolve=>setTimeout(resolve,0));}throw Error('等待超时：'+label);};
-  /* 页面没开着：开一个不抢焦点的后台标签页，把待办排进会话存储 */
+  /* 页面没开着：不主动开页面——把待办记下来，先给一个「已记下」的提示 */
   const cold=await run({pageOpen:false});
   await cold.menu()({menuItemId:'artist-library-add',selectionText:' modare '},{id:42});
-  assert.equal(cold.createdTabs.length,1);
-  assert.equal(cold.createdTabs[0].active,false,'静默：新开的标签页不能抢焦点');
-  assert.match(cold.createdTabs[0].url,/app\/index\.html$/);
+  assert.deepEqual(cold.createdTabs,[],'不许自己开画师库页面');
   const queued=cold.stored.get('pendingArtistActions');
   assert.equal(queued.length,1);
   assert.equal(queued[0].kind,'create');
   assert.equal(queued[0].text,'modare');
   assert.equal(queued[0].sourceTabId,42,'要记住你是在哪个页面点的右键');
+  assert.equal(cold.sentToTabs.length,2,'要先说「正在尝试」，再说「已记下」');
+  assert.equal(cold.sentToTabs[0][1].payload.state,'pending');
+  assert.equal(cold.sentToTabs[1][1].payload.state,'queued');
+  assert.equal(cold.sentToTabs[1][1].payload.text,'modare');
+  assert.equal(cold.sentToTabs[0][0],42,'提示要画在你右键的那一页');
   /* 页面来领待办：领完就清空，避免下次刷新又跑一遍 */
   const replies=[];
   cold.receive({channel:'artist-library-page',type:'ready'},value=>replies.push(value));
@@ -151,19 +157,26 @@ test('右键菜单：静默建卡（后台标签页）→ 结果画在当前页�
   assert.equal(replies[0].actions[0].text,'modare');
   assert.equal(cold.stored.has('pendingArtistActions'),false);
   /* 页面建完卡回传：在来源标签页里注入漂浮提示 */
-  cold.receive({channel:'artist-library-page',type:'created',result:{ok:true,uid:'0001-modare-105704',name:'modare',danbooruId:105704,works:3,sourceTabId:42}});
-  await until(()=>cold.sentToTabs.length,'把漂浮提示送进来源标签页');
-  assert.equal(cold.injected.length,1,'把提示脚本注入到你右键的那一页');
-  assert.equal(cold.injected[0].files.join(','),'toast.js');
-  assert.equal(cold.injected[0].target.tabId,42);
-  assert.equal(cold.sentToTabs[0][1].type,'artist-library.toast');
-  assert.equal(cold.sentToTabs[0][1].payload.ok,true);
-  assert.equal(cold.sentToTabs[0][1].payload.danbooruId,105704);
-  /* 页面已经开着：直接问它，不再开标签页，也不落盘 */
+  cold.receive({channel:'artist-library-page',type:'created',result:{ok:true,uid:'0001-modare-105704',name:'modare',danbooruId:105704,works:3,sourceTabId:42,requestId:queued[0].requestId}});
+  await until(()=>cold.sentToTabs.length>=3,'结果提示');
+  assert.equal(cold.injected.length,3,'三次提示：正在尝试 → 已记下 → 最终结果');
+  assert.equal(cold.injected.every(item=>item.files.join(',')==='toast.js'),true,'每次都注入提示脚本');
+  assert.equal(cold.injected.every(item=>item.target.tabId===42),true,'都画在你右键的那一页');
+  const last=cold.sentToTabs[cold.sentToTabs.length-1][1];
+  assert.equal(last.type,'artist-library.toast');
+  assert.equal(last.payload.ok,true,'最终提示要变成结果状态');
+  assert.equal(last.payload.danbooruId,105704);
+  /* 同一个请求只认第一条结果：第二个页面报「已在库里」不该把成功提示刷成红的 */
+  cold.receive({channel:'artist-library-page',type:'created',result:{ok:false,reason:'已经在画师库里了',sourceTabId:42,requestId:queued[0].requestId}});
+  await new Promise(resolve=>setTimeout(resolve,0));
+  assert.equal(cold.sentToTabs.length,3,'重复结果要被忽略');
+  /* 页面已经开着：先弹「正在尝试」再交给它，不再开标签页，也不落盘 */
   const warm=await run({pageOpen:true});
   await warm.menu()({menuItemId:'artist-library-add',selectionText:'atdan'},{id:42});
   assert.deepEqual(warm.createdTabs,[],'已经开着就别再开');
-  assert.equal(warm.messages.some(message=>message.type==='artist-library.create'&&message.text==='atdan'),true,'直接把活交给它');
+  assert.equal(warm.sentToTabs.length,1,'先弹一个「正在尝试」的提示');
+  assert.equal(warm.sentToTabs[0][1].payload.state,'pending');
+  assert.equal(warm.messages.some(message=>message.type==='artist-library.create'&&message.text==='atdan'),true,'然后把活交给它');
   assert.equal(warm.stored.has('pendingArtistActions'),false);
   /* 菜单本身：只在选中文字时出现，点了别的菜单项不做事 */
   const menu=cold.messages.find(item=>item.menu)?.menu;
@@ -211,7 +224,7 @@ test('漂浮提示：画在右上角、点一下把结果交回后台',async()=>
     return node;
   };
   const document={body:makeNode(),documentElement:makeNode(),createElement:()=>makeNode(),getElementById:()=>null};
-  const sandbox={document,setTimeout,clearTimeout,console,requestAnimationFrame:fn=>raf.push(fn),chrome:{runtime:{onMessage:{addListener:fn=>listeners.push(fn)},sendMessage:message=>sent.push(message)}}};
+  const sandbox={document,setTimeout,clearTimeout,setInterval,clearInterval,console,requestAnimationFrame:fn=>raf.push(fn),chrome:{runtime:{onMessage:{addListener:fn=>listeners.push(fn)},sendMessage:message=>sent.push(message)}}};
   sandbox.globalThis=sandbox;
   vm.runInNewContext(code,sandbox);
   assert.equal(listeners.length,1,'要挂上消息监听');

@@ -1065,7 +1065,7 @@ test('页面是刚被右键菜单打开的那种：等数据文件夹就绪再�
   await wait(20);
   assert.equal(state.rows.length,0,'文件夹还没接上，先不写');
   assert.equal(state.pageMessages.some(message=>message.type==='created'),false,'也不该急着回一个失败');
-  assert.equal(app.includes('正在准备数据文件夹'),true,'要有「等文件夹就绪」这条提示语');
+  assert.equal(app.includes('等数据文件夹就绪'),true,'要有「等文件夹就绪」这条提示语');
   stub(ctx,{lookup:async()=>[{id:7,name:'atdan',aliases:[],pageUrl:''}],posts:async()=>[post('5')],details:async()=>({counts:{total:9}})});
   await getEl(elements,'choose-folder').onclick();
   await wait(40);
