@@ -1030,6 +1030,46 @@ test('生图抖动等待期间，格子上显示的是「正在生成」而不�
   assert.match(String(findByClass(waiting,'gen-progress')?.textContent),/间隔|正在请求/,'要写清是在等间隔还是已经在请求');
   assert.equal(findAllByClass(state.card(artist),'work-generate').some(node=>String(node.className).includes('is-queued')),false,'这时不该有任何一格还写着「排队中」');
 });
+test('批量导入：收起对话框不会中断采集，要停得点「停止采集」',async()=>{
+  const {elements,state,ctx}=await boot();
+  const asked=[];
+  stub(ctx,{lookup:async()=>[],details:async name=>{asked.push(name);return {counts:{checkedAt:'x',total:3},works:[post('1')],countsError:false};}});
+  getEl(elements,'batch-works').checked=true;
+  getEl(elements,'batch-names').value='甲\n乙\n丙';
+  const running=getEl(elements,'batch-form').onsubmit({preventDefault(){}});
+  /* 采集刚开始就把对话框收起来 */
+  getEl(elements,'batch-dialog').fire('close');
+  await running;
+  assert.equal(asked.length,3,'收起对话框之后采集要继续跑完');
+  assert.equal(state.rows.length,3);
+  assert.equal(state.rows.every(a=>a.counts&&a.counts.checkedAt),true,'三位都要采到数量');
+  assert.match(String(getEl(elements,'batch-message').textContent),/采集 3 位/,'结束时对话框里要有汇总');
+  assert.match(String(getEl(elements,'storage-status').textContent),/采集/,'页面底部也要能看到采集结果');
+  assert.equal(getEl(elements,'batch-stop').hidden,true,'采集结束就收起停止按钮');
+  assert.equal(getEl(elements,'batch-stop-dialog').hidden,true);
+});
+test('批量导入：点「停止采集」才真的停，已经采集到的保留',async()=>{
+  const {elements,state,ctx}=await boot();
+  let release=null,gate=new Promise(resolve=>{release=resolve;}),started=0;
+  stub(ctx,{lookup:async()=>[],details:async()=>{started++;await gate;return {counts:{checkedAt:'x',total:3},works:[post('1')],countsError:false};}});
+  getEl(elements,'batch-works').checked=true;
+  getEl(elements,'batch-names').value='甲\n乙\n丙';
+  const running=getEl(elements,'batch-form').onsubmit({preventDefault(){}});
+  await wait(20);
+  assert.equal(started,1,'第一位开始采集');
+  assert.equal(getEl(elements,'batch-stop').hidden,false,'采集期间工具栏要出现「停止采集」');
+  assert.equal(getEl(elements,'batch-stop-dialog').hidden,false,'对话框里也要有一个');
+  assert.equal(getEl(elements,'batch-run').disabled,true,'采集期间不允许再次提交');
+  getEl(elements,'batch-stop').onclick();
+  assert.match(String(getEl(elements,'storage-status').textContent),/正在停止/);
+  release();
+  await running;
+  assert.equal(started,1,'停在这位之后就不再往下采集');
+  assert.equal(state.rows.filter(a=>a.counts&&a.counts.checkedAt).length,1,'已经采集到的要保留');
+  assert.equal(getEl(elements,'batch-stop').hidden,true,'停下来后收起按钮');
+  assert.equal(getEl(elements,'batch-run').disabled,false,'可以再次提交');
+  assert.match(String(getEl(elements,'batch-message').textContent),/已中止/,'要说明是中途停的');
+});
 test('右键菜单：能定位到唯一的画师就直接建一张新卡，并把结果回传',async()=>{
   const {elements,state,ctx}=await boot();
   await getEl(elements,'choose-folder').onclick();
@@ -1151,7 +1191,7 @@ test('生图排队接进了页面：公用一条队列，间隔取 5±3 秒的�
   assert.match(app,/ArtistGenerateQueue\.create\(\{gap:\(\)=>ArtistImageGen\.genGapDelay\(\)/,'队列的间隔必须来自那个 5±3 秒的函数');
   assert.match(app,/function enqueueGenerate\(/,'生成走排队入口');
   assert.equal(app.includes('function generateTest('),false,'旧的直发函数要撤掉，免得绕过队列');
-  assert.match(app,/if\(volatile\|\|busy\|\|generating\|\|!genQueue\.idle\)/,'还没跑完就关页面要拦一下');
+  assert.match(app,/if\(volatile\|\|busy\|\|generating\|\|syncingAll\|\|batchRunning\|\|!genQueue\.idle\)/,'还没跑完就关页面要拦一下（排队、刷新全库、采集都算）');
   const {ctx}=await boot();
   assert.equal(typeof ctx.ArtistGenerateQueue.create,'function','队列模块在页面里可用');
 });

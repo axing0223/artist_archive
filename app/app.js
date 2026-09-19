@@ -752,11 +752,18 @@
     try{if(f.size>100*1024*1024)throw Error('超过 100 MB 的备份请使用完整「数据」文件夹恢复，避免一次解析全部图片占满内存。');const next=normalize(JSON.parse(await f.text()),true);if(next.artists.some(a=>a.works.some(w=>FolderStore.imageOf(w,'thumb')?.kind==='local')))throw Error('这份 JSON 里的图片指向本地文件路径，单独导入恢复不了图片；请直接选对应的「数据」文件夹。');if(!confirm(`用备份中的 ${next.artists.length} 位画师替换当前 ${data.artists.length} 位？建议先导出当前备份。`))return;reset();await save(next,'已导入备份');ArtistImages.clear();}catch(error){alert('导入失败。\n'+error.message);}
   }
   const BATCH_CHUNK=25,BATCH_WORKS=3;
-  let batchStop=false;const batchFailed=[];
+  let batchStop=false,batchRunning=false;const batchFailed=[];
+  /* 采集期间：工具栏与对话框里都给出「停止采集」，并把进度同时写到页面底部——
+     对话框收起以后，主页面那一行仍然看得见进度。 */
+  function setBatchRunning(value){
+    batchRunning=value;
+    for(const id of ['batch-stop','batch-stop-dialog'])$(id).hidden=!value;
+    const run=$('batch-run');run.disabled=value;if(!value)run.textContent='添加到画师库';
+  }
   async function enrichArtists(names,order=DEFAULT_WORK_ORDER){
     const message=$('batch-message'),total=names.length;
     let done=0,failed=0,renamed=0,images=0;
-    const report=()=>{message.textContent=`正在采集 ${done} / ${total} · 补编号 ${renamed} · 缩略图 ${images} 张${failed?` · 失败 ${failed}`:''}`;};
+    const report=()=>{const text=`正在采集 ${done} / ${total} · 补编号 ${renamed} · 缩略图 ${images} 张${failed?` · 失败 ${failed}`:''}`;message.textContent=text;status(text);};
     for(let i=0;i<total&&!batchStop;i+=BATCH_CHUNK){
       const next=clone(data);
       for(const name of names.slice(i,i+BATCH_CHUNK)){
@@ -807,7 +814,7 @@
     return queued;
   }
   async function batch(e){
-    e.preventDefault();if(busy)return;const names=unique($('batch-names').value.split(/\r?\n/));if(!names.length)return;if(names.some(n=>n.length>160)){$('batch-message').textContent='名字不能超过 160 个字符，请检查是否每行一位。';return;}
+    e.preventDefault();if(busy||batchRunning)return;const names=unique($('batch-names').value.split(/\r?\n/));if(!names.length)return;if(names.some(n=>n.length>160)){$('batch-message').textContent='名字不能超过 160 个字符，请检查是否每行一位。';return;}
     const collect=$('batch-works').checked,alsoGenerate=$('batch-generate').checked,order=WORK_ORDERS.includes($('batch-order').value)?$('batch-order').value:data.workOrder;
     /* 人多、又要连着生图：先点红按钮确认一次，第二次点才真的开始。 */
     if(alsoGenerate&&names.length>BATCH_CONFIRM_OVER&&!batchArmed){
@@ -826,8 +833,12 @@
     const summary=`已添加 ${count} 位，跳过 ${names.length-count} 个重复名字`;
     if(collect&&added.length){
       $('batch-message').textContent=`开始采集 ${added.length} 位画师的最新 ${BATCH_WORKS} 张作品…`;
-      const result=await enrichArtists(added,order);
-      $('batch-message').textContent=`${summary}。采集 ${result.done} 位 · 补编号 ${result.renamed} · 缩略图 ${result.images} 张${result.failed?` · 失败 ${result.failed}（${batchFailed.join('；')}）`:''}${batchStop?' · 已中止，再次提交同一名单会跳过已采集的画师':''}。`;
+      setBatchRunning(true);
+      let result;
+      try{result=await enrichArtists(added,order);}
+      finally{setBatchRunning(false);}
+      const finished=`${summary}。采集 ${result.done} 位 · 补编号 ${result.renamed} · 缩略图 ${result.images} 张${result.failed?` · 失败 ${result.failed}（${batchFailed.join('；')}）`:''}${batchStop?' · 已中止，再次提交同一名单会跳过已采集的画师':''}。`;
+      $('batch-message').textContent=finished;status(finished);
     }else $('batch-message').textContent=summary+'。';
     /* 采集完再排队：那时 uid 才是最终的，排进去的才会真的找到人。 */
     const queued=alsoGenerate?queueTestImages(added,batchStop):0;
@@ -1127,7 +1138,7 @@
     $('category-search').oninput=e=>{manageFilter.category=e.target.value.trim().toLowerCase();listCategories();};
     $('tag-search').oninput=e=>{manageFilter.tag=e.target.value.trim().toLowerCase();listTags();};
     $('category-form').onsubmit=async e=>{e.preventDefault();if(busy)return;const name=$('new-category').value.trim();if(!name)return;if(data.categories.includes(name)){alert('这个分类已存在。');return;}const next=clone(data);next.categories.push(name);await save(next);$('new-category').value='';listCategories();};$('tag-form').onsubmit=async e=>{e.preventDefault();if(busy)return;const t=$('new-tag').value.trim();if(!t)return;if(data.tags.includes(t)){alert('这个标签已存在。');return;}const next=clone(data);next.tags.push(t);await save(next);$('new-tag').value='';listTags();};
-    $('batch-artists').onclick=()=>{if(busy)return;$('batch-names').value='';$('batch-message').textContent='';$('batch-order').value=data.workOrder;disarmBatch();$('batch-dialog').showModal();};$('close-batch').onclick=()=>$('batch-dialog').close();$('batch-dialog').addEventListener('close',()=>{batchStop=true;disarmBatch();});$('batch-form').onsubmit=batch;$('names-file').onchange=async e=>{try{const f=e.target.files[0];if(f){if(f.size>5*1024*1024)throw Error('TXT 名单不能超过 5 MB。');$('batch-names').value=await f.text();}}catch(error){$('batch-message').textContent=error.message;}finally{e.target.value='';}};
+    $('batch-artists').onclick=()=>{if(busy&&!batchRunning)return;/* 采集还在跑时只是把对话框收起来，别把进度和名单抹掉 */if(!batchRunning){$('batch-names').value='';$('batch-message').textContent='';$('batch-order').value=data.workOrder;disarmBatch();}$('batch-dialog').showModal();};$('close-batch').onclick=()=>$('batch-dialog').close();/* 收起 ≠ 取消：采集继续跑，要停请点「停止采集」 */$('batch-dialog').addEventListener('close',()=>disarmBatch());$('batch-stop').onclick=$('batch-stop-dialog').onclick=()=>{if(!batchRunning)return;batchStop=true;status('正在停止采集：当前这一位采集完就停，已经采集到的会保留。');};$('batch-form').onsubmit=batch;$('names-file').onchange=async e=>{try{const f=e.target.files[0];if(f){if(f.size>5*1024*1024)throw Error('TXT 名单不能超过 5 MB。');$('batch-names').value=await f.text();}}catch(error){$('batch-message').textContent=error.message;}finally{e.target.value='';}};
     $('export-data').onclick=exportData;$('import-data').onclick=()=>{if(!busy)$('import-file').click();};$('import-file').onchange=importData;
     let searchTimer;$('search').oninput=e=>{state.query=e.target.value.trim().toLowerCase();clearTimeout(searchTimer);searchTimer=setTimeout(render,150);};$('reset').onclick=()=>{reset();render();};$('close-viewer').onclick=()=>$('viewer').close();
     ArtistViewer.init({getData:()=>data,getFolder:()=>folder,save,notify:status});
@@ -1138,7 +1149,7 @@
        在窗口这一层兜住：整页都不接受文件拖放，只有格子上的处理器会把事件拿走。 */
     window.addEventListener('dragover',event=>event.preventDefault());
     window.addEventListener('drop',event=>event.preventDefault());
-    window.addEventListener('beforeunload',e=>{if(volatile||busy||generating||!genQueue.idle){e.preventDefault();e.returnValue='';}});render();document.querySelectorAll('button,input,textarea,select').forEach(b=>b.disabled=true);$('choose-folder').disabled=false;$('extension-status').disabled=false;$('choose-folder').onclick=connectFolder;checkExtension().then(autoAccount);restoreFolder();
+    window.addEventListener('beforeunload',e=>{if(volatile||busy||generating||syncingAll||batchRunning||!genQueue.idle){e.preventDefault();e.returnValue='';}});render();document.querySelectorAll('button,input,textarea,select').forEach(b=>b.disabled=true);$('choose-folder').disabled=false;$('extension-status').disabled=false;$('choose-folder').onclick=connectFolder;checkExtension().then(autoAccount);restoreFolder();
   }
   init();
 })();
