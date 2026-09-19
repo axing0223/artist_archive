@@ -11,21 +11,24 @@
       running=true;notify();
       try{
         while(items.length){
+          /* 先出队再跑：这样「清空排队」只会丢掉还没开始的，正在跑的那条不受影响。 */
+          const item=items.shift();
           /* 同一批里的第一条立刻发，之后每一条前都等一段抖动时间。 */
           if(ran>0)await sleep(gap());
-          const item=items[0];
-          /* 一条失败不能卡住队列：出队、交给它自己的 onError，再接着跑下一条。 */
+          /* 一条失败不能卡住队列：交给它自己的 onError，再接着跑下一条。 */
           try{await item.run();}catch(error){if(item.onError)item.onError(error);}
-          items.shift();ran++;notify();
+          ran++;notify();
         }
       }finally{running=false;ran=0;notify();}
     }
     return {
       push(item){items.push(item);notify();pump();return items.length;},
+      /* 清掉还没开始的需求，返回丢掉了多少条；正在跑的那条继续跑完。 */
+      clear(){const dropped=items.length;items.length=0;notify();return dropped;},
       get running(){return running;},
       get pending(){return items.length;},
       get idle(){return done();},
-      /* 同一个槽位不要排两次 */
+      /* 同一个槽位不要排两次。注意只看得见还没开始的：正在跑的那条已经出队了。 */
       has:test=>items.some(test),
     };
   }

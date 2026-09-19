@@ -7,8 +7,9 @@ class El{
     this.tagName=tag;this.children=[];this.className='';this._text='';this.dataset={};this.props={};
     this.style={setProperty:(k,v)=>{this.props[k]=v;}};
     this.classList={
-      add:cls=>{const list=String(this.className).split(/\s+/).filter(Boolean);if(!list.includes(cls))this.className=[...list,cls].join(' ');},
-      remove:cls=>{this.className=String(this.className).split(/\s+/).filter(name=>name&&name!==cls).join(' ');},
+      /* 跟真实 DOM 一样支持一次给多个类名，否则「加两个类」的代码在测试里只生效一半。 */
+      add:(...classes)=>{const list=String(this.className).split(/\s+/).filter(Boolean);for(const cls of classes)if(!list.includes(cls))list.push(cls);this.className=list.join(' ');},
+      remove:(...classes)=>{const drop=new Set(classes);this.className=String(this.className).split(/\s+/).filter(name=>name&&!drop.has(name)).join(' ');},
       /* toggle 要认第二个参数，不然「按条件加类」的代码在测试里永远看不出效果。 */
       toggle:(cls,force)=>{
         const list=String(this.className).split(/\s+/).filter(Boolean),on=force===undefined?!list.includes(cls):!!force;
@@ -32,6 +33,19 @@ class El{
   fire(type,event={}){if(typeof event.preventDefault!=='function'){event.defaultPrevented=false;event.preventDefault=()=>{event.defaultPrevented=true;};}for(const fn of this.listeners?.[type]||[])fn(event);return event;}
   querySelectorAll(){return [];}
 }
+/* 内存版文件夹：让冒烟测试真的走一遍「选好文件夹 → 保存 → 读回」的路径。 */
+class FakeFile{
+  constructor(name){this.name=name;this.kind='file';this.bytes='';}
+  async getFile(){return new Blob([this.bytes]);}
+  async createWritable(){const self=this;return {write:async value=>{self.bytes=value;},close:async()=>{},abort:async()=>{}};}
+}
+class FakeDir{
+  constructor(name='数据'){this.name=name;this.kind='directory';this.items=new Map();}
+  async getDirectoryHandle(name,{create=false}={}){if(!this.items.has(name)&&create)this.items.set(name,new FakeDir(name));const item=this.items.get(name);if(!item||item.kind!=='directory')throw new DOMException('不存在','NotFoundError');return item;}
+  async getFileHandle(name,{create=false}={}){if(!this.items.has(name)&&create)this.items.set(name,new FakeFile(name));const item=this.items.get(name);if(!item||item.kind!=='file')throw new DOMException('不存在','NotFoundError');return item;}
+  async *values(){yield* this.items.values();}
+  async removeEntry(name){if(!this.items.has(name))throw new DOMException('找不到','NotFoundError');this.items.delete(name);}
+}
 async function boot(){
   const elements=new Map(),state={renders:[],queried:[],scrolled:[],mounted:[],copied:[]};
   const document={getElementById:id=>{if(!elements.has(id))elements.set(id,new El());return elements.get(id);},createElement:tag=>new El(tag),
@@ -46,7 +60,7 @@ async function boot(){
 class FileUrl extends URL{}
 FileUrl.createObjectURL=()=>'blob:x';FileUrl.revokeObjectURL=()=>{};
   const ctx={
-    window:{innerWidth:1200,innerHeight:800,listeners:{},addEventListener(type,fn){(this.listeners[type]??=[]).push(fn);}},document,localStorage,navigator:{clipboard:{writeText:async text=>{state.copied.push(text);}}},
+    window:{innerWidth:1200,innerHeight:800,listeners:{},addEventListener(type,fn){(this.listeners[type]??=[]).push(fn);},showDirectoryPicker:async()=>new FakeDir()},document,localStorage,navigator:{clipboard:{writeText:async text=>{state.copied.push(text);}}},
     IntersectionObserver:IO,ResizeObserver:RO,Option,
     crypto:{randomUUID:()=>'uuid-'+Math.random().toString(36).slice(2)},
     fetch:async()=>{throw Error('测试中不应联网');},
@@ -787,10 +801,85 @@ test('拖图片到格子上：格子接住了拖放，整页兜底不会让浏�
   assert.equal(typeof ctx.window.listeners?.dragover?.[0],'function','窗口层要兜住拖放，免得浏览器直接打开文件');
   assert.equal(typeof ctx.window.listeners?.drop?.[0],'function');
 });
+test('批量导入：同时生成测试风格图默认关闭，且只在勾了以后才排生成需求',async()=>{
+  const html=await fs.readFile('app/index.html','utf8'),app=await fs.readFile('app/app.js','utf8');
+  assert.match(html,/id="batch-generate" type="checkbox"><span><\/span>/,'默认必须是关的：不能带 checked');
+  assert.match(html,/id="batch-run" class="action primary-action">添加到画师库/,'按钮要有 id，才能就地变红确认');
+  assert.match(app,/const queued=alsoGenerate\?queueTestImages\(added,batchStop\):0/,'排生成需求要在导入与采集之后');
+  const {elements}=await boot();
+  assert.equal(getEl(elements,'batch-generate').checked,false,'不勾就不排');
+});
+test('批量导入：超过 20 位又勾了生成时，按钮先变红确认，再点一次才真的导入',async()=>{
+  const {elements,state}=await boot();
+  const names=n=>Array.from({length:n},(_,i)=>'artist'+i).join('\n');
+  const run=async()=>getEl(elements,'batch-form').onsubmit({preventDefault(){}});
+  getEl(elements,'batch-works').checked=false;
+  getEl(elements,'batch-generate').checked=true;
+  getEl(elements,'batch-names').value=names(21);
+  const button=getEl(elements,'batch-run');
+  await run();
+  assert.equal(state.rows.length,0,'第一次点击不该导入');
+  assert.equal(button.textContent,'确认导入 21 位？');
+  assert.equal(String(button.className).includes('is-armed'),true,'要点亮（样式表里 is-armed 的主按钮就是红的）');
+  assert.match(String(getEl(elements,'batch-message').textContent),/21 条/,'要写清楚会排多少条生成需求');
+  await run();
+  assert.equal(state.rows.length,21,'第二次点才真的导入');
+  assert.equal(button.textContent,'添加到画师库','确认后按钮要复原');
+  assert.equal(String(button.className).includes('is-armed'),false);
+});
+test('批量导入：人数不多、或没勾生成时都不弹二次确认',async()=>{
+  const {elements,state}=await boot();
+  const run=async()=>getEl(elements,'batch-form').onsubmit({preventDefault(){}});
+  const names=n=>Array.from({length:n},(_,i)=>'artist'+i).join('\n');
+  getEl(elements,'batch-works').checked=false;
+  getEl(elements,'batch-generate').checked=true;
+  getEl(elements,'batch-names').value=names(20);
+  await run();
+  assert.equal(state.rows.length,20,'刚好 20 位不算「超过 20」，直接导入');
+  /* 没勾生成时，人再多也不确认 */
+  const {elements:e2,state:s2}=await boot();
+  getEl(e2,'batch-works').checked=false;
+  getEl(e2,'batch-generate').checked=false;
+  getEl(e2,'batch-names').value=names(30);
+  await getEl(e2,'batch-form').onsubmit({preventDefault(){}});
+  assert.equal(s2.rows.length,30,'没勾生成就直接导入');
+  assert.equal(String(getEl(e2,'batch-run').className).includes('is-armed'),false,'按钮不该点亮');
+  assert.equal(String(getEl(e2,'batch-message').textContent).includes('确认'),false,'也不该出现确认文案');
+});
+test('批量导入勾了生成时：导入照常先跑完，生成需求进后台队列（不占导入时间）',async()=>{
+  const {elements,state,ctx}=await boot();
+  await getEl(elements,'choose-folder').onclick();
+  assert.match(String(getEl(elements,'folder-name').textContent),/当前文件夹/,'先得真的连上数据文件夹');
+  /* 生成这一步换成立即失败、间隔调成 0：既不打网络，也不让测试等 5±3 秒。 */
+  const asked=[];
+  ctx.ArtistImageGen.generate=async artist=>{asked.push(artist.name);throw Error('测试里不发请求');};
+  ctx.ArtistImageGen.genGapDelay=()=>0;
+  getEl(elements,'batch-works').checked=false;
+  getEl(elements,'batch-generate').checked=true;
+  getEl(elements,'batch-names').value='甲\n乙\n丙';
+  await getEl(elements,'batch-form').onsubmit({preventDefault(){}});
+  assert.equal(state.rows.length,3,'导入该结束就结束');
+  assert.match(String(getEl(elements,'batch-message').textContent),/已排入 3 条生成需求/,'导入结束后才排队，并把条数写清楚');
+  const badge=getEl(elements,'gen-queue');
+  assert.equal(badge.hidden,false,'有排队时顶部要出现队列入口');
+  assert.match(String(badge.textContent),/排队 [1-9]\d*/);
+  assert.equal(badge.title.includes('取消'),true,'点一下能取消排队');
+  /* 不勾生成时不该排任何东西 */
+  const {elements:e2,state:s2,ctx:c2}=await boot();
+  await getEl(e2,'choose-folder').onclick();
+  let fired=0;c2.ArtistImageGen.generate=async()=>{fired++;throw Error('不该走到这里');};
+  getEl(e2,'batch-works').checked=false;getEl(e2,'batch-generate').checked=false;
+  getEl(e2,'batch-names').value='甲\n乙';
+  await getEl(e2,'batch-form').onsubmit({preventDefault(){}});
+  assert.equal(s2.rows.length,2);
+  assert.equal(getEl(e2,'gen-queue').hidden,true,'没勾就不该有排队');
+  assert.equal(String(getEl(e2,'batch-message').textContent).includes('排入'),false);
+  assert.equal(fired,0);
+});
 test('生图排队接进了页面：公用一条队列，间隔取 5±3 秒的抖动值',async()=>{
   const html=await fs.readFile('app/index.html','utf8'),app=await fs.readFile('app/app.js','utf8');
   assert.match(html,/<script src="generate-queue\.js" defer><\/script>/,'开发页也要加载队列模块');
-  assert.match(app,/ArtistGenerateQueue\.create\(\{gap:\(\)=>ArtistImageGen\.genGapDelay\(\)\}\)/,'队列的间隔必须来自那个 5±3 秒的函数');
+  assert.match(app,/ArtistGenerateQueue\.create\(\{gap:\(\)=>ArtistImageGen\.genGapDelay\(\)/,'队列的间隔必须来自那个 5±3 秒的函数');
   assert.match(app,/function enqueueGenerate\(/,'生成走排队入口');
   assert.equal(app.includes('function generateTest('),false,'旧的直发函数要撤掉，免得绕过队列');
   assert.match(app,/if\(volatile\|\|busy\|\|generating\|\|!genQueue\.idle\)/,'还没跑完就关页面要拦一下');

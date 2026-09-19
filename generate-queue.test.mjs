@@ -49,11 +49,30 @@ test('排队：状态查询（排队中几条、是否空闲、有没有同一�
   assert.equal(q.idle,true);assert.equal(q.pending,0);assert.equal(q.running,false);
   let release;const gate=new Promise(resolve=>{release=resolve;});
   q.push({uid:'0001-a',seq:1,run:()=>gate});
-  assert.equal(q.pending,1);assert.equal(q.busy===undefined,true,'没有 busy 这个方法，用 idle');
-  assert.equal(q.has(item=>item.uid==='0001-a'&&item.seq===1),true,'同一格在排队要查得出来');
-  assert.equal(q.has(item=>item.uid==='0001-a'&&item.seq===2),false);
+  await tick();
+  assert.equal(q.running,true,'已经在跑了');
+  assert.equal(q.pending,0,'正在跑的那条不算在「排队中」');
+  assert.equal(q.has(item=>item.uid==='0001-a'&&item.seq===1),false,'已经开始跑的不在待跑名单里');
+  q.push({uid:'0002-b',seq:2,run:async()=>{}});
+  assert.equal(q.pending,1);
+  assert.equal(q.has(item=>item.uid==='0002-b'&&item.seq===2),true,'同一格在排队要查得出来');
+  assert.equal(q.has(item=>item.uid==='0002-b'&&item.seq===1),false);
   release();while(!q.idle)await tick();
   assert.equal(q.idle,true);assert.equal(q.has(()=>true),false);
+});
+test('排队：清空只丢掉还没开始的，正在跑的那条照跑完',async()=>{
+  const {sleep}=recorder(),order=[],q=queue.create({gap:()=>0,sleep});
+  let release;const gate=new Promise(resolve=>{release=resolve;});
+  q.push({run:async()=>{order.push('开始A');await gate;order.push('结束A');}});
+  q.push({run:async()=>order.push('B')});
+  q.push({run:async()=>order.push('C')});
+  await tick();
+  assert.equal(q.pending,2,'A 在跑，B、C 在排队');
+  assert.equal(q.clear(),2,'清空返回丢掉了两条');
+  assert.equal(q.pending,0);
+  assert.equal(q.idle,false,'A 还在跑，不算空闲');
+  release();while(!q.idle)await tick();
+  assert.deepEqual(order,['开始A','结束A'],'被清掉的 B、C 不该再跑');
 });
 test('间隔就是 5±3 秒，落在 2–8 秒之间',()=>{
   assert.equal(gen.GAP_BASE,5000);assert.equal(gen.GAP_JITTER,3000);

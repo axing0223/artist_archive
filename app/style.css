@@ -77,6 +77,8 @@ a.action{display:inline-flex;align-items:center;text-decoration:none}
 .action,.edit-button,.danger,.reset,.danger-link,.categories button,.tags button,.viewer-bar button,.pick-id{transition:background-color .18s ease,border-color .18s ease,color .18s ease,box-shadow .18s ease,transform .12s ease}
 .action:hover,a.action:hover{background:#f5f8fd;border-color:#c8d2e4}
 .primary-action:hover{background:#2d4bd6;border-color:#2d4bd6;box-shadow:0 4px 12px #375af53d}
+/* 大批量导入前的二次确认：主按钮就地变红，形状不变 */
+.primary-action.is-armed,.primary-action.is-armed:hover{background:#d9483c;border-color:#d9483c;color:#fff;box-shadow:0 4px 12px #d9483c40}
 .edit-button:hover{background:#e2e8ff}
 .danger:hover{background:#fbebe9;border-color:#e6b2ae}
 .danger.is-armed,.danger.is-armed:hover{background:#d9483c;border-color:#d9483c;color:#fff}
