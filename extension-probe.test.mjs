@@ -196,49 +196,61 @@ test('右键菜单：静默建卡（后台标签页）→ 结果画在当前页�
 });
 test('漂浮提示：画在右上角、点一下把结果交回后台',async()=>{
   const code=await fs.readFile('图片取图扩展/toast.js','utf8');
-  const sent=[],listeners=[],removed=[];
+  const sent=[],listeners=[],removed=[],raf=[];
+  /* 记录样式赋值顺序：这条测试就是为了守住「定位不能被 all:initial 抹掉」这个坑。 */
+  const fakeStyle=()=>{const order=[],props={};const target={order,props,setProperty:(name,value)=>{order.push([name,value]);props[name]=value;}};
+    return new Proxy(target,{set(t,key,value){if(key==='order'||key==='props'||key==='setProperty')return true;order.push([key,value]);props[key]=value;return true;},get:(t,key)=>t[key]});};
   const makeNode=()=>{
-    const node={style:{cssText:''},children:[],id:'',hidden:false,textContent:'',
+    const node={style:fakeStyle(),children:[],id:'',textContent:'',title:'',
       attachShadow(){this.shadow=makeNode();return this.shadow;},
-      querySelector(selector){const child=makeNode();child.selector=selector;(this.queried||=[]).push(child);return child;},
-      append(child){this.children.push(child);},
+      setAttribute(name,value){this[name]=value;},
+      append(...items){this.children.push(...items);},
       addEventListener(type,fn){(this.handlers||={})[type]=fn;},
       remove(){removed.push(this);},
-      set innerHTML(html){this.html=html;},
-      get innerHTML(){return this.html||'';},
     };
     return node;
   };
   const document={body:makeNode(),documentElement:makeNode(),createElement:()=>makeNode(),getElementById:()=>null};
-  const sandbox={document,setTimeout,clearTimeout,console,chrome:{runtime:{onMessage:{addListener:fn=>listeners.push(fn)},sendMessage:message=>sent.push(message)}}};
+  const sandbox={document,setTimeout,clearTimeout,console,requestAnimationFrame:fn=>raf.push(fn),chrome:{runtime:{onMessage:{addListener:fn=>listeners.push(fn)},sendMessage:message=>sent.push(message)}}};
   sandbox.globalThis=sandbox;
   vm.runInNewContext(code,sandbox);
   assert.equal(listeners.length,1,'要挂上消息监听');
   listeners[0]({type:'artist-library.toast',payload:{ok:true,name:'modare',danbooruId:105704,works:3,uid:'0001-modare-105704',text:'modare'}});
   const host=document.body.children[0];
   assert.ok(host,'要往页面里插一个提示节点');
-  assert.match(host.style.cssText,/position:fixed/);
-  assert.match(host.style.cssText,/top:18px/);
-  assert.match(host.style.cssText,/right:18px/);
-  assert.match(host.style.cssText,/z-index:2147483647/,'要盖在页面内容之上');
-  const shadow=host.shadow;
-  const textOf=selector=>shadow.queried.find(node=>node.selector===selector)?.textContent;
-  assert.equal(textOf('strong'),'已添加「modare」');
-  assert.equal(textOf('p'),'Danbooru #105704 · 3 张作品','要写清编号与作品数');
-  assert.match(shadow.innerHTML,/box-shadow/, '提示要有漂浮感');
-  const clickable=shadow.queried.find(node=>node.selector==='.box');
-  assert.equal(typeof clickable.handlers?.click,'function','点提示要能进画师库');
-  clickable.handlers.click();
+  const names=host.style.order.map(item=>item[0]);
+  assert.equal(host.style.props.position,'fixed','必须是固定定位');
+  assert.equal(host.style.props.top,'18px');
+  assert.equal(host.style.props.right,'18px');
+  assert.equal(host.style.props['z-index'],'2147483647','要盖在页面内容之上');
+  assert.equal(names.indexOf('all')<names.indexOf('position'),true,'all:initial 必须先写，否则会把定位抹掉（这就是之前提示看不见的原因）');
+  const box=host.shadow.children[0];
+  assert.equal(box.style.props.cursor,'pointer');
+  assert.match(box.style.props.boxShadow,/rgba/,'提示要有漂浮感');
+  assert.equal(box.style.props.opacity,'0','先透明，下一帧再淡入');
+  assert.equal(box.children[0].textContent,'已添加「modare」');
+  assert.equal(box.children[1].textContent,'Danbooru #105704 · 3 张作品','要写清编号与作品数');
+  assert.equal(box.children[2].textContent,'点击进入画师库并定位');
+  assert.equal(raf.length,1,'用 requestAnimationFrame 做淡入（不依赖 @keyframes，CSP 管不到）');
+  raf[0]();
+  assert.equal(box.style.props.opacity,'1');
+  assert.equal(typeof box.handlers?.click,'function','点提示要能进画师库');
+  box.handlers.click();
   assert.equal(sent[0].type,'artist-library.toast-click');
   assert.equal(sent[0].uid,'0001-modare-105704');
   assert.equal(sent[0].ok,true);
-  /* 失败的那种：红底、写原因 */
+  assert.equal(removed.includes(host),true,'点完就把提示收掉');
+  /* 失败的那种：红底、写原因，且不带上一次的内容 */
   listeners[0]({type:'artist-library.toast',payload:{ok:false,reason:'站点上没找到这个画师',text:'xyz'}});
   const failed=document.body.children[1];
-  assert.equal(failed.shadow.queried.find(node=>node.selector==='strong')?.textContent,'没能添加画师');
-  assert.equal(failed.shadow.queried.find(node=>node.selector==='p')?.textContent,'站点上没找到这个画师');
-  assert.match(failed.shadow.innerHTML,/c0392b/,'失败用红色');
-  assert.equal(failed.shadow.innerHTML.includes('177a4b'),false,'别把上一次成功的配色带过来');
+  assert.equal(failed.shadow.children[0].children[0].textContent,'没能添加画师');
+  assert.equal(failed.shadow.children[0].children[1].textContent,'站点上没找到这个画师');
+  assert.match(failed.shadow.children[0].style.props.borderLeft,/c0392b/,'失败用红色');
+  assert.match(failed.shadow.children[0].style.props.background,/fdf3f2/,'失败用红色底');
+  assert.equal(String(failed.shadow.children[0].style.props.borderLeft).includes('177a4b'),false,'别把上一次成功的配色带过来');
+  /* 严格 CSP 的站点：不能用 <style> 或 innerHTML 注入样式，只能走 CSSOM */
+  assert.equal(/\.innerHTML\s*=/.test(code),false,'不要用 innerHTML 注入样式（会被页面 CSP 拦）');
+  assert.equal(/createElement\(['"]style['"]\)/.test(code),false,'不要插 style 元素（会被页面 CSP 拦）');
 });
 test('生图失败时带出服务器原话，且不把错误正文当成图片',async()=>{
   const fail=(status,body,type='application/json')=>generateImage('https://image.novelai.net/ai/generate-image','{}',{token:'pst-abcdefghijklmnop',fetcher:async()=>new Response(body,{status,headers:{'content-type':type}})});

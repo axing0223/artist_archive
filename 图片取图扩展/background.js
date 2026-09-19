@@ -47,16 +47,18 @@ const badge=async(ok,title)=>{
     await chrome.action.setTitle({title});
   }catch{}
 };
-/* 结果优先画在用户当前所在页面的右上角；注入不了就退回角标，别让结果无声无息。 */
+/* 结果优先画在用户当前所在页面的右上角；注入不了就退回角标，别让结果无声无息。
+   两种情况都在服务工作线程的控制台留一行——排查「提示没出现」时就靠它。 */
 const toast=async payload=>{
   const tabId=payload?.sourceTabId;
   if(Number.isInteger(tabId)){
     try{
       await chrome.scripting.executeScript({target:{tabId},files:['toast.js']});
       await chrome.tabs.sendMessage(tabId,{type:'artist-library.toast',payload});
+      console.info('[画师库] 已在标签页',tabId,'显示漂浮提示：',payload?.ok?'成功':'失败');
       return true;
-    }catch{}
-  }
+    }catch(error){console.warn('[画师库] 漂浮提示注入失败，改用角标：',error?.message||error);}
+  }else console.warn('[画师库] 没有来源标签页，漂浮提示无处可画，改用角标。');
   await badge(payload?.ok===true,payload?.ok===true?`已添加「${payload?.name||''}」`:'添加失败：'+(payload?.reason||''));
   return false;
 };
