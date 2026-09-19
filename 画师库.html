@@ -12,7 +12,7 @@
 .artist-name{border:0;background:transparent;font:inherit;color:inherit;padding:0;text-align:left;cursor:pointer;border-radius:5px}
 .artist-name:hover{color:var(--accent)}.primary{font-size:13px;background:#ebefff;color:#3350c6;padding:6px 10px;border-radius:5px}.secondary{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}.secondary span{font-size:12px;background:#fff;border:1px solid #e5e7ec;border-radius:4px;padding:4px 7px;color:#656a75}.description{font-size:14px;line-height:1.75;color:#565d69;margin:15px 0}.works{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;align-content:start}.work{margin:0;min-width:0}.thumb{width:100%;height:220px;display:block;border:0;border-radius:7px;background:#eff0f3;padding:0;overflow:hidden}.thumb:hover{background:#e7eaf1}.thumb img{width:100%;height:100%;object-fit:contain;display:block;transition:transform .2s}.thumb:hover img{transform:scale(1.025)}figcaption{color:#8c929d;font-size:12px;margin-top:9px;display:flex;gap:6px;justify-content:space-between;flex-wrap:wrap}.sample-note{grid-column:1/-1;margin:2px 0 0;color:#838995;font-size:12px;line-height:1.65}.unavailable{grid-column:1/-1;background:#f5f6f8;border:1px dashed #dce0e7;border-radius:8px;min-height:145px;display:flex;align-items:center;justify-content:center;flex-direction:column;text-align:center;gap:8px;padding:24px;color:#727987;font-size:14px}.pending-badge{color:#787b82;background:#f0f1f4;font-size:13px;border-radius:4px;padding:6px 10px}footer{display:flex;justify-content:space-between;gap:20px;padding:28px 0 12px;font-size:12px;color:#8a909b}#empty{text-align:center;padding:70px 15px;color:#777}#empty h2{font-size:20px}dialog{border:0;border-radius:12px;max-width:900px;width:85vw;padding:0;background:#fff;box-shadow:0 20px 80px #0004}dialog::backdrop{background:#172031ab;backdrop-filter:blur(3px)}.viewer-bar,.viewer-bottom{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px 24px}.viewer-bar h2{font-size:17px;margin:0}.viewer-bar button{border:0;background:#f0f1f4;padding:8px 12px;border-radius:6px;font-size:14px}.viewer-image{background:#eceef2;min-height:260px;display:flex;justify-content:center;align-items:center;padding:24px}.viewer-image img{max-width:100%;max-height:65vh;object-fit:contain;min-height:180px}.viewer-bottom{font-size:13px;color:#727887}.viewer-bottom a{color:var(--accent);white-space:nowrap}.viewer-bottom p{margin:0;line-height:1.7}.viewer-actions{display:flex;align-items:center;gap:14px;flex-shrink:0}.viewer-actions #save-original{padding:7px 12px;font-size:13px}.viewer-actions #save-original:disabled{opacity:.6;cursor:default}@media(min-width:1450px){.thumb{height:240px}}@media(max-width:1100px){.artist{--card-pad:20px;--info-col:190px;--card-gap:18px}.thumb{height:180px}.works{gap:8px}}@media(max-width:850px){main{padding-top:28px}.artist{grid-template-columns:1fr;--works-left:calc(var(--card-pad) + 42px)}.artist-info{display:block}.artist h2{margin:6px 0 10px}.description{margin:10px 0}.thumb{height:170px}.heading{align-items:flex-start}.search{width:220px}.tag-line{flex-wrap:wrap}.reset{margin-left:0}.filters{padding:16px}}@media(max-width:600px){.top{height:62px}.heading{display:block}h1{font-size:27px}.search{width:100%;margin-top:22px}.search span{display:none}.filters{margin-top:20px}.categories button{font-size:13px;padding:8px 10px}.categories .n{margin-left:5px}.tag-line{gap:10px}.filter-label{width:100%;font-size:12px}.tags{gap:6px}.tags button{font-size:13px;padding:5px 10px}.works{grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.thumb{height:175px}.artist{--card-pad:17px}.result-line{font-size:13px}details{max-width:65%}footer{flex-direction:column;gap:8px}dialog{width:94vw}.viewer-bar,.viewer-bottom{padding:14px}.viewer-bottom{align-items:flex-start;flex-direction:column}}@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}[hidden]{display:none!important}
 .basis{display:inline-block;font-size:12px;color:#946c2a;margin-top:8px;background:#fff5e0;padding:4px 7px;border-radius:4px}
-.toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-top:24px}.toolbar-spacer{flex:1}.action{border:1px solid #dce0e8;border-radius:7px;background:#fff;color:#444c5e;padding:9px 13px;font:inherit;font-size:14px;cursor:pointer}.primary-action{background:var(--accent);border-color:var(--accent);color:#fff}.storage-line{display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;margin:12px 0;color:#7b8290;font-size:12px;line-height:1.7}.artist-top{display:flex;width:100%;align-items:center;justify-content:space-between}.edit-button{border:0;background:#f0f3ff;color:#375af5;border-radius:5px;padding:5px 10px;font-size:13px}.small-dialog{width:min(650px,94vw);max-height:85vh}dialog .viewer-bar{position:sticky;top:0;background:white;z-index:2;border-bottom:1px solid #e6e8ed}.form-body{padding:20px 24px;display:grid;gap:16px}.form-body label{display:grid;gap:7px;font-size:14px;color:#525b6b}textarea,select{width:100%;font:inherit;font-size:14px;color:#25262a;background:#fff;border:1px solid #d9dce4;border-radius:7px;padding:11px;box-sizing:border-box}textarea{resize:vertical;line-height:1.6}fieldset{border:1px solid #e0e3ea;border-radius:8px;padding:14px;min-width:0}legend{font-size:14px;color:#626a79;padding:0 7px}.inline-form{display:flex;gap:8px;align-items:center}.inline-form input{min-width:0}.inline-form button{flex-shrink:0}.field-help{margin:0;font-size:13px;color:#78808e;line-height:1.8}.form-body .upload-label{display:inline-flex;cursor:pointer;justify-self:start}.danger{color:#b74141;border:0;background:transparent;font-size:13px;cursor:pointer;white-space:nowrap}.form-footer{padding:16px 24px;position:sticky;bottom:0;background:#fff;border-top:1px solid #e5e7eb;display:flex;gap:16px;justify-content:space-between;align-items:center}.form-footer .primary-action{margin-left:auto}.error{color:#b33931!important;font-size:13px}.error:empty{display:none}.manage-tag-row{display:flex;gap:8px;margin-top:10px;align-items:center}.manage-tag-row input{min-width:0;flex:1}.manage-tag-row button{flex-shrink:0}#load-more{display:block;margin:24px auto}#method{white-space:pre-line}button:disabled{opacity:.5;cursor:wait}@media(max-width:650px){.form-body{padding:16px}.toolbar-spacer{display:none}.toolbar .action{font-size:13px;padding:8px 10px}.form-footer{padding:14px 16px}.small-dialog .form-body{gap:12px}}
+.toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-top:24px}.toolbar-spacer{flex:1}.action{border:1px solid #dce0e8;border-radius:7px;background:#fff;color:#444c5e;padding:9px 13px;font:inherit;font-size:14px;cursor:pointer}.primary-action{background:var(--accent);border-color:var(--accent);color:#fff}.storage-line{display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;margin:12px 0;color:#7b8290;font-size:12px;line-height:1.7}.storage-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}.storage-actions .action{padding:6px 10px;font-size:12px}.artist-top{display:flex;width:100%;align-items:center;justify-content:space-between}.edit-button{border:0;background:#f0f3ff;color:#375af5;border-radius:5px;padding:5px 10px;font-size:13px}.small-dialog{width:min(650px,94vw);max-height:85vh}dialog .viewer-bar{position:sticky;top:0;background:white;z-index:2;border-bottom:1px solid #e6e8ed}.form-body{padding:20px 24px;display:grid;gap:16px}.form-body label{display:grid;gap:7px;font-size:14px;color:#525b6b}textarea,select{width:100%;font:inherit;font-size:14px;color:#25262a;background:#fff;border:1px solid #d9dce4;border-radius:7px;padding:11px;box-sizing:border-box}textarea{resize:vertical;line-height:1.6}fieldset{border:1px solid #e0e3ea;border-radius:8px;padding:14px;min-width:0}legend{font-size:14px;color:#626a79;padding:0 7px}.inline-form{display:flex;gap:8px;align-items:center}.inline-form input{min-width:0}.inline-form button{flex-shrink:0}.field-help{margin:0;font-size:13px;color:#78808e;line-height:1.8}.form-body .upload-label{display:inline-flex;cursor:pointer;justify-self:start}.danger{color:#b74141;border:0;background:transparent;font-size:13px;cursor:pointer;white-space:nowrap}.form-footer{padding:16px 24px;position:sticky;bottom:0;background:#fff;border-top:1px solid #e5e7eb;display:flex;gap:16px;justify-content:space-between;align-items:center}.form-footer .primary-action{margin-left:auto}.error{color:#b33931!important;font-size:13px}.error:empty{display:none}.manage-tag-row{display:flex;gap:8px;margin-top:10px;align-items:center}.manage-tag-row input{min-width:0;flex:1}.manage-tag-row button{flex-shrink:0}#load-more{display:block;margin:24px auto}#method{white-space:pre-line}button:disabled{opacity:.5;cursor:wait}@media(max-width:650px){.form-body{padding:16px}.toolbar-spacer{display:none}.toolbar .action{font-size:13px;padding:8px 10px}.form-footer{padding:14px 16px}.small-dialog .form-body{gap:12px}}
 .quick-add{display:flex;gap:20px;align-items:flex-start;margin-top:22px;padding:26px;background:#fff;border:2px dashed #ccd4e7;border-radius:12px}.quick-icon{display:grid;place-items:center;width:44px;height:44px;flex-shrink:0;border-radius:10px;background:#edf1ff;color:#375af5;font-size:28px}.quick-body{min-width:0;flex:1}.quick-body h2{font-size:18px;margin:0 0 14px}.quick-body .field-help{margin-top:10px}#quick-input{min-width:0}#quick-status{font-size:14px;color:#687386;line-height:1.7;margin:12px 0}.quick-fallback{display:flex;gap:16px;flex-wrap:wrap;align-items:center}.quick-fallback a{font-size:13px;color:#375af5}.quick-fallback .reset{margin-left:0;padding:0}.candidate{display:flex;gap:16px;align-items:center;justify-content:space-between;padding:15px 16px;margin:10px 0;border:1px solid #e0e5f0;border-radius:8px;background:#f8faff}.candidate-info{min-width:0;display:flex;flex-wrap:wrap;gap:7px 12px;align-items:baseline;overflow-wrap:anywhere}.candidate-info strong{font-size:16px}.candidate-info span,.candidate-info small{color:#788496;font-size:12px}.candidate-info small{flex-basis:100%}.candidate-info a{font-size:12px;color:#375af5}.candidate>button{flex-shrink:0}@media(max-width:600px){.quick-add{padding:18px;gap:10px}.quick-icon{display:none}.quick-body>.inline-form{align-items:stretch;flex-direction:column}.candidate{align-items:stretch;flex-direction:column}}
 .artist-numbers{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.work-count{font-size:12px;color:#42516b}.candidate-previews{display:flex;gap:8px;flex-basis:100%;overflow-x:auto;padding:8px 0}.candidate-previews img{height:130px;width:100px;object-fit:cover;border-radius:6px}.candidate-info>small{flex-basis:100%}
 .header-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.artist-actions{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:12px}.artist-actions .edit-button{margin:0}@media(max-width:600px){.top{height:auto;min-height:68px;gap:12px;flex-wrap:wrap;padding-top:14px;padding-bottom:14px}.header-actions .action{font-size:12px;padding:8px}}
@@ -193,7 +193,7 @@ dialog[open]::backdrop{opacity:1}
   <main>
     <div class="heading"><div><p class="eyebrow">ARTIST INDEX</p><h1>从作品，找到画风。</h1><p class="intro" id="library-summary">正在打开画师库…</p></div><label class="search"><span>搜索画师</span><input id="search" type="search" placeholder="输入画师名字" autocomplete="off"></label></div>
     <div class="toolbar"><button id="add-artist" class="action primary-action">＋ 添加画师</button><button id="manage-tags" class="action">管理标签</button><button id="batch-artists" class="action">批量导入名字</button><button id="test-import-open" class="action">导入测试风格图</button><span class="toolbar-spacer"></span><button id="export-data" class="action">导出备份</button><button id="import-data" class="action">导入备份</button><input id="import-file" type="file" accept=".json" hidden></div>
-    <div class="storage-line"><span id="storage-status" role="status">正在读取保存的数据…</span><span id="folder-name">点击顶部「数据库文件夹」，选择已有数据目录或空文件夹。</span></div>
+    <div class="storage-line"><span id="storage-status" role="status">正在读取保存的数据…</span><span class="storage-actions"><button id="resume-folder" class="action" hidden>继续使用上次的文件夹</button><span id="folder-name">点击顶部「数据库文件夹」，选择已有数据目录或空文件夹。</span></span></div>
     <section class="filters" aria-label="分类筛选"><div id="categories" class="categories"></div><div class="tag-line"><span class="filter-label">画面感觉</span><div id="tags" class="tags"></div><button id="reset" class="reset">清除筛选</button></div><div class="tag-line"><span class="filter-label">参考分数</span><div id="scores" class="score-filter"></div></div></section>
     <div class="result-line"><p id="count" aria-live="polite"></p></div>
     <section id="gallery" aria-label="画师与作品"></section>
@@ -729,6 +729,45 @@ dialog[open]::backdrop{opacity:1}
     rules:{imageUrl,apiUrl,postId,generateUrl,subscriptionUrl,bearer},
   };
   if(typeof module!=='undefined')module.exports=root.ArtistHostDirect;
+})(globalThis);
+</script><script>(function(root){
+  'use strict';
+  /* 记住上次用的数据文件夹：File System Access 的目录句柄可以结构化克隆后存进 IndexedDB，
+     下次打开网页就能直接取回来用，不必再走一遍文件夹选择框。
+     两个必须知道的边界：
+     1) 句柄按「源」记：file:// 打开的那份与 chrome-extension:// 里的那份各记各的；
+     2) 浏览器重启后权限通常退回 prompt，需要用户点一下（requestPermission）才能继续——
+        这是浏览器的安全模型，网页/扩展都绕不过去；同一会话内刷新一般是直接可用。
+     存不了（比如环境没有 IndexedDB）就静默失败，调用方照旧让用户手选。 */
+  const DB_NAME='artist-library',DB_VERSION=1,STORE='handles',KEY='dataFolder';
+  let injected=null;
+  const factory=()=>injected||(typeof indexedDB!=='undefined'?indexedDB:null);
+  const openDb=db=>new Promise((resolve,reject)=>{
+    let request;
+    try{request=db.open(DB_NAME,DB_VERSION);}catch(error){reject(error);return;}
+    request.onupgradeneeded=()=>{try{request.result.createObjectStore(STORE);}catch{}};
+    request.onsuccess=()=>resolve(request.result);
+    request.onerror=()=>reject(request.error||Error('IndexedDB 打不开'));
+  });
+  const ask=request=>new Promise((resolve,reject)=>{
+    if(!request){resolve(null);return;}
+    request.onsuccess=()=>resolve(request.result);
+    request.onerror=()=>reject(request.error||Error('IndexedDB 读写失败'));
+  });
+  async function run(mode,fn){
+    const db=factory();
+    if(!db)throw Error('这个环境没有 IndexedDB');
+    const handle=await openDb(db);
+    try{return await ask(fn(handle.transaction(STORE,mode).objectStore(STORE)));}
+    finally{try{handle.close();}catch{}}
+  }
+  const save=async folder=>{if(!folder)return false;try{await run('readwrite',store=>store.put(folder,KEY));return true;}catch{return false;}};
+  const load=async()=>{try{return (await run('readonly',store=>store.get(KEY)))||null;}catch{return null;}};
+  const forget=async()=>{try{await run('readwrite',store=>store.delete(KEY));return true;}catch{return false;}};
+  /* 只给测试用：换掉 IndexedDB 实现（传 null 恢复默认）。 */
+  const useFactory=value=>{injected=value||null;};
+  root.ArtistFolderMemory={save,load,forget,useFactory,DB_NAME,STORE,KEY};
+  if(typeof module!=='undefined')module.exports=root.ArtistFolderMemory;
 })(globalThis);
 </script><script>(function(root){
   'use strict';
@@ -1465,12 +1504,54 @@ dialog[open]::backdrop{opacity:1}
     }catch{status('复制失败，请手动选中复制。',true);}
   }
   async function write(value){if(!folder)throw Error('请先选择数据文件夹');return normalize(await FolderStore.write(folder,value));}
+  /* 真正把一个目录句柄接上：不管是刚选的还是从记忆里取回来的，都走这里。 */
+  async function adoptFolder(chosen,{from='刚选择',remember=true}={}){
+    status('正在读取画师资料（图片按需加载）…');
+    const loaded=normalize(await FolderStore.read(chosen),true);
+    cancelLookup();clearCandidates();
+    folder=chosen;data=loaded;FolderStore.remember(chosen,loaded);ArtistImages.setFolder(chosen);
+    reset();render();
+    document.querySelectorAll('button,input,textarea,select').forEach(e=>e.disabled=false);
+    $('folder-name').textContent='当前文件夹：'+folder.name;
+    $('resume-folder').hidden=true;
+    /* 记住这个文件夹，下次打开网页直接接着用；记不住（环境不支持）就如实说一声。 */
+    const kept=remember?await ArtistFolderMemory.save(chosen):true;
+    const warnings=FolderStore.takeWarnings(),tail=kept?'':'；这个环境记不住文件夹，下次还得重新选';
+    status(warnings.length?`已连接文件夹（${from}），但有 ${warnings.length} 处问题：${warnings.join('；')}${tail}`:`已连接文件夹（${from}） · 图片滚动到附近才加载${tail}`,warnings.length>0);
+  }
   async function connectFolder(){
     if(busy)return;
     if(!window.showDirectoryPicker){status('当前浏览器不支持文件夹读写，请使用最新版 Chrome 或 Edge 打开本 HTML。',true);return;}
     if(volatile){status('请先导出备份保留尚未保存的修改，再重新打开网页切换文件夹。',true);return;}
-    try{const chosen=await window.showDirectoryPicker({id:'artist-library',mode:'readwrite'});status('正在读取画师资料（图片按需加载）…');const loaded=normalize(await FolderStore.read(chosen),true);cancelLookup();clearCandidates();folder=chosen;data=loaded;FolderStore.remember(chosen,loaded);ArtistImages.setFolder(chosen);reset();render();document.querySelectorAll('button,input,textarea,select').forEach(e=>e.disabled=false);$('folder-name').textContent='当前文件夹：'+folder.name;const warnings=FolderStore.takeWarnings();status(warnings.length?'已连接文件夹，但有 '+warnings.length+' 处问题：'+warnings.join('；'):'已连接文件夹 · 图片滚动到附近才加载',warnings.length>0);}
+    try{await adoptFolder(await window.showDirectoryPicker({id:'artist-library',mode:'readwrite'}));}
     catch(error){if(error.name!=='AbortError')status('文件夹打开失败：'+error.message,true);}
+  }
+  /* 打开网页时把上次用的文件夹取回来：同一会话内通常直接可用；
+     浏览器重启后权限会退回 prompt，这时给一个按钮，点一下就能继续（浏览器的安全模型，绕不过去）。 */
+  async function restoreFolder(){
+    if(folder)return;
+    const handle=await ArtistFolderMemory.load();
+    if(!handle)return;
+    let permission='prompt';
+    try{permission=await handle.queryPermission({mode:'readwrite'});}catch{}
+    if(permission==='granted'){
+      try{await adoptFolder(handle,{from:'上次的文件夹',remember:false});}
+      catch(error){status('上次的数据文件夹打不开：'+error.message+'；请点顶部「数据库文件夹」重新选择。',true);}
+      return;
+    }
+    if(permission!=='prompt'){$('resume-folder').hidden=true;await ArtistFolderMemory.forget();return;}
+    const name=handle.name||'数据',button=$('resume-folder');
+    button.hidden=false;button.textContent=`继续使用上次的文件夹「${name}」`;
+    button.onclick=async()=>{
+      button.disabled=true;
+      try{
+        const granted=await handle.requestPermission({mode:'readwrite'});
+        if(granted==='granted')await adoptFolder(handle,{from:'上次的文件夹',remember:false});
+        else{await ArtistFolderMemory.forget();button.hidden=true;status('没有继续使用上次的文件夹，请点顶部「数据库文件夹」重新选择。',true);}
+      }catch(error){button.hidden=true;status('继续使用上次的文件夹失败：'+error.message+'；请重新选择。',true);}
+      finally{button.disabled=false;}
+    };
+    status(`记得你上次用的是「${name}」：点右边按钮继续用它，或点顶部「数据库文件夹」换一个。`);
   }
   async function save(next,message='已保存到数据文件夹'){
     busy=true;data=next;status('正在保存…');
@@ -2371,7 +2452,7 @@ dialog[open]::backdrop{opacity:1}
        在窗口这一层兜住：整页都不接受文件拖放，只有格子上的处理器会把事件拿走。 */
     window.addEventListener('dragover',event=>event.preventDefault());
     window.addEventListener('drop',event=>event.preventDefault());
-    window.addEventListener('beforeunload',e=>{if(volatile||busy||generating||!genQueue.idle){e.preventDefault();e.returnValue='';}});render();document.querySelectorAll('button,input,textarea,select').forEach(b=>b.disabled=true);$('choose-folder').disabled=false;$('extension-status').disabled=false;$('choose-folder').onclick=connectFolder;checkExtension().then(autoAccount);
+    window.addEventListener('beforeunload',e=>{if(volatile||busy||generating||!genQueue.idle){e.preventDefault();e.returnValue='';}});render();document.querySelectorAll('button,input,textarea,select').forEach(b=>b.disabled=true);$('choose-folder').disabled=false;$('extension-status').disabled=false;$('choose-folder').onclick=connectFolder;checkExtension().then(autoAccount);restoreFolder();
   }
   init();
 })();

@@ -74,12 +74,54 @@
     }catch{status('复制失败，请手动选中复制。',true);}
   }
   async function write(value){if(!folder)throw Error('请先选择数据文件夹');return normalize(await FolderStore.write(folder,value));}
+  /* 真正把一个目录句柄接上：不管是刚选的还是从记忆里取回来的，都走这里。 */
+  async function adoptFolder(chosen,{from='刚选择',remember=true}={}){
+    status('正在读取画师资料（图片按需加载）…');
+    const loaded=normalize(await FolderStore.read(chosen),true);
+    cancelLookup();clearCandidates();
+    folder=chosen;data=loaded;FolderStore.remember(chosen,loaded);ArtistImages.setFolder(chosen);
+    reset();render();
+    document.querySelectorAll('button,input,textarea,select').forEach(e=>e.disabled=false);
+    $('folder-name').textContent='当前文件夹：'+folder.name;
+    $('resume-folder').hidden=true;
+    /* 记住这个文件夹，下次打开网页直接接着用；记不住（环境不支持）就如实说一声。 */
+    const kept=remember?await ArtistFolderMemory.save(chosen):true;
+    const warnings=FolderStore.takeWarnings(),tail=kept?'':'；这个环境记不住文件夹，下次还得重新选';
+    status(warnings.length?`已连接文件夹（${from}），但有 ${warnings.length} 处问题：${warnings.join('；')}${tail}`:`已连接文件夹（${from}） · 图片滚动到附近才加载${tail}`,warnings.length>0);
+  }
   async function connectFolder(){
     if(busy)return;
     if(!window.showDirectoryPicker){status('当前浏览器不支持文件夹读写，请使用最新版 Chrome 或 Edge 打开本 HTML。',true);return;}
     if(volatile){status('请先导出备份保留尚未保存的修改，再重新打开网页切换文件夹。',true);return;}
-    try{const chosen=await window.showDirectoryPicker({id:'artist-library',mode:'readwrite'});status('正在读取画师资料（图片按需加载）…');const loaded=normalize(await FolderStore.read(chosen),true);cancelLookup();clearCandidates();folder=chosen;data=loaded;FolderStore.remember(chosen,loaded);ArtistImages.setFolder(chosen);reset();render();document.querySelectorAll('button,input,textarea,select').forEach(e=>e.disabled=false);$('folder-name').textContent='当前文件夹：'+folder.name;const warnings=FolderStore.takeWarnings();status(warnings.length?'已连接文件夹，但有 '+warnings.length+' 处问题：'+warnings.join('；'):'已连接文件夹 · 图片滚动到附近才加载',warnings.length>0);}
+    try{await adoptFolder(await window.showDirectoryPicker({id:'artist-library',mode:'readwrite'}));}
     catch(error){if(error.name!=='AbortError')status('文件夹打开失败：'+error.message,true);}
+  }
+  /* 打开网页时把上次用的文件夹取回来：同一会话内通常直接可用；
+     浏览器重启后权限会退回 prompt，这时给一个按钮，点一下就能继续（浏览器的安全模型，绕不过去）。 */
+  async function restoreFolder(){
+    if(folder)return;
+    const handle=await ArtistFolderMemory.load();
+    if(!handle)return;
+    let permission='prompt';
+    try{permission=await handle.queryPermission({mode:'readwrite'});}catch{}
+    if(permission==='granted'){
+      try{await adoptFolder(handle,{from:'上次的文件夹',remember:false});}
+      catch(error){status('上次的数据文件夹打不开：'+error.message+'；请点顶部「数据库文件夹」重新选择。',true);}
+      return;
+    }
+    if(permission!=='prompt'){$('resume-folder').hidden=true;await ArtistFolderMemory.forget();return;}
+    const name=handle.name||'数据',button=$('resume-folder');
+    button.hidden=false;button.textContent=`继续使用上次的文件夹「${name}」`;
+    button.onclick=async()=>{
+      button.disabled=true;
+      try{
+        const granted=await handle.requestPermission({mode:'readwrite'});
+        if(granted==='granted')await adoptFolder(handle,{from:'上次的文件夹',remember:false});
+        else{await ArtistFolderMemory.forget();button.hidden=true;status('没有继续使用上次的文件夹，请点顶部「数据库文件夹」重新选择。',true);}
+      }catch(error){button.hidden=true;status('继续使用上次的文件夹失败：'+error.message+'；请重新选择。',true);}
+      finally{button.disabled=false;}
+    };
+    status(`记得你上次用的是「${name}」：点右边按钮继续用它，或点顶部「数据库文件夹」换一个。`);
   }
   async function save(next,message='已保存到数据文件夹'){
     busy=true;data=next;status('正在保存…');
@@ -980,7 +1022,7 @@
        在窗口这一层兜住：整页都不接受文件拖放，只有格子上的处理器会把事件拿走。 */
     window.addEventListener('dragover',event=>event.preventDefault());
     window.addEventListener('drop',event=>event.preventDefault());
-    window.addEventListener('beforeunload',e=>{if(volatile||busy||generating||!genQueue.idle){e.preventDefault();e.returnValue='';}});render();document.querySelectorAll('button,input,textarea,select').forEach(b=>b.disabled=true);$('choose-folder').disabled=false;$('extension-status').disabled=false;$('choose-folder').onclick=connectFolder;checkExtension().then(autoAccount);
+    window.addEventListener('beforeunload',e=>{if(volatile||busy||generating||!genQueue.idle){e.preventDefault();e.returnValue='';}});render();document.querySelectorAll('button,input,textarea,select').forEach(b=>b.disabled=true);$('choose-folder').disabled=false;$('extension-status').disabled=false;$('choose-folder').onclick=connectFolder;checkExtension().then(autoAccount);restoreFolder();
   }
   init();
 })();

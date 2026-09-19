@@ -3,7 +3,7 @@ import {pathToFileURL} from 'node:url';
 const root=new URL('./',import.meta.url);
 // 统一行尾为 LF：源文件行尾不一致时，产物字节仍保持稳定，构建结果可复现。
 const text=async path=>(await fs.readFile(new URL(path,root),'utf8')).replace(/\r\n/g,'\n');
-const scripts=['artist-id.js','artist-lookup.js','folder-store.js','extension-bridge.js','host-direct.js','novelai.js','image-gen.js','generate-queue.js','image-cache.js','image-loader.js','virtual-gallery.js','work-picker.js','viewer.js','test-images.js','app.js'];
+const scripts=['artist-id.js','artist-lookup.js','folder-store.js','extension-bridge.js','host-direct.js','folder-memory.js','novelai.js','image-gen.js','generate-queue.js','image-cache.js','image-loader.js','virtual-gallery.js','work-picker.js','viewer.js','test-images.js','app.js'];
 /* 扩展页要跑画师库：MV3 的扩展页禁止内联脚本，所以扩展里放的必须是多文件那一份（app/ 原样镜像），
    单文件的 画师库.html 只给 file:// 双击用。镜像由构建生成，不再手工维护第二份源码。 */
 const mirror=['index.html','style.css','favicon.svg',...scripts];

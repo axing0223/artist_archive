@@ -46,6 +46,31 @@ class FakeDir{
   async *values(){yield* this.items.values();}
   async removeEntry(name){if(!this.items.has(name))throw new DOMException('找不到','NotFoundError');this.items.delete(name);}
 }
+/* 够用的 IndexedDB 替身：只服务「记住上次的数据文件夹」这条路径。 */
+class FakeRequest{
+  constructor(run){this.result=undefined;this.error=null;Promise.resolve().then(()=>{try{this.result=run();this.onsuccess?.();}catch(error){this.error=error;this.onerror?.();}});}
+}
+class FakeIDB{
+  constructor(){this.stores=new Map();}
+  createObjectStore(name){if(this.stores.has(name))throw Error('已存在');const store=new Map();this.stores.set(name,store);return store;}
+  transaction(name){const map=this.stores.get(name);const request=fn=>new FakeRequest(()=>fn(map));return {objectStore:()=>({put:(value,key)=>request(()=>{map.set(key,value);return key;}),get:key=>request(()=>map.get(key)),delete:key=>request(()=>{map.delete(key);return true;})})};}
+  close(){}
+  open(){const request={result:this,onupgradeneeded:null,onsuccess:null,onerror:null};Promise.resolve().then(()=>{if(!this.stores.has('handles'))this.createObjectStore('handles');request.onupgradeneeded?.();request.onsuccess?.();});return request;}
+}
+/* 准备一个「上次用过的文件夹」：把句柄写进替身里，并给它加上权限查询/申请。 */
+function makeIndexedDB(remembered){
+  const db=new FakeIDB();
+  if(remembered){
+    const asked={query:0,request:0};
+    const handle=Object.assign(remembered.dir,{
+      asked,
+      queryPermission:async()=>{asked.query++;return remembered.query||'granted';},
+      requestPermission:async()=>{asked.request++;return remembered.request||'granted';},
+    });
+    db.createObjectStore('handles').set('dataFolder',handle);
+  }
+  return db;
+}
 async function boot(options={}){
   const elements=new Map(),state={renders:[],queried:[],scrolled:[],mounted:[],copied:[],pageListeners:[],pendingText:options.pendingText||''};
   const document={getElementById:id=>{if(!elements.has(id))elements.set(id,new El());return elements.get(id);},createElement:tag=>new El(tag),
@@ -64,6 +89,8 @@ FileUrl.createObjectURL=()=>'blob:x';FileUrl.revokeObjectURL=()=>{};
     /* 扩展页里才有 chrome.runtime：页面靠它接右键菜单送来的文字，也要主动去要一次待办。 */
     chrome:{runtime:{onMessage:{addListener:fn=>state.pageListeners.push(fn)},sendMessage:async()=>({text:state.pendingText||''})}},
     IntersectionObserver:IO,ResizeObserver:RO,Option,AbortController,AbortSignal,
+    /* 记忆里的数据文件夹：给了 remembered 就预先塞进这个替身里，模拟「上次用过」。 */
+    indexedDB:state.indexedDB=makeIndexedDB(options.remembered),
     crypto:{randomUUID:()=>'uuid-'+Math.random().toString(36).slice(2)},
     fetch:async()=>{throw Error('测试中不应联网');},
     URL:FileUrl,Blob,structuredClone,setTimeout,clearTimeout,requestAnimationFrame:fn=>fn(),
@@ -72,7 +99,7 @@ FileUrl.createObjectURL=()=>'blob:x';FileUrl.revokeObjectURL=()=>{};
     ArtistGallery:{render(container,rows,card){state.card=card;state.rows=rows;state.renders.push(rows.map(row=>card(row)));},clear(){},pin(){},visible:()=>[],mount(uid){state.mounted.push(uid);return true;}},
     ArtistLookup:{plan(){throw Error('测试中不查询');},lookup:async()=>[],posts:async()=>[],details:async()=>({counts:{total:null,beforeTotal:null}})},
   };
-  for(const file of ['artist-id.js','image-cache.js','image-loader.js','folder-store.js','novelai.js','image-gen.js','generate-queue.js','work-picker.js','viewer.js','test-images.js','app.js'])
+  for(const file of ['artist-id.js','image-cache.js','image-loader.js','folder-store.js','folder-memory.js','novelai.js','image-gen.js','generate-queue.js','work-picker.js','viewer.js','test-images.js','app.js'])
     vm.runInNewContext(await fs.readFile('app/'+file,'utf8'),ctx);
   return {elements,state,ctx};
 }
@@ -877,6 +904,58 @@ test('批量导入勾了生成时：导入照常先跑完，生成需求进后�
   assert.equal(getEl(e2,'gen-queue').hidden,true,'没勾就不该有排队');
   assert.equal(String(getEl(e2,'batch-message').textContent).includes('排入'),false);
   assert.equal(fired,0);
+});
+test('打开网页就自动接上上次的文件夹：权限还在时不打扰用户',async()=>{
+  const dir=new FakeDir('数据');
+  const {elements,state}=await boot({remembered:{dir,query:'granted'}});
+  await wait(20);
+  assert.equal(dir.asked.query,1,'要先问一下权限还在不在');
+  assert.equal(dir.asked.request,0,'权限还在就不该再弹申请');
+  assert.match(String(getEl(elements,'folder-name').textContent),/当前文件夹：数据/,'自动接上要显示当前文件夹');
+  assert.match(String(getEl(elements,'storage-status').textContent),/上次的文件夹/,'状态栏要说清是自动接上的');
+  assert.equal(getEl(elements,'resume-folder').hidden,true,'自动接上后不该再显示那个按钮');
+  assert.equal(getEl(elements,'add-artist').disabled,false,'接上之后功能要能用');
+  const {elements:e2,state:s2}=await boot({remembered:{dir:new FakeDir('数据'),query:'denied'}});
+  await wait(20);
+  assert.equal(getEl(e2,'resume-folder').hidden,true,'权限被拒就不给按钮');
+  assert.equal(String(getEl(e2,'folder-name').textContent).includes('当前文件夹'),false,'也不该自动接上');
+  assert.equal(s2.indexedDB.stores.get('handles').has('dataFolder'),false,'权限没了就把这条记忆忘掉');
+});
+test('浏览器重启后权限退回询问：给一个按钮，点一下就能继续用上次的文件夹',async()=>{
+  const dir=new FakeDir('数据');
+  const {elements,state}=await boot({remembered:{dir,query:'prompt',request:'granted'}});
+  await wait(20);
+  const button=getEl(elements,'resume-folder');
+  assert.equal(button.hidden,false,'该出现「继续使用上次的文件夹」');
+  assert.match(String(button.textContent),/数据/,'按钮上要写清是哪个文件夹');
+  assert.match(String(getEl(elements,'storage-status').textContent),/上次用的是/);
+  assert.equal(String(getEl(elements,'folder-name').textContent).includes('当前文件夹'),false,'没点按钮之前不接上');
+  assert.equal(dir.asked.request,0,'先不申请，等用户点');
+  await button.onclick();
+  assert.equal(dir.asked.request,1,'点一下才去申请权限');
+  assert.match(String(getEl(elements,'folder-name').textContent),/当前文件夹：数据/);
+  assert.equal(button.hidden,true,'接上后按钮收起');
+  assert.equal(state.indexedDB.stores.get('handles').has('dataFolder'),true,'继续用之后这条记忆留着');
+  /* 用户在权限弹窗里点了拒绝：忘掉这条记忆，回到手动选择 */
+  const denied=new FakeDir('数据');
+  const second=await boot({remembered:{dir:denied,query:'prompt',request:'denied'}});
+  await wait(20);
+  await getEl(second.elements,'resume-folder').onclick();
+  assert.equal(denied.asked.request,1);
+  assert.equal(getEl(second.elements,'resume-folder').hidden,true);
+  assert.match(String(getEl(second.elements,'storage-status').textContent),/重新选择/);
+  assert.equal(second.state.indexedDB.stores.get('handles').has('dataFolder'),false,'拒绝了就把记忆清掉');
+  assert.equal(String(getEl(second.elements,'folder-name').textContent).includes('当前文件夹'),false);
+});
+test('手动选完文件夹会记下来，供下次打开时自动接上',async()=>{
+  const {elements,state}=await boot();
+  await getEl(elements,'choose-folder').onclick();
+  assert.match(String(getEl(elements,'folder-name').textContent),/当前文件夹/);
+  const stored=state.indexedDB.stores.get('handles')?.get('dataFolder');
+  assert.ok(stored,'选过的文件夹要存进 IndexedDB');
+  assert.equal(stored.name,'数据','存的是目录句柄本身');
+  assert.match(String(getEl(elements,'storage-status').textContent),/已连接文件夹/);
+  assert.equal(String(getEl(elements,'storage-status').textContent).includes('记不住'),false,'能记住时不该出现那句提示');
 });
 test('右键菜单送来的文字会走一遍「添加下一位画师」：填进输入框并开始识别',async()=>{
   const {elements,state,ctx}=await boot();
