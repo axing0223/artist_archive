@@ -325,7 +325,7 @@
     if(a.description)info.append(el('p','description',a.description));
     const meta=el('div','artist-meta');meta.append(el('span',a.category?'primary':'pending-badge',a.category||'待判断'));
     if(a.tags.length){const ts=el('div','secondary');a.tags.forEach(t=>ts.append(el('span','',t)));meta.append(ts);}
-    const actions=el('div','artist-actions');actions.append(btn('编辑',()=>startEdit(a),'edit-button'));if(a.artistUrl)actions.append(link('画师页面 ↗',a.artistUrl,'edit-button'));info.append(actions);
+    const actions=el('div','artist-actions');actions.append(btn('编辑',()=>startEdit(a),'edit-button'),deleteArtistButton(a));if(a.artistUrl)actions.append(link('画师页面 ↗',a.artistUrl,'edit-button'));info.append(actions);
     const works=el('div','works');if(!a.works.length){const empty=el('div','unavailable');empty.append(el('strong','',a.status||'还没有作品图片'),el('span','',a.note||'编辑画师，上传你想参考的作品。'));works.append(empty);}
     const reserve=reservedOf(),slots=FolderStore.previewWorks(a,PREVIEW_SLOTS,reserve);
     slots.forEach((w,i)=>{
@@ -354,7 +354,9 @@
   const markEditorPainted=()=>{if(draft)ArtistGallery.markPainted(draft.uid);};
   function editingCard(a){
     const article=el('article','artist is-editing'),info=el('div','artist-info');
-    const numbers=el('div','artist-numbers'),workCount=el('span','work-count',draft.works.length+' 张图片');numbers.append(el('span','serial',String(seqOf(draft)).padStart(4,'0')),workCount);info.append(numbers);
+    /* 顶部的数量：括号外是这本库里存了几张，括号里是站点上这位画师一共有多少张（与浏览态卡片同一个写法）。 */
+    const countText=()=>'作品数量：'+draft.works.length+'（'+(draft.counts?.total??'未读取')+'）';
+    const numbers=el('div','artist-numbers'),workCount=el('span','work-count',countText());numbers.append(el('span','serial',String(seqOf(draft)).padStart(4,'0')),workCount);info.append(numbers);
     const field=(label,node)=>{const wrap=el('label','edit-field');wrap.append(el('span','edit-label',label),node);return wrap;};
     const fieldBox=(label,node)=>{const wrap=el('div','edit-field edit-field-wide');wrap.append(el('span','edit-label',label),node);return wrap;};
     const nameInput=el('input');nameInput.value=draft.name;nameInput.maxLength=160;nameInput.placeholder='画师名字（必填）';nameInput.oninput=()=>{
@@ -437,7 +439,7 @@
     /* 作品格单独可重画：从 Danbooru 勾一张就补一张，不动整张卡片——
        重画整张会把下面正在挑作品的候选列表一起冲掉。 */
     paintEditorWorks=()=>{
-      workCount.textContent=draft.works.length+' 张图片';
+      workCount.textContent=countText();
       works.replaceChildren(...draft.works.map((w,i)=>{
         const figure=el('figure','work'),thumb=btn('',()=>showImage({uid:draft.uid,name:draft.name},w),'thumb'),img=el('img');
         figure.dataset.work=workKey(draft.uid,w,i);
@@ -452,6 +454,7 @@
     const expand=el('section','artist-expand'),head=el('div','expand-head');
     /* 展开读取／收起就在标题旁边，一个按钮两副面孔：候选列表下面不再重复放一个「收起」。 */
     editorToggle=btn('展开读取',()=>togglePicker(expand),'action');
+    editorExpand=expand;
     head.append(el('strong','','从 Danbooru 添加作品'),editorToggle);expand.append(head);
     article.append(info,works,expand);return article;
   }
@@ -480,7 +483,7 @@
     $('count').textContent=`找到 ${rows.length} / ${data.artists.length} 位 · 连续滚动，按需加载${state.tags.size>1?' · 同时包含所选标签':''}`;$('empty').hidden=rows.length!==0;
     $('library-summary').textContent=`${data.artists.length} 位画师 · ${data.artists.reduce((n,a)=>n+a.works.length,0)} 张作品 · 由你自由整理`;$('sample-date').textContent=data.date?'初始样本日期：'+data.date:'';
   }
-  let editorPicker=null,editorHost=null,editorError=null,editorToggle=null,paintEditorWorks=null;
+  let editorPicker=null,editorHost=null,editorError=null,editorToggle=null,editorExpand=null,paintEditorWorks=null;
   function setEditorError(message){if(editorError)editorError.textContent=message;}
   /* 收起要把容器本身从页面移除：dispose() 已经清空了它的内容，只清内容会留下一个空壳。 */
   function closeWorkPicker(){if(editorPicker){editorPicker.dispose();editorPicker=null;}if(editorHost){editorHost.remove?.();editorHost=null;}if(editorToggle)editorToggle.textContent='展开读取';}
@@ -548,13 +551,20 @@
     editingId=a?.uid||null;
     draft=a?clone(a):{uid:uid(),name:'',category:null,score:null,aliases:[],alias:null,tags:[],artistUrl:'',description:'',note:'',works:[]};
     if(editingId)ArtistGallery.pin(editingId,true);
-    morphAway(previous||editingId,()=>{render();focusEditingCard();});
+    morphAway(previous||editingId,()=>{render();focusEditingCard();autoOpenPicker();});
+  }
+  /* 设置里开了「编辑画师时自动展开 danbooru 作品」：一进编辑态就把候选列表拉出来。
+     名字还空着的（新建画师）先不动——那时展开只会弹一句「先填名字」；等填好名字再点按钮即可。 */
+  function autoOpenPicker(){
+    if(!data?.autoOpenWorks||!draft||editorPicker||!editorExpand)return;
+    if(!(draft.name||'').trim())return;
+    togglePicker(editorExpand);
   }
   function cancelEdit(){
     if(busy||uploading)return;
     morphAway(editingId,()=>{closeEditor();render();});
   }
-  function closeEditor(){if(editingId)ArtistGallery.pin(editingId,false);closeWorkPicker();editingId=null;draft=null;editorError=null;editorToggle=null;paintEditorWorks=null;}
+  function closeEditor(){if(editingId)ArtistGallery.pin(editingId,false);closeWorkPicker();editingId=null;draft=null;editorError=null;editorToggle=null;editorExpand=null;paintEditorWorks=null;}
   /* 从候选里挑出唯一可信的那一位：名字完全一致优先，只有一位候选时也接受。
      其余情况返回 null —— 宁可没有编号，也不写错。 */
   const pickCandidate=(found,name)=>{
@@ -683,11 +693,13 @@
     closeEditor();
     await save(next,'已保存 '+name);
   }
-  async function removeArtist(){
-    if(busy||uploading||!draft)return;
-    const next=clone(data);next.artists=next.artists.filter(a=>a.uid!==editingId);next.artists.forEach((a,i)=>a.order=i+1);
-    await new Promise(resolve=>morphAway(editingId,resolve));
-    closeEditor();
+  /* 删除画师。编辑态的「删除画师」和浏览卡片上的那个都走这里：删的是 uid 这一位；
+     正在编辑的就是他时，顺手把编辑态收掉。 */
+  async function removeArtist(uid=editingId){
+    if(busy||uploading||!uid)return;
+    const next=clone(data);next.artists=next.artists.filter(a=>a.uid!==uid);next.artists.forEach((a,i)=>a.order=i+1);
+    await new Promise(resolve=>morphAway(uid,resolve));
+    if(uid===editingId)closeEditor();
     await save(next,'已删除画师');
   }
   function confirmButton(label,armedLabel,onConfirm,cls='danger'){
@@ -704,7 +716,9 @@
     },cls);
     return button;
   }
-  const removeButton=()=>confirmButton('删除画师','再次点击确认删除',removeArtist);
+  const removeButton=()=>confirmButton('删除画师','再次点击确认删除',()=>removeArtist(editingId));
+  /* 浏览态卡片上也能删：和编辑态那个删除按钮走同一套「点两次」的逻辑，删的是这张卡片这一位。 */
+  const deleteArtistButton=a=>confirmButton('删除画师','再次点击确认删除',()=>removeArtist(a.uid));
   const readImage=file=>new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(Error('图片读取失败。'));reader.readAsDataURL(file);});
   const thumbnail=dataUrl=>new Promise((resolve,reject)=>{const img=new Image();img.onload=()=>{try{const scale=Math.min(1,400/Math.max(img.width,img.height)),c=document.createElement('canvas');c.width=Math.max(1,Math.round(img.width*scale));c.height=Math.max(1,Math.round(img.height*scale));const ctx=c.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height);ctx.drawImage(img,0,0,c.width,c.height);resolve(c.toDataURL('image/jpeg',.8));}catch{reject(Error('图片处理失败。'));}};img.onerror=()=>reject(Error('图片读取失败。'));img.src=dataUrl;});
   const manageFilter={category:'',tag:''};
@@ -820,7 +834,8 @@
   async function enrichArtists(names,order=DEFAULT_WORK_ORDER){
     const message=$('batch-message'),total=names.length;
     let done=0,failed=0,renamed=0,images=0;
-    const report=()=>{const text=`正在采集 ${done} / ${total} · 补编号 ${renamed} · 缩略图 ${images} 张${failed?` · 失败 ${failed}`:''}`;message.textContent=text;status(text);};
+    const text=()=>`正在采集 ${done} / ${total} · 补编号 ${renamed} · 缩略图 ${images} 张${failed?` · 失败 ${failed}`:''}`;
+    const report=()=>{const line=text();message.textContent=line;status(line);};
     for(let i=0;i<total&&!batchStop;i+=BATCH_CHUNK){
       const next=clone(data);
       for(const name of names.slice(i,i+BATCH_CHUNK)){
@@ -844,9 +859,11 @@
           images+=works.filter(w=>typeof w.thumb==='string'&&w.thumb.startsWith('data:')).length;
           artist.counts={...detail.counts};artist.works=works;
         }catch(error){failed++;if(batchFailed.length<5)batchFailed.push(name+'：'+error.message);}
-        report();
+        /* 这一位采完就落一次盘：卡片上的数量与缩略图当场补上（画廊按指纹只重画这一张），
+           中途关掉页面也不会白采。开销很小——写盘只写这一位画师的目录加一份索引。 */
+        const line=text();message.textContent=line;
+        await save(next,line);
       }
-      await save(next,`已采集 ${done} / ${total} 位画师的作品`);
       if(batchStop)break;
     }
     return {done,failed,renamed,images};
@@ -886,7 +903,9 @@
     const next=clone(data),seen=new Set(next.artists.map(a=>a.name.toLowerCase())),added=[];let count=0;
     for(const name of names){if(seen.has(name.toLowerCase()))continue;seen.add(name.toLowerCase());if(next.artists.length>=20000){$('batch-message').textContent='最多支持 20,000 位画师。';return;}next.artists.push({uid:ArtistId.issue(next.artists,{name}),order:next.artists.length+1,name,category:null,score:null,aliases:[],alias:null,tags:[],artistUrl:'https://danbooru.donmai.us/posts?tags='+encodeURIComponent(name),description:'',note:'',works:[]});added.push(name);count++;}
     batchStop=false;batchFailed.length=0;
-    reset();await save(next,`已添加 ${count} 位，跳过 ${names.length-count} 个重复名字`);
+    /* 采完就能看着新卡一张张补上：清掉筛选，把分类切到「待判断」——新加的画师都落在这里。 */
+    reset();state.category='待判断';
+    await save(next,`已添加 ${count} 位，跳过 ${names.length-count} 个重复名字`);
     const summary=`已添加 ${count} 位，跳过 ${names.length-count} 个重复名字`;
     if(collect&&added.length){
       $('batch-message').textContent=`开始采集 ${added.length} 位画师的最新 ${BATCH_WORKS} 张作品…`;
@@ -1176,7 +1195,7 @@
     $('test-remove-all').onclick=()=>{for(const box of $('test-remove-list').querySelectorAll('input[type=checkbox]'))box.checked=true;};
     $('test-remove-none').onclick=()=>{for(const box of $('test-remove-list').querySelectorAll('input[type=checkbox]'))box.checked=false;};
     $('test-remove-run').onclick=()=>ArtistTestImages.runRemove();
-    $('settings-open').onclick=()=>{$('history-date').value=data.cutoffDate;$('save-large').checked=data.saveLargeImages===true;$('fixed-test').checked=data.fixedTestSlots===true;$('work-order').value=data.workOrder;$('card-size').value=String(prefs.cardSize);$('card-size-value').textContent=prefs.cardSize;$('settings').showModal();};$('close-settings').onclick=()=>$('settings').close();
+    $('settings-open').onclick=()=>{$('history-date').value=data.cutoffDate;$('save-large').checked=data.saveLargeImages===true;$('fixed-test').checked=data.fixedTestSlots===true;$('auto-open-works').checked=data.autoOpenWorks===true;$('work-order').value=data.workOrder;$('card-size').value=String(prefs.cardSize);$('card-size-value').textContent=prefs.cardSize;$('settings').showModal();};$('close-settings').onclick=()=>$('settings').close();
     $('gen-settings-open').onclick=()=>{fillGenSettings();showAccount();updateGenStatus();$('gen-settings').showModal();if(ArtistImageGen.loadToken()&&!ArtistImageGen.cachedAccount())refreshAccount(false);};$('close-gen-settings').onclick=()=>$('gen-settings').close();
     $('opus-status').onclick=()=>refreshAccount(true);
     $('gen-queue').onclick=()=>{const dropped=genQueue.clear();status(dropped?`已取消排队的 ${dropped} 条生成需求；正在跑的那条会跑完。`:'队列里没有等待中的需求。');};paintQueue();
@@ -1184,6 +1203,7 @@
     $('card-size').oninput=()=>{const value=Number($('card-size').value);$('card-size-value').textContent=value;prefs.setCardSize(value);};
     $('save-large').onchange=async()=>{const next=clone(data);next.saveLargeImages=$('save-large').checked;await save(next,next.saveLargeImages?'已开启「保存大图」：预览作品时会保存原图':'已关闭「保存大图」：预览作品时不再保存原图');};
     $('fixed-test').onchange=async()=>{const next=clone(data);next.fixedTestSlots=$('fixed-test').checked;await save(next,next.fixedTestSlots?'已开启「固定测试风格图」：每张卡片右侧 2 格留给测试风格 1、2':'已关闭「固定测试风格图」：测试风格图不再占固定格子');};
+    $('auto-open-works').onchange=async()=>{const next=clone(data),on=$('auto-open-works').checked;next.autoOpenWorks=on;await save(next,on?'已开启「编辑画师时自动展开 danbooru 作品」：进入编辑态就会按名字读取站点作品':'已关闭「编辑画师时自动展开 danbooru 作品」：需要时自己点「展开读取」');};
     $('gen-check').onclick=()=>checkExtension();
     $('history-date').onchange=async()=>{const date=$('history-date').value;if(!/^\d{4}-\d{2}-\d{2}$/.test(date)){ $('history-date').value=data.cutoffDate;return;}const next=clone(data);next.cutoffDate=date;await save(next,'已保存截至日期；下次保存画师时会按新日期更新该画师的数量。');};
     $('work-order').onchange=async()=>{const value=$('work-order').value;if(!WORK_ORDERS.includes(value)){ $('work-order').value=data.workOrder;return;}const next=clone(data);next.workOrder=value;await save(next,'已改为按「'+WORK_ORDER_LABELS[value]+'」采集作品');};

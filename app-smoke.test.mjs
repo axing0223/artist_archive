@@ -118,7 +118,7 @@ test('点击「添加画师」能进入内联编辑态，渲染过程不应抛�
   assert.equal(cards.length,1,'应渲染出一张卡片');
   assert.ok(cards[0].className.includes('is-editing'),'新画师卡片应处于内联编辑态');
 });
-test('浏览态卡片：artist-info 左下「编辑」右下「画师页面」，且不再显示张数说明',async()=>{
+test('浏览态卡片：artist-info 左下「编辑 / 删除画师」，有链接时右边「画师页面」',async()=>{
   const {state}=await boot();
   const artist={uid:'0001-tester-1',order:1,name:'tester',category:null,tags:[],danbooruId:1,counts:{},artistUrl:'https://danbooru.donmai.us/artists/1',description:'',note:'',basis:'',status:'',works:[{id:'1',thumb:null}]};
   const card=state.card(artist);
@@ -127,16 +127,32 @@ test('浏览态卡片：artist-info 左下「编辑」右下「画师页面」�
   assert.ok(info.className.includes('artist-info'));
   const actions=info.children[info.children.length-1];
   assert.ok(actions.className.includes('artist-actions'),'按钮应在 artist-info 内部的最下方');
-  assert.equal(actions.children.length,2,'左边编辑、右边画师页面');
+  assert.equal(actions.children.length,3,'左边编辑、紧挨着删除画师，右边画师页面');
   assert.equal(actions.children[0].textContent,'编辑');
-  assert.equal(actions.children[1].textContent,'画师页面 ↗');
-  assert.equal(actions.children[0].className,'edit-button','两处都用同一套按钮样式');
-  assert.equal(actions.children[1].className,'edit-button');
+  assert.equal(actions.children[1].textContent,'删除画师','删除按钮就在「编辑」右边');
+  assert.equal(actions.children[2].textContent,'画师页面 ↗');
+  assert.equal(actions.children[0].className,'edit-button');
+  assert.equal(actions.children[0].className,actions.children[2].className,'编辑与画师页面同一套按钮样式');
+  assert.equal(String(actions.children[1].className).includes('danger'),true,'删除用危险样式，和编辑区分开');
   assert.equal(String(card.children[2].className).includes('artist-meta'),true,'分类与标签移到顶部标签条');
   const texts=[];const walk=node=>{if(node._text)texts.push(node._text);for(const child of node.children||[])walk(child);};
   walk(card);
   assert.equal(texts.includes('刷新'),false,'刷新按钮已移除，改由保存时自动刷新');
   assert.equal(texts.some(t=>String(t).includes('张图片 · 卡片预览')),false,'作品下方的张数说明应已移除');
+});
+test('浏览态卡片的「删除画师」也要点两次才真删',async()=>{
+  const {elements,state}=await boot();
+  await createArtist(state,elements,'待删的');
+  const uid=state.rows[0].uid;
+  const button=()=>findText(lastRender(state)[0],'删除画师')||findText(lastRender(state)[0],'再次点击确认删除');
+  const first=button();
+  assert.equal(first.textContent,'删除画师','第一步是「删除画师」');
+  await first.onclick();
+  assert.equal(state.rows.length,1,'第一次点击只进入确认态，不删');
+  assert.equal(first.textContent,'再次点击确认删除','就地变成确认文案');
+  await first.onclick();
+  assert.equal(state.rows.length,0,'第二次点击才真的删掉');
+  assert.equal(state.rows.some(artist=>artist.uid===uid),false,'删的就是这张卡片这一位');
 });
 test('画师卡片：没写画风描述时不显示默认提示文字',async()=>{
   const {state}=await boot();
@@ -159,12 +175,13 @@ test('画师卡片：主分类与标签搬出信息区，放进顶部标签条',
   assert.ok(findByClass(card.children[2],'primary'),'分类沿用原有徽章样式');
   assert.ok(findByClass(card.children[2],'secondary'),'标签沿用原有样式');
 });
-test('没有画师页面链接时不显示右下角按钮',async()=>{
+test('没有画师页面链接时不显示画师页面按钮，但编辑与删除都在',async()=>{
   const {state}=await boot();
   const artist={uid:'0001-tester-1',order:1,name:'tester',category:null,tags:[],danbooruId:null,counts:{},artistUrl:'',description:'',note:'',basis:'',status:'',works:[]};
   const info=state.card(artist).children[0],actions=info.children[info.children.length-1];
-  assert.equal(actions.children.length,1);
+  assert.equal(actions.children.length,2);
   assert.equal(actions.children[0].textContent,'编辑');
+  assert.equal(actions.children[1].textContent,'删除画师');
 });
 test('卡片显示备注，但作品张数说明不再显示',async()=>{
   const {state}=await boot();
@@ -1516,6 +1533,67 @@ test('批量导入：数量读取失败时不写数量，留待下次重试',asy
   assert.equal(state.rows[0].counts,undefined,'失败不写 counts.checkedAt，重新提交同一名单会重试');
   assert.equal(state.rows[0].works.length,0);
 });
+test('批量采集：每位画师采完就刷新对应卡片，不用等整批结束',async()=>{
+  const {elements,state,ctx}=await boot();
+  const asked=[];
+  stub(ctx,{lookup:async()=>[],posts:async()=>[],
+    details:async name=>{asked.push(name);return {counts:name==='甲'?{total:11,beforeTotal:5}:{total:22,beforeTotal:7},works:[post(name==='甲'?'1':'2')]};}});
+  await runBatch(elements,'甲\n乙',true);
+  assert.deepEqual(asked,['甲','乙'],'一位一位按名单顺序采');
+  const cardOf=(render,name)=>render.find(card=>card.dataset.artist===name);
+  const showsCount=(render,name,text)=>{const card=cardOf(render,name);return !!card&&String(findByClass(card,'work-count').textContent)===text;};
+  const at=state.renders.findIndex(render=>showsCount(render,'甲','作品数量：11（5）'));
+  assert.ok(at>0,'甲采完就该有一次渲染把他的数量与缩略图补上');
+  assert.ok(at<state.renders.length-1,'这次渲染要发生在整批结束之前，而不是最后统一刷新');
+  assert.equal(showsCount(state.renders[at],'乙','作品数量：22（7）'),false,'那一刻乙还没采到');
+  assert.equal(showsCount(state.renders[state.renders.length-1],'乙','作品数量：22（7）'),true,'乙采完同样补上');
+});
+test('批量采集：采完自动清空筛选，并把分类切到「待判断」',async()=>{
+  const {elements,state,ctx}=await boot();
+  stub(ctx,{lookup:async()=>[],details:async()=>({counts:{total:3},works:[post('1')]})});
+  /* 先制造会挡住新画师的筛选：勾一个标签、搜索框里留字 */
+  await createArtist(state,elements,'旧的');
+  getEl(elements,'tags').children[0].onclick();
+  getEl(elements,'search').value='zzz';getEl(elements,'search').oninput({target:getEl(elements,'search')});
+  assert.equal(state.rows.length,0,'筛选把所有人都挡在外面');
+  await runBatch(elements,'新来的',true);
+  assert.equal(state.rows.length,2,'采集完应该看得到刚采回来的画师（连同原本那位待判断的）');
+  assert.equal(state.rows.some(artist=>artist.name==='新来的'),true);
+  const active=findAllByClass(getEl(elements,'categories'),'active');
+  assert.equal(active.length,1,'只有一个分类处于选中态');
+  assert.equal(String(active[0].textContent),'待判断','分类自动切到「待判断」');
+  assert.equal(String(active[0].children[0].textContent),'2','计数跟着显示 2 位待判断');
+  assert.equal(getEl(elements,'search').value,'','搜索框被清空');
+  assert.equal(findAllByClass(getEl(elements,'tags'),'active').length,0,'标签筛选被清空');
+});
+test('设置里可以打开「编辑画师时自动展开 danbooru 作品」，默认关闭',async()=>{
+  const {elements,state,ctx}=await boot();
+  stub(ctx,{lookup:async()=>[],details:async()=>({counts:{}}),posts:async()=>[post('11')]});
+  const toggle=getEl(elements,'auto-open-works');
+  assert.equal(toggle.checked,false,'默认关闭');
+  await createArtist(state,elements,'tester');
+  const edit=()=>findText(lastRender(state)[0],'编辑')||findText(lastRender(state)[0],'取消');
+  edit().onclick();
+  await wait(200);
+  assert.equal(findByClass(lastRender(state)[0],'candidate-previews'),null,'没开开关就不该自动读作品');
+  findText(lastRender(state)[0],'取消').onclick();
+  await wait(200);
+  toggle.checked=true;await toggle.onchange();
+  assert.equal(state.rows[0].name,'tester','改开关不该动数据');
+  findText(lastRender(state)[0],'编辑').onclick();
+  await wait(200);
+  assert.ok(findByClass(lastRender(state)[0],'candidate-previews'),'开了开关，进编辑态就把候选列出来');
+  assert.equal(findText(lastRender(state)[0],'收起')!==null,true,'按钮同时变成「收起」');
+});
+test('工具栏按钮与对话框标题都叫「批量采集画师」',async()=>{
+  const html=await fs.readFile('app/index.html','utf8');
+  assert.match(html,/id="batch-artists"[^>]*>批量采集画师</);
+  assert.match(html,/id="batch-title">批量采集画师</);
+  assert.equal(html.includes('批量导入名字'),false,'旧名字不该再出现');
+  assert.equal(html.includes('批量导入画师名字'),false);
+  assert.match(html,/id="auto-open-works"/,'设置里要有这个开关');
+  assert.equal(html.slice(html.indexOf('id="gen-settings"')).includes('id="auto-open-works"'),false,'它是编辑行为开关，留在「设置」里');
+});
 test('切换「采集作品的排序」之后，视线回到画师作品上',async()=>{
   const {elements,state,ctx}=await boot();
   stub(ctx,{lookup:async()=>[],details:async()=>({counts:{}}),posts:async()=>[post('11')]});
@@ -1560,11 +1638,11 @@ test('候选作品勾上就直接进作品列表，不用再点按钮，候选�
   box.checked=true;await box.onchange();
   assert.equal(String(label.className).includes('is-added'),true,'勾上就算加入');
   assert.equal(findAllByClass(card(),'work').length,1,'作品格里立刻补上这一张，不再需要别的按钮');
-  assert.equal(String(findByClass(card(),'work-count').textContent),'1 张图片','顶部的张数也要跟着变');
+  assert.equal(String(findByClass(card(),'work-count').textContent),'作品数量：1（未读取）','顶部的数量也要跟着变：括号外是本库张数，括号里是作者作品数');
   assert.ok(findByClass(card(),'candidate-previews'),'候选列表不能被冲掉，否则连勾第二张都做不到');
   box.checked=false;await box.onchange();
   assert.equal(findAllByClass(card(),'work').length,0,'取消勾选就把它移出');
-  assert.equal(String(findByClass(card(),'work-count').textContent),'0 张图片');
+  assert.equal(String(findByClass(card(),'work-count').textContent),'作品数量：0（未读取）');
   box.checked=true;await box.onchange();
   await findText(card(),'保存').onclick();
   assert.equal(state.rows[0].works.length,1,'保存后作品真的落在画师身上');
