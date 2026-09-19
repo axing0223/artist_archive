@@ -244,6 +244,18 @@ test('测试风格图片固定占右侧格子，序号 1 在最右，作品从�
  assert.deepEqual(store.previewWorks({works:[]}).length,5,'空画师也要返回 5 个格子');
  assert.equal(store.previewWorks({works:[...works(1),test(1)]})[4].testSeq,1);
 });
+test('固定测试风格图：右侧 2 格留给序号 1、2，作品图只占左边 3 格',()=>{
+ const works=n=>Array.from({length:n},(_,i)=>({id:String(i+1)}));
+ const test=seq=>({id:'',kind:'test',testSeq:seq});
+ const mark=slots=>slots.map(w=>w?(w.kind==='test'?'测'+w.testSeq:w.id):'空');
+ assert.deepEqual(mark(store.previewWorks({works:[...works(4),test(1),test(2)]},5,2)),['1','2','3','测2','测1'],'4 张作品也让出右侧 2 格');
+ assert.deepEqual(mark(store.previewWorks({works:works(6)},5,2)),['1','2','3','空','空'],'没有测试图时右侧 2 格照样空着，不被作品挤占');
+ assert.deepEqual(mark(store.previewWorks({works:[...works(2),test(2)]},5,2)),['1','2','空','测2','空'],'序号 2 固定在第 4 格');
+ assert.deepEqual(mark(store.previewWorks({works:[...works(1),test(3)]},5,2)),['测3','1','空','空','空'],'序号 3 不占固定格，退回左边区域');
+ assert.deepEqual(mark(store.previewWorks({works:[test(1),test(1)]},5,2)),['空','空','测1','空','测1'],'同一序号重复出现时退到左边，不抢序号 2 的固定格');
+ assert.deepEqual(mark(store.previewWorks({works:works(3)},5,0)),['1','2','3','空','空'],'reserve 为 0 时行为与从前一致');
+ assert.equal(store.previewWorks({works:[]},5,9).filter(Boolean).length,0,'保留格数超过格子数也不会越界');
+});
 test('导入用的测试风格序号：默认 1，已被占用就往后顺延',()=>{
  const test=seq=>({id:'',kind:'test',testSeq:seq});
  assert.equal(store.nextTestSeq([],1),1);

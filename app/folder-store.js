@@ -15,7 +15,7 @@
   /* 登记一次 uid 变更（改名、补编号）。下一次 write 会把旧目录里的图片搬到新目录再删旧目录；
      不登记的话新目录是空的，而旧目录照样会被清理，图片就丢了。 */
   function rename(dir,from,to){if(!dir||!from||!to||from===to)return;const map=legacy.get(dir)||new Map();map.set(to,from);legacy.set(dir,map);}
-  const empty=()=>({version:1,cutoffDate:'2026-07-01',saveLargeImages:false,tags:['可爱','唯美','暗黑','酷炫','清爽','华丽'],artists:[]});
+  const empty=()=>({version:1,cutoffDate:'2026-07-01',saveLargeImages:false,fixedTestSlots:false,tags:['可爱','唯美','暗黑','酷炫','清爽','华丽'],artists:[]});
   async function json(dir,name){return JSON.parse(await (await (await dir.getFileHandle(name)).getFile()).text());}
   async function put(dir,name,value){const f=await dir.getFileHandle(name,{create:true}),s=await f.createWritable();try{await s.write(value);await s.close();}catch(e){try{await s.abort();}catch{}throw e;}}
   const extensionOf=type=>Object.keys(TYPES).find(k=>TYPES[k]===type)||'';
@@ -35,19 +35,26 @@
     while(used.has(seq))seq++;
     return seq;
   }
-  function previewWorks(artist,limit=5){
+  /* 卡片预览格排布。默认 5 格、测试风格图按序号从右往左占位、作品图从左往右补空。
+     reserve>0 时（设置里开了「固定测试风格图」）最右 reserve 格留给序号 1..reserve 的测试图：
+     作品图只能用到左边的 limit-reserve 格，测试图还没生成时这几格也不会被作品挤占。 */
+  function previewWorks(artist,limit=5,reserve=0){
     const works=Array.isArray(artist?.works)?artist.works:[],slots=new Array(limit).fill(null);
+    const fixed=Math.max(0,Math.min(Number.isSafeInteger(reserve)&&reserve>0?reserve:0,limit)),cut=limit-fixed;
+    const seqOf=work=>Number.isSafeInteger(work.testSeq)&&work.testSeq>0?work.testSeq:1;
     for(const work of works){
       if(work.kind!=='test')continue;
-      let index=limit-Math.max(1,Number.isSafeInteger(work.testSeq)&&work.testSeq>0?work.testSeq:1);
+      const seq=seqOf(work),primary=seq<=fixed?limit-seq:cut-seq;
+      /* 固定格只认自己的序号：同一个序号重复出现时退到左边区域找空位，不去抢别的固定格。 */
+      let index=slots[primary]?cut-1:primary;
       while(index>=0&&slots[index])index--;
       if(index>=0)slots[index]=work;
     }
     let cursor=0;
     for(const work of works){
       if(work.kind==='test')continue;
-      while(cursor<limit&&slots[cursor])cursor++;
-      if(cursor>=limit)break;
+      while(cursor<cut&&slots[cursor])cursor++;
+      if(cursor>=cut)break;
       slots[cursor]=work;cursor++;
     }
     return slots;

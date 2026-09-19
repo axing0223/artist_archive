@@ -45,11 +45,11 @@ FileUrl.createObjectURL=()=>'blob:x';FileUrl.revokeObjectURL=()=>{};
     fetch:async()=>{throw Error('测试中不应联网');},
     URL:FileUrl,Blob,structuredClone,setTimeout,clearTimeout,requestAnimationFrame:fn=>fn(),
     ArtistImages:{bind(){},dispose(){},setFolder(){},clear(){},dataUrl:async()=>'data:image/jpeg;base64,/9j/2Q==',fetch:async()=>new Blob([])},
-    ArtistExtension:{connected:false,check:async()=>{throw Error('测试中未连接扩展');},image:async()=>{throw Error('未连接');},resolve:async()=>{throw Error('未连接');}},
+    ArtistExtension:{connected:false,canGenerate:false,version:'',generate:async()=>{throw Error('未连接');},check:async()=>{throw Error('测试中未连接扩展');},image:async()=>{throw Error('未连接');},resolve:async()=>{throw Error('未连接');}},
     ArtistGallery:{render(container,rows,card){state.card=card;state.rows=rows;state.renders.push(rows.map(row=>card(row)));},clear(){},pin(){},visible:()=>[],mount(uid){state.mounted.push(uid);return true;}},
     ArtistLookup:{plan(){throw Error('测试中不查询');},lookup:async()=>[],posts:async()=>[],details:async()=>({counts:{total:null,beforeTotal:null}})},
   };
-  for(const file of ['artist-id.js','image-cache.js','image-loader.js','folder-store.js','work-picker.js','viewer.js','test-images.js','app.js'])
+  for(const file of ['artist-id.js','image-cache.js','image-loader.js','folder-store.js','novelai.js','image-gen.js','work-picker.js','viewer.js','test-images.js','app.js'])
     vm.runInNewContext(await fs.readFile('app/'+file,'utf8'),ctx);
   return {elements,state,ctx};
 }
@@ -703,6 +703,70 @@ test('管理标签：筛选状态下不提供拖动把手，避免顺序歧义',
   assert.ok(findByClass(list.children[0],'manage-handle'),'清空筛选后把手回来');
 });
 const bareArtist=extra=>({uid:'0001-tester-1',order:1,name:'tester',category:null,score:null,aliases:[],alias:null,tags:[],danbooruId:null,counts:{},artistUrl:'',description:'',note:'',basis:'',status:'',works:[{id:'1',thumb:null}],...extra});
+const getEl=(elements,id)=>{if(!elements.has(id))elements.set(id,new El());return elements.get(id);};
+const thumbWorks=n=>Array.from({length:n},(_,i)=>({id:String(i+1),thumb:null}));
+test('固定测试风格图：右侧 2 格固定给测试风格 1、2，作品图只用左边 3 格',async()=>{
+  const {elements,state}=await boot();
+  const card=()=>state.card(bareArtist({works:thumbWorks(4)}));
+  assert.equal(findAllByClass(card(),'work-generate').length,0,'默认关闭时不留固定格');
+  const toggle=getEl(elements,'fixed-test');toggle.checked=true;await toggle.onchange();
+  let children=findByClass(card(),'works').children;
+  assert.equal(children.length,5,'固定 5 格');
+  assert.equal(children.slice(0,3).filter(node=>String(node.className).includes('work-generate')).length,0,'左边 3 格照旧放作品');
+  assert.equal(children[3].className,'work work-generate','第 4 格固定');
+  assert.equal(children[4].className,'work work-generate','第 5 格固定');
+  assert.deepEqual(children.slice(3).map(node=>findByClass(node,'generate-seq').textContent),['测试风格 2','测试风格 1'],'序号 1 在最右');
+  assert.equal(children.filter(node=>node.children.some(child=>String(child.className).includes('thumb'))).length,3,'第 4 张作品被固定格挡住，不再显示');
+});
+test('固定测试风格图：已有的测试图回自己的固定格，只剩另一格给「生成」',async()=>{
+  const {elements,state}=await boot();
+  const toggle=getEl(elements,'fixed-test');toggle.checked=true;await toggle.onchange();
+  const children=findByClass(state.card(bareArtist({works:[...thumbWorks(3),{id:'',kind:'test',testSeq:1,thumb:null}]})),'works').children;
+  assert.equal(children[3].className,'work work-generate','序号 2 还没生成，留一个生成入口');
+  assert.equal(findByClass(children[3],'generate-seq').textContent,'测试风格 2');
+  assert.equal(String(children[4].className).includes('is-test'),true,'序号 1 的测试图占最右格');
+});
+test('固定格的「生成」按钮：没选数据文件夹时不发请求，先把话说清楚',async()=>{
+  const {elements,state,ctx}=await boot();
+  let requested=0;
+  ctx.ArtistImageGen={...ctx.ArtistImageGen,generate:async()=>{requested++;throw Error('不该走到这里');}};
+  const toggle=getEl(elements,'fixed-test');toggle.checked=true;await toggle.onchange();
+  const box=findByClass(state.card(bareArtist({works:thumbWorks(1)})),'work-generate');
+  assert.equal(findByClass(box,'generate-button').textContent,'生成');
+  await findByClass(box,'generate-button').onclick();
+  assert.equal(requested,0,'没有数据文件夹时不该真的去生成');
+  assert.match(String(getEl(elements,'storage-status').textContent),/数据.*文件夹/);
+});
+test('生图参数存在本机：设置里读得到也写回去，token 不混进参数',async()=>{
+  const {elements,ctx}=await boot();
+  ctx.localStorage.setItem('artist-library.image-gen',JSON.stringify({steps:31,model:'nai-diffusion-3',width:960}));
+  getEl(elements,'settings-open').onclick();
+  assert.equal(getEl(elements,'gen-steps').value,'31','存过的步数要回填');
+  assert.equal(getEl(elements,'gen-model').value,'nai-diffusion-3');
+  assert.equal(getEl(elements,'gen-width').value,'960','用户自己填的宽高要回填');
+  assert.equal(getEl(elements,'gen-height').value,'','没填过的留空，交给档位决定');
+  const steps=getEl(elements,'gen-steps');steps.value='44';steps.oninput();
+  const saved=JSON.parse(ctx.localStorage.getItem('artist-library.image-gen'));
+  assert.equal(saved.steps,44,'改了就存回本机');
+  const width=getEl(elements,'gen-width');width.value='99999';width.onchange();
+  assert.equal(JSON.parse(ctx.localStorage.getItem('artist-library.image-gen')).width,null,'超出上限的宽高不留在设置里');
+  const token=getEl(elements,'gen-token');token.value='pst-abcdefghijklmnop';token.oninput();
+  assert.equal(ctx.localStorage.getItem('artist-library.novelai-token'),'pst-abcdefghijklmnop');
+  assert.equal(ctx.localStorage.getItem('artist-library.image-gen').includes('pst-'),false,'token 不能和生图参数写在一起');
+});
+test('生图参数的下拉框来自 NovelAI 模块，模板与尺寸不会写死两遍',async()=>{
+  const {elements,ctx}=await boot();
+  const values=id=>getEl(elements,id).children.map(o=>o.value).join(',');
+  assert.equal(values('gen-model'),ctx.ArtistNovelAI.MODELS.map(m=>m.value).join(','));
+  assert.equal(values('gen-size'),ctx.ArtistNovelAI.SIZES.map(s=>s.value).join(','));
+  assert.equal(values('gen-sampler'),ctx.ArtistNovelAI.SAMPLERS.map(s=>s.value).join(','));
+  assert.equal(values('gen-uc'),ctx.ArtistNovelAI.UC_PRESETS.map(p=>p.value).join(','));
+  getEl(elements,'settings-open').onclick();
+  assert.equal(getEl(elements,'gen-model').value,'nai-diffusion-5-full','默认 V5 Full');
+  assert.equal(getEl(elements,'gen-size').value,'832x1216','默认竖图');
+  assert.match(getEl(elements,'gen-prompt1').value,/\{tag\}/,'两个模板都要带 {tag} 变量');
+  assert.match(getEl(elements,'gen-prompt2').value,/\{tag\}/);
+});
 test('画师卡片：选用的笔名显示在名字下方，没选用就不显示',async()=>{
   const {state}=await boot();
   const texts=node=>{const out=[];const walk=n=>{if(n._text)out.push(n._text);for(const child of n.children||[])walk(child);};walk(node);return out;};

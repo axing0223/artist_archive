@@ -2,13 +2,44 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import vm from 'node:vm';
-import {fetchImage,resolvePost,imageUrl,postUrl,apiUrl,fetchApi} from './图片取图扩展/probe.mjs';
+import {fetchImage,resolvePost,imageUrl,postUrl,apiUrl,fetchApi,generateImage,novelaiUrl,bearerToken} from './图片取图扩展/probe.mjs';
 const url='https://cdn.donmai.us/180x180/79/ac/79ac317b7f7c085b9ac65f02752f9211.jpg';
 test('扩展只请求指定网站，本地连接脚本仅匹配文件页面',async()=>{
   const m=JSON.parse(await fs.readFile('图片取图扩展/manifest.json','utf8'));
-  assert.equal(m.manifest_version,3);assert.deepEqual(m.host_permissions,['https://danbooru.donmai.us/*','https://cdn.donmai.us/*']);assert.deepEqual(m.content_scripts[0].matches,['file:///*']);assert.equal(m.content_scripts[0].all_frames,false);
+  assert.equal(m.manifest_version,3);assert.deepEqual(m.host_permissions,['https://danbooru.donmai.us/*','https://cdn.donmai.us/*','https://image.novelai.net/*']);assert.deepEqual(m.content_scripts[0].matches,['file:///*']);assert.equal(m.content_scripts[0].all_frames,false);
+  assert.match(m.content_security_policy.extension_pages,/connect-src[^;]*https:\/\/image\.novelai\.net/,'后台要发得出去，CSP 里必须放行生图端点');
   for(const s of ['https://evil.example/a.jpg','http://cdn.donmai.us/a.jpg','https://cdn.donmai.us.evil.example/a.jpg','https://user:pass@cdn.donmai.us/a.jpg','https://cdn.donmai.us:444/a.jpg'])assert.throws(()=>imageUrl(s));
   assert.equal(postUrl('12036303'),'https://danbooru.donmai.us/posts/12036303.json');assert.throws(()=>postUrl('0'));assert.throws(()=>postUrl('https://evil.example/posts/12036303'));
+});
+test('生图端点写死成 NovelAI 的文生图地址，别处一律拒绝',()=>{
+  assert.equal(novelaiUrl('https://image.novelai.net/ai/generate-image'),'https://image.novelai.net/ai/generate-image');
+  assert.equal(novelaiUrl('https://image.novelai.net/ai/generate-image?x=1#y'),'https://image.novelai.net/ai/generate-image','查询串与片段都要丢掉');
+  for(const bad of ['https://evil.example/ai/generate-image','http://image.novelai.net/ai/generate-image','https://image.novelai.net.evil.example/ai/generate-image','https://user:pass@image.novelai.net/ai/generate-image','https://image.novelai.net:444/ai/generate-image','https://image.novelai.net/ai/generate-image/../user/data','https://api.novelai.net/user/data'])
+    assert.throws(()=>novelaiUrl(bad),/生图地址/,'应拒绝：'+bad);
+  assert.equal(bearerToken('pst-abcdefghijklmnop'),'pst-abcdefghijklmnop');
+  for(const bad of ['','short','has space here','line\nbreak',123])assert.throws(()=>bearerToken(bad),/token/,'应拒绝：'+String(bad));
+});
+test('生图：POST 到 NovelAI，token 只走 Authorization 头，返回 zip',async()=>{
+  const zip=Uint8Array.from([80,75,3,4,1,2,3]),seen={};
+  const blob=await generateImage('https://image.novelai.net/ai/generate-image','{"action":"generate"}',{token:'pst-abcdefghijklmnop',
+    fetcher:async(target,options)=>{seen.target=target;seen.options=options;return new Response(zip,{headers:{'content-type':'application/zip'}});}});
+  assert.equal(seen.target,'https://image.novelai.net/ai/generate-image');
+  assert.equal(seen.options.method,'POST');
+  assert.equal(seen.options.body,'{"action":"generate"}');
+  assert.equal(seen.options.headers.authorization,'Bearer pst-abcdefghijklmnop','token 只能放在请求头里');
+  assert.equal(seen.options.credentials,'omit','不要把别的站点的 Cookie 带去 NovelAI');
+  assert.equal(seen.options.redirect,'error');
+  assert.equal(blob.type,'application/zip');
+  assert.deepEqual(new Uint8Array(await blob.arrayBuffer()),zip);
+});
+test('生图失败时带出服务器原话，且不把错误正文当成图片',async()=>{
+  const fail=(status,body,type='application/json')=>generateImage('https://image.novelai.net/ai/generate-image','{}',{token:'pst-abcdefghijklmnop',fetcher:async()=>new Response(body,{status,headers:{'content-type':type}})});
+  await assert.rejects(fail(401,JSON.stringify({message:'Invalid token'})),/token 被拒绝.*Invalid token/);
+  await assert.rejects(fail(402,JSON.stringify({message:'Not enough Anlas'})),/Anlas 不足.*Not enough Anlas/);
+  await assert.rejects(fail(429,'slow down','text/plain'),/稍后再试/);
+  await assert.rejects(fail(500,'<html>oops</html>','text/html'),/HTTP 500/);
+  await assert.rejects(fail(200,'{"ok":true}','application/json'),/拒绝了请求/,'200 但返回 JSON 说明没拿到图，不能当成成功');
+  await assert.rejects(generateImage('https://image.novelai.net/ai/generate-image','',{token:'pst-abcdefghijklmnop',fetcher:async()=>new Response(Uint8Array.from([80,75,3,4]),{headers:{'content-type':'application/zip'}})}),/参数/);
 });
 test('成功请求返回图片字节，并记录状态而非 Cookie',async()=>{
   const records=[],bytes=Uint8Array.from([255,216,255,217]);

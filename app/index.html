@@ -8,7 +8,7 @@
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="style.css">
 
-  <script src="artist-id.js" defer></script><script src="extension-bridge.js" defer></script><script src="image-cache.js" defer></script><script src="image-loader.js" defer></script><script src="virtual-gallery.js" defer></script><script src="artist-lookup.js" defer></script>
+  <script src="artist-id.js" defer></script><script src="extension-bridge.js" defer></script><script src="novelai.js" defer></script><script src="image-gen.js" defer></script><script src="image-cache.js" defer></script><script src="image-loader.js" defer></script><script src="virtual-gallery.js" defer></script><script src="artist-lookup.js" defer></script>
   <script src="folder-store.js" defer></script><script src="work-picker.js" defer></script><script src="viewer.js" defer></script><script src="test-images.js" defer></script><script src="app.js" defer></script>
 </head>
 <body>
@@ -30,7 +30,7 @@
     <p id="test-files-info" class="field-help">还没有选择图片。</p>
     <label>起始画师序号<input id="test-start" type="number" min="1" step="1" placeholder="例如 3"></label>
     <label>测试风格序号<input id="test-seq" type="number" min="1" max="5" step="1" value="1"></label>
-    <p class="field-help">导入的图片都记为这个序号。某位画师已经有该序号时，会自动顺延到下一个空位。卡片只显示 5 格且序号 1 在最右，所以序号请填 1–5。</p>
+    <p class="field-help">导入的图片都记为这个序号。某位画师已经有该序号时，会自动顺延到下一个空位。卡片只显示 5 格且序号 1 在最右，所以序号请填 1–5；开了设置里的「固定测试风格图」时只有序号 1、2 有固定格，序号 3 排到左边，4 以后不再显示在卡片上。</p>
     <div id="test-preview" class="test-preview"></div>
     <p id="test-message" class="field-help" role="status"></p>
     <h3 class="manage-heading">批量删除测试风格图片</h3>
@@ -44,6 +44,20 @@
     <div class="setting-row"><div><strong>刷新所有画师数据</strong><p class="field-help">逐位到 Danbooru 核对当前正式名（画师改名后旧名会留在站点的其他名字里），同时刷新作品总数与截至日期前数量。名字改动会把画师目录一起改名，里面的缩略图与大图会搬过去。按每 25 位写盘一次，中途可以停下来。</p></div><button id="sync-all" class="action" type="button">开始刷新</button></div>
     <div class="setting-row"><div><strong>保存大图</strong><p class="field-help">开启后，点开作品预览时会把这件作品的原图保存进画师目录的「大图」文件夹，之后预览直接读本地、不再联网，也能离线查看。关闭时原图只在本次预览中临时加载，关掉即释放。</p></div><label class="switch"><input id="save-large" type="checkbox"><span></span></label></div>
     <div class="setting-row"><div><strong>预览图尺寸</strong><p class="field-help">调整主页面每位画师的作品预览图大小，每行显示几位画师会跟着自动变化；设置会记住。识别画师与编辑页的作品列表另有各自的「预览大小」滑动条。</p></div><div class="size-control"><input id="card-size" type="range" min="140" max="360" step="1" value="220"><span id="card-size-value">220</span></div></div>
+    <div class="setting-row"><div><strong>固定测试风格图</strong><p class="field-help">开启后，每张卡片右侧的 2 格固定留给「测试风格 1」「测试风格 2」，作品图排不到这两格上，也不会因为测试图变多被挤掉。固定格空着时里面会出现「生成」按钮，按下就用下面「生图参数」里的设置向 NovelAI 要一张图，拿回来直接回填到对应格子里；每次生成都会消耗 Anlas。</p></div><label class="switch"><input id="fixed-test" type="checkbox"><span></span></label></div>
+    <h3 class="manage-heading">生图参数</h3>
+    <p class="field-help">这些参数只用于生成测试风格图，保存在本机浏览器里，不写进画师库数据文件，导出备份也不会带上。token 同样只存在本机，请勿分享。</p>
+    <div class="setting-row"><div><strong>NovelAI token</strong><p class="field-help">在 novelai.net 登录后，Account → Get Persistent API Token 取得，形如 pst-…。只发往 image.novelai.net，请求由「画师库 · 图片助手」扩展代为发出。</p></div><div class="token-control"><input id="gen-token" type="password" autocomplete="off" spellcheck="false" placeholder="pst-…" aria-label="NovelAI token"><button id="gen-token-toggle" class="action" type="button">显示</button></div></div>
+    <div class="setting-row"><div><strong>模型</strong><p class="field-help">默认 V5 Full。V5 会自动补上质量标签与 UC 预设文本，反向提示词接在预设文本之后。</p></div><select id="gen-model" aria-label="生图模型"></select></div>
+    <div class="setting-row"><div><strong>尺寸</strong><p class="field-help">先挑一个档位（竖图 832 × 1216、宽图、方图、大图、壁纸），要别的宽高就在右边自己填：填了就以你填的为准，并会向 64 对齐、单边限制在 64–2048。NovelAI 还限制总像素不超过 1536 × 2048，超了会在发送前提示你把一边调小。</p></div><div class="size-pair"><select id="gen-size" aria-label="生图尺寸"></select><input id="gen-width" type="number" min="64" max="2048" step="64" placeholder="宽"><input id="gen-height" type="number" min="64" max="2048" step="64" placeholder="高"></div></div>
+    <div class="setting-row"><div><strong>步数与引导</strong><p class="field-help">采样步数 1–50，默认 28；提示词引导强度（CFG Scale）0–20，默认 5。步数越高越慢。</p></div><div class="size-pair"><input id="gen-steps" type="number" min="1" max="50" step="1" placeholder="步数" aria-label="采样步数"><input id="gen-scale" type="number" min="0" max="20" step="0.5" placeholder="引导" aria-label="引导强度"></div></div>
+    <div class="setting-row"><div><strong>采样器</strong><p class="field-help">默认 Euler Ancestral，是站点自带的默认值；换成别的只是口味不同。</p></div><select id="gen-sampler" aria-label="采样器"></select></div>
+    <div class="setting-row"><div><strong>随机种子</strong><p class="field-help">留空就是每次随机；填一个数字可以复现同一张图。同一个种子配合同一套提示词才会得到相同结果。</p></div><input id="gen-seed" type="number" min="0" max="4294967295" step="1" placeholder="留空随机" aria-label="随机种子"></div>
+    <div class="setting-row"><div><strong>UC 预设</strong><p class="field-help">NovelAI 自带的「不想看到的内容」预设，默认 Heavy。它拼出来的那段文字会加在下面反向提示词的前面。</p></div><select id="gen-uc" aria-label="UC 预设"></select></div>
+    <div class="setting-row"><div><strong>反向提示词</strong><p class="field-help">额外不想要的内容，会接在 UC 预设文本之后；留空就只用预设。</p></div><textarea id="gen-negative" rows="3" placeholder="例如：bad hands, extra fingers" aria-label="反向提示词"></textarea></div>
+    <div class="setting-row"><div><strong>提示词模板 · 测试风格 1</strong><p class="field-help">占最右那一格。用 {tag} 代表画师 tag，例如「{tag}, 1girl, solo」；要加前缀可以写 artist:{tag}。写错的 {变量} 会原样保留，方便发现。</p></div><textarea id="gen-prompt1" rows="3" aria-label="提示词模板 1"></textarea></div>
+    <div class="setting-row"><div><strong>提示词模板 · 测试风格 2</strong><p class="field-help">占右边第二格。两个模板可以用同一个画师 tag 换不同构图，方便对比画风。</p></div><textarea id="gen-prompt2" rows="3" aria-label="提示词模板 2"></textarea></div>
+    <div class="setting-row"><div><strong>图片助手</strong><p class="field-help" id="gen-bridge" role="status">正在检测…</p></div><button id="gen-check" class="action" type="button">重新检测</button></div>
   </div></dialog>
   <dialog id="viewer" aria-labelledby="viewer-title"><div class="viewer-bar"><h2 id="viewer-title"></h2><button id="close-viewer" aria-label="关闭图片">关闭 ×</button></div><div class="viewer-image"><img id="large-image" alt=""></div><div class="viewer-bottom"><p id="viewer-caption"></p><div class="viewer-actions"><button id="save-original" class="action" type="button">保存原图</button><a id="viewer-source" target="_blank" rel="noopener noreferrer">查看作品来源 ↗</a></div></div></dialog>
   <dialog id="tag-manager" class="small-dialog" aria-labelledby="tag-title"><div class="viewer-bar"><h2 id="tag-title">管理分类与标签</h2><button id="close-tags" type="button">关闭 ×</button></div><div class="form-body">
