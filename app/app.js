@@ -29,9 +29,9 @@
   const PREF_KEY='artist-library.thumb-height',PREF_CARD='artist-library.card-size';
   const savePref=(key,value)=>{try{localStorage.setItem(key,String(value));}catch{}};
   const applyCardSize=value=>document.documentElement.style.setProperty('--card-size',(value||prefs.cardSize)+'px');
-  const prefs={thumbHeight:120,cardSize:280,listeners:new Set(),
+  const prefs={thumbHeight:120,cardSize:190,listeners:new Set(),
     setThumbHeight(value){this.thumbHeight=value;savePref(PREF_KEY,value);for(const fn of this.listeners)fn(value);},
-    setCardSize(value){this.cardSize=value;savePref(PREF_CARD,value);applyCardSize(value);},
+    setCardSize(value){this.cardSize=value;savePref(PREF_CARD,value);applyCardSize(value);window.ArtistGallery?.remeasure?.();},
     subscribe(fn){this.listeners.add(fn);},unsubscribe(fn){this.listeners.delete(fn);}};
   try{
     const stored=Number(localStorage.getItem(PREF_KEY));if(Number.isFinite(stored)&&stored>=70&&stored<=220)prefs.thumbHeight=stored;
@@ -364,11 +364,12 @@
     row.append(el('span','serial',String(seqOf(a)).padStart(4,'0')),heading);if(a.alias)row.append(el('span','alias',a.alias));
     const meta=el('div','artist-meta');meta.append(el('span',a.category?'primary':'pending-badge',a.category||'待判断'));
     if(a.tags.length){const tags=el('div','secondary');a.tags.forEach(t=>tags.append(el('span','',t)));meta.append(tags);}
-    if(Number.isSafeInteger(a.score)&&a.score>=1&&a.score<=5){const score=el('span','score-badge score-'+a.score,'参考 '+a.score+' / 5');score.setAttribute('aria-label','参考评分 '+a.score+' 分');score.title='参考评分 '+a.score+' / 5';article.append(score);}
+    if(Number.isSafeInteger(a.score)&&a.score>=1&&a.score<=5){const score=el('span','score-badge score-'+a.score,String(a.score));score.setAttribute('aria-label','参考评分 '+a.score+' 分');score.title='参考评分 '+a.score+' / 5';article.append(score);}
     row.append(meta);identity.append(row);
-    const actions=el('div','artist-actions');actions.append(btn('编辑',()=>startEdit(a),'edit-button'));
-    if(a.artistUrl){const source=link('↗',a.artistUrl,'edit-button');source.setAttribute('aria-label','打开 '+a.name+' 的画师页面');source.title='画师页面';actions.append(source);}
-    const menu=el('details','action-menu card-menu'),summary=el('summary','','···'),panel=el('div','menu-panel');summary.setAttribute('aria-label',a.name+' 的更多操作');panel.append(deleteArtistButton(a));menu.append(summary,panel);actions.append(menu);info.append(identity,actions);
+    const actions=el('div','artist-actions');actions.append(deleteArtistButton(a));
+    if(a.artistUrl){const source=link('画师页面',a.artistUrl,'edit-button');source.setAttribute('aria-label','打开 '+a.name+' 的画师页面');actions.append(source);}
+    else{const source=btn('画师页面',()=>{},'edit-button');source.disabled=true;source.title='尚未填写画师页面';actions.append(source);}
+    actions.append(btn('编辑',()=>startEdit(a),'edit-button'));info.append(identity,actions);
     const works=el('div','works'),reserve=reservedOf(),slots=FolderStore.previewWorks(a,PREVIEW_SLOTS,reserve);
     slots.forEach((w,i)=>{const node=w?workFigure(a,w,i):i>=PREVIEW_SLOTS-reserve?generateSlot(a,PREVIEW_SLOTS-i):btn('添加图片',()=>chooseSlotImage(a,i),'work work-empty');
       if(!w&&i<PREVIEW_SLOTS-reserve){node.setAttribute('aria-label','为 '+a.name+' 的第 '+(i+1)+' 格添加图片');node.title='选择图片或拖入此格';}attachDrop(node,a,i);works.append(node);
@@ -787,7 +788,7 @@
   }
   const removeButton=()=>confirmButton('删除画师','再次点击确认删除',()=>removeArtist(editingId));
   /* 浏览态卡片上也能删：和编辑态那个删除按钮走同一套「点两次」的逻辑，删的是这张卡片这一位。 */
-  const deleteArtistButton=a=>confirmButton('删除画师','再次点击确认删除',()=>removeArtist(a.uid));
+  const deleteArtistButton=a=>{const button=confirmButton('删除','确认删除',()=>removeArtist(a.uid),'edit-button danger');button.setAttribute('aria-label','删除画师 '+a.name);return button;};
   const readImage=file=>new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(Error('图片读取失败。'));reader.readAsDataURL(file);});
   const thumbnail=dataUrl=>new Promise((resolve,reject)=>{const img=new Image();img.onload=()=>{try{const scale=Math.min(1,400/Math.max(img.width,img.height)),c=document.createElement('canvas');c.width=Math.max(1,Math.round(img.width*scale));c.height=Math.max(1,Math.round(img.height*scale));const ctx=c.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height);ctx.drawImage(img,0,0,c.width,c.height);resolve(c.toDataURL('image/jpeg',.8));}catch{reject(Error('图片处理失败。'));}};img.onerror=()=>reject(Error('图片读取失败。'));img.src=dataUrl;});
   const manageFilter={category:'',tag:''};
@@ -1408,7 +1409,7 @@
     $('search').oninput=searchChanged;$('search').addEventListener('compositionend',searchChanged);
     $('library-sort').onchange=()=>{state.sort=$('library-sort').value;render();};$('reset').onclick=()=>{reset();render();};$('close-viewer').onclick=()=>$('viewer').close();
     ArtistViewer.init({getData:()=>data,getFolder:()=>folder,save,notify:status});
-    $('viewer').addEventListener('close',()=>{ArtistImages.dispose('viewer');ArtistViewer.dispose();});$('save-original').onclick=()=>ArtistViewer.saveOriginal();
+    $('viewer').addEventListener('close',()=>ArtistViewer.dispose());$('save-original').onclick=()=>ArtistViewer.saveOriginal();
     // 遮罩点击、键盘导航与导航焦点交由工作台统一处理。
     $('extension-status').onclick=checkExtension;
     /* 图片拖到格子以外的地方时，浏览器默认会直接打开那个文件、把当前页面顶掉（没保存的改动就没了）。

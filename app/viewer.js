@@ -1,28 +1,35 @@
 (function(root){
   'use strict';
   const $=id=>document.getElementById(id);
-  let host=null,current=null;
+  let host=null,current=null,viewRevision=0;
   function init(options){
     host=options;$('viewer-prev').onclick=()=>step(-1);$('viewer-next').onclick=()=>step(1);
-    $('viewer').addEventListener?.('keydown',event=>{if(event.isComposing||event.target?.matches?.('input,textarea,select'))return;if(event.key==='ArrowLeft'||event.key==='ArrowRight'){event.preventDefault();step(event.key==='ArrowLeft'?-1:1);}});
+    $('viewer').addEventListener?.('keydown',event=>{if(event.isComposing||event.ctrlKey||event.metaKey||event.altKey||event.target?.closest?.('input,textarea,select,[contenteditable=true]'))return;const key=event.key.toLowerCase();if(['arrowleft','arrowright','a','d'].includes(key)){event.preventDefault();step(key==='arrowleft'||key==='a'?-1:1);}});
   }
   function step(delta){
     if(!current?.items||current.items.length<2)return;
     const next=(current.position+delta+current.items.length)%current.items.length,work=current.items[next];
     open({...current,work,caption:work.caption});
   }
-  function dispose(){current=null;}
+  function dispose(){
+    const dialog=$('viewer');if(dialog.open)return;current=null;const closedRevision=++viewRevision;
+    // 原生关闭已解除交互；等退场过渡结束再释放图片，避免退出时画面变空。
+    const animations=dialog.getAnimations?.()||[];
+    const release=()=>{if(!dialog.open&&closedRevision===viewRevision)ArtistImages.dispose('viewer');};
+    if(animations.length)Promise.allSettled(animations.map(animation=>animation.finished)).then(release);else release();
+  }
   function open({title,uid,work,caption,persist=false,items=null}){
-    const position=items?items.indexOf(work):-1;
+    viewRevision++;const position=items?items.indexOf(work):-1;
     current={title,uid,work,persist,items,position,folder:host.getFolder()};
     $('viewer-navigation').hidden=position<0||items.length<2;
     $('viewer-position').textContent=position>=0?(position+1)+' / '+items.length:'';
-    ArtistImages.dispose('viewer');
+    // bind 会取消旧请求并接管图片；保留上一帧，切换时由图片加载器淡出淡入。
+    $('large-image').onload=null;
     $('viewer-title').textContent=title;$('large-image').alt=title;
     $('viewer-caption').textContent='正在获取原图…';
     $('viewer-source').hidden=!work.url;if(work.url)$('viewer-source').href=work.url;
     refreshButton();
-    $('viewer').showModal();
+    if(!$('viewer').open)$('viewer').showModal();
     ArtistImages.bind($('large-image'),uid,work,'viewer','thumb',()=>{});
     loadLarge(uid,work,caption,persist);
   }
@@ -70,7 +77,7 @@
         refreshButton();
       }
       if(current!==request||!$('viewer').open)return;
-      img.onload=()=>{$('viewer-caption').textContent=note+(kept?'原图已保存到本地':local?.kind==='local'?'正在查看本地原图':local?.kind==='inline'?'正在查看库内图片':'原图仅本次显示，不会保存到本地');};
+      img.onload=()=>{if(current!==request)return;$('viewer-caption').textContent=note+(kept?'原图已保存到本地':local?.kind==='local'?'正在查看本地原图':local?.kind==='inline'?'正在查看库内图片':'原图仅本次显示，不会保存到本地');};
       ArtistImages.bind(img,uid,target,'viewer','large',error=>showMiddle(uid,work,caption,error));
     }catch(error){if(current===request&&error.name!=='AbortError')showMiddle(uid,work,caption,error);}
   }

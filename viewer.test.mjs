@@ -42,3 +42,19 @@ test('单图或候选图不显示上一张下一张导航',async()=>{
  const work={id:'1'};ctx.ArtistViewer.open({title:'候选',uid:'a',work});assert.equal(node('viewer-navigation').hidden,true);ctx.ArtistViewer.step(1);assert.equal(node('viewer-position').textContent,'');
  ctx.ArtistViewer.open({title:'单图',uid:'a',work,items:[work]});assert.equal(node('viewer-navigation').hidden,true);assert.equal(node('viewer-position').textContent,'1 / 1');
 });
+
+
+test('退场延迟释放原图，旧关闭回调不清空快速重开的新预览',async()=>{
+ const nodes=new Map(),node=id=>{if(!nodes.has(id))nodes.set(id,{showModal(){this.open=true;}});return nodes.get(id);};
+ let disposed=0,finishOld,finishNew;
+ const oldExit=new Promise(resolve=>finishOld=resolve),newExit=new Promise(resolve=>finishNew=resolve),work={id:'1'};
+ const ctx={document:{getElementById:node},FolderStore:{imageOf:()=>({kind:'inline'})},ArtistImages:{dispose(){disposed++;},bind(){},fetch:async()=>new Blob()},ArtistExtension:{connected:false}};
+ vm.runInNewContext(await fs.readFile('app/viewer.js','utf8'),ctx);ctx.ArtistViewer.init({getFolder:()=>null,getData:()=>({}),save(){},notify(){}});
+ const open=()=>ctx.ArtistViewer.open({title:'图片',uid:'a',work});
+ open();node('viewer').open=false;node('viewer').getAnimations=()=>[{finished:oldExit}];ctx.ArtistViewer.dispose();
+ assert.equal(disposed,0,'加载器接管旧绑定，退场中保留当前图');
+ open();ctx.ArtistViewer.dispose(); // 已重新打开时到达的旧 close 事件须忽略。
+ node('viewer').open=false;node('viewer').getAnimations=()=>[{finished:newExit}];ctx.ArtistViewer.dispose();
+ finishOld();await new Promise(resolve=>setImmediate(resolve));assert.equal(disposed,0,'旧退场结束不能清理新预览');
+ finishNew();await new Promise(resolve=>setImmediate(resolve));assert.equal(disposed,1,'当前退场完成后释放图片');
+});

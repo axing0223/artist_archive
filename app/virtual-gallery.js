@@ -66,9 +66,9 @@
     observer=new IntersectionObserver(entries=>{for(const entry of entries){const slot=entry.target,id=slot.dataset.uid;
       if(entry.isIntersecting){near.add(id);mountSlot(slot);}else{near.delete(id);releaseSlot(slot);}
     }},{rootMargin:'650px'});
-    const width=window.innerWidth,compact=document.documentElement?.dataset?.density==='compact';
-    const requested=typeof getComputedStyle==='function'?parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--card-size'))||280:280;
-    const estimate=Math.round(Math.min(requested,compact?150:190,(width-(width<=460?68:112))*(width<=460?.32:.34))+(width<=460?130:112));
+    const width=window.innerWidth;
+    const requested=typeof getComputedStyle==='function'?parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--card-size'))||190:190;
+    const estimate=Math.round(requested+(width<=460?130:112));
     const list=next.map((uid,i)=>{const kept=slots.get(uid);
       /* 还在的画师接着用原来那块占位：卡片不用卸了再挂，图片也不用重取一遍。
          这条是删除/筛选之后不再整屏闪一下的关键。 */

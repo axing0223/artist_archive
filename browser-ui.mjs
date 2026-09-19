@@ -76,6 +76,19 @@ try{
  const mobile=await evaluate('({width:innerWidth,scroll:document.documentElement.scrollWidth})');assert.ok(mobile.scroll<=mobile.width,'390px 窄窗口不能横向溢出');await verifyFive('390px 窄窗口');
  await evaluate('document.getElementById("filter-toggle").click()');assert.equal(await evaluate('document.getElementById("filter-panel").hidden'),false);await evaluate('document.getElementById("filter-toggle").click()');
  await evaluate('document.getElementById("settings-open").click()');await sleep(200);assert.equal(await evaluate('document.getElementById("settings").scrollWidth<=document.getElementById("settings").clientWidth+1'),true,'设置弹窗在窄屏不能横向溢出');await evaluate('document.getElementById("settings").close()');
+
+ // 不同比例原图与窗口方向：单行说明不能产生滚动条，图片区域使用完整 contain。
+ for(const [width,height,label] of [[1080,1920,'portrait'],[1920,1080,'landscape'],[390,844,'narrow']]){
+  await send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:false});await sleep(250);
+  for(const [imageWidth,imageHeight,shape] of [[600,1600,'tall'],[1600,900,'wide'],[800,800,'square']]){
+   await evaluate('('+((w,h)=>{const canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;const ctx=canvas.getContext('2d');ctx.fillStyle='#759391';ctx.fillRect(0,0,w,h);ctx.strokeStyle='#dcebe1';ctx.lineWidth=10;ctx.strokeRect(5,5,w-10,h-10);ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(w,h);ctx.moveTo(w,0);ctx.lineTo(0,h);ctx.stroke();const data=canvas.toDataURL();ArtistViewer.open({title:'作品详情 · 比例检查',uid:'preview-ratio',work:{thumb:data,large:data},caption:'比例检查'});}).toString()+')('+imageWidth+','+imageHeight+')');await sleep(500);
+   const layout=await evaluate('('+(()=>{const d=document.getElementById('viewer'),img=document.getElementById('large-image'),stage=img.parentElement,footer=document.querySelector('.viewer-bottom');return {dialogFits:d.scrollHeight<=d.clientHeight+1&&d.scrollWidth<=d.clientWidth+1,footerFits:footer.scrollHeight<=footer.clientHeight+1&&footer.scrollWidth<=footer.clientWidth+1,stageFits:stage.scrollHeight<=stage.clientHeight+1,natural:[img.naturalWidth,img.naturalHeight],contain:getComputedStyle(img).objectFit==='contain',area:[stage.clientWidth,stage.clientHeight]};}).toString()+')()');
+   assert.ok(layout.dialogFits&&layout.footerFits&&layout.stageFits&&layout.contain&&layout.area[1]>0,label+'/'+shape+' 图片完整适配且不出现多余滚动条：'+JSON.stringify(layout));assert.deepEqual(layout.natural,[imageWidth,imageHeight]);
+   if((label==='portrait'&&shape==='tall')||(label==='landscape'&&shape==='wide'))await capture('viewer-'+label);
+   await evaluate('document.getElementById("viewer").close()');await sleep(220);
+  }
+ }
+ await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:false});await sleep(220);
  await send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});await evaluate('document.getElementById("density-toggle").click()');await sleep(80);assert.equal(await evaluate('document.getAnimations().filter(a=>a.playState==="running").length'),0,'减少动态效果时不运行装饰动画');
  assert.deepEqual(errors,[],'所有界面验收过程中无未处理异常');console.log('1080×1920 竖屏 / 390px 窄窗口五图同行 / 深浅主题 / 原生 Escape / 减少动态效果通过；截图：'+out);
 
@@ -106,12 +119,30 @@ async function browserChecks(){
  $('search').value='mizu_no_oto';$('search').dispatchEvent(new CompositionEvent('compositionend',{bubbles:true}));await until(()=>$('gallery').children.length===4);$('reset').click();
  document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'/',bubbles:true}));check(document.activeElement===$('search'),'斜杠聚焦搜索');
  $('command-open').click();check($('command-dialog').open,'快捷操作应打开');input('command-search','资料库设置');check($('command-results').querySelectorAll('button').length===1,'快捷操作支持搜索');$('command-search').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));check(!$('command-dialog').open&&$('settings').open,'回车执行所选操作');$('settings').close();
- const menu=document.querySelector('.card-menu');menu.open=true;const remove=menu.querySelector('button');remove.click();check(menu.open&&remove.classList.contains('is-armed'),'删除第一次确认时菜单应保持展开');check($('gallery').children.length===24,'第一次确认不能删除画师');menu.open=false;
+ const actions=document.querySelector('.artist-actions');check([...actions.children].map(node=>node.textContent).join('/')==='删除/画师页面/编辑','卡片按钮顺序');const remove=actions.firstElementChild;remove.click();check(remove.classList.contains('is-armed'),'删除第一次点击进入确认态');check($('gallery').children.length===24,'第一次确认不能删除画师');check($('back-top').closest('.status-bar'),'回到顶部固定在状态栏');
  $('quick-open').click();check($('quick-dialog').open&&document.activeElement===$('quick-input'),'识别添加直接聚焦输入');$('quick-dialog').querySelector('[data-close-dialog]').click();
  document.querySelector('.thumb').click();await until(()=>$('viewer').open);check($('viewer-position').textContent==='1 / 5','预览显示完整图片序号');$('viewer-next').click();check($('viewer-position').textContent==='2 / 5','可切到下一张');$('viewer').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true}));check($('viewer-position').textContent==='1 / 5','方向键可切回上一张');$('viewer').close();
+
+ // 高度滑块在原先失效的上限以上仍可调，紧凑模式也使用设置的实际像素。
+ $('settings-open').click();await delay(350);
+ for(const height of [160,300,360]){input('card-size',String(height));await delay(30);check(Math.abs(document.querySelector('.thumb').getBoundingClientRect().height-height)<1,'预览高度应等于 '+height+'，实际 '+document.querySelector('.thumb').getBoundingClientRect().height+' / '+getComputedStyle(document.querySelector('.thumb')).height+' / '+document.documentElement.style.getPropertyValue('--card-size'));}
+ $('density-toggle').click();input('card-size','251');await delay(30);check(Math.abs(document.querySelector('.thumb').getBoundingClientRect().height-251)<1,'紧凑视图也响应逐像素高度');$('density-toggle').click();
+ $('settings').close();$('settings-open').click();check($('card-size').value==='251','再次打开设置保留高度');check(localStorage.getItem('artist-library.card-size')==='251','预览高度需持久化');input('card-size','190');$('settings').close();
+ document.querySelector('.thumb').click();await until(()=>$('large-image').naturalWidth>0);await delay(300);
+ for(const [key,position] of [['d','2 / 5'],['a','1 / 5'],['ArrowRight','2 / 5'],['ArrowLeft','1 / 5'],['D','2 / 5']]){$('viewer').dispatchEvent(new KeyboardEvent('keydown',{key,bubbles:true}));check($('viewer-position').textContent===position,key+' 切图');}
+ $('viewer').dispatchEvent(new KeyboardEvent('keydown',{key:'a',ctrlKey:true,bubbles:true}));check($('viewer-position').textContent==='2 / 5','Ctrl+A 不应切图');
+ await until(()=>$('large-image').naturalWidth>0);await delay(350);
+ check($('viewer').scrollHeight<=$('viewer').clientHeight+1,'作品详情单行说明不应纵向溢出');check($('viewer').scrollWidth<=$('viewer').clientWidth+1,'作品详情不应横向溢出');
+ check(getComputedStyle($('large-image')).objectFit==='contain','原图完整保留比例');
+ $('viewer').close();await delay(35);check(!$('viewer').open&&getComputedStyle($('viewer')).display!=='none','关闭已退出交互，画面仍在退场');check($('large-image').hasAttribute('src'),'退出动画期间保留图片');await delay(220);check(getComputedStyle($('viewer')).display==='none'&&!$('large-image').hasAttribute('src'),'退出完成后隐藏并释放图片');
+ for(const dialog of document.querySelectorAll('dialog')){dialog.showModal();await delay(220);dialog.close();await delay(30);check(dialog.getAnimations().some(a=>a.playState==='running'),dialog.id+' 关闭应有动态过渡');await delay(200);}
  $('manage-tags').click();$('tab-category').focus();$('tab-category').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));check(document.activeElement===$('tab-tag')&&!$('panel-tag').hidden,'标签页支持方向键切换');$('tag-manager').close();
  $('density-toggle').click();check(document.documentElement.dataset.density==='compact','布局密度切换生效');check(localStorage.getItem('artist-library.density')==='compact','布局密度需持久化');$('density-toggle').click();
  $('status-toggle').click();check($('activity-list').children.length>0,'活动记录应包含连接和保存状态');$('activity-dialog').close();
+
+ $('filter-toggle').click();await delay(220);$('filter-toggle').click();await delay(35);check(getComputedStyle($('filter-panel')).display!=='none','筛选面板收起保留退场');await delay(200);
+ const notes=document.querySelector('.artist-notes');notes.open=true;await delay(240);notes.open=false;await delay(35);const noteOpacity=Number(getComputedStyle(notes,'::details-content').opacity);check(noteOpacity>0&&noteOpacity<1,'备注收起时内容逐渐淡出');await delay(220);check(parseFloat(getComputedStyle(notes,'::details-content').height)===0,'备注收起完成后不占额外高度');
+ const actionMenu=$('test-menu');actionMenu.open=true;await delay(220);actionMenu.open=false;await delay(35);const menuOpacity=Number(getComputedStyle(actionMenu,'::details-content').opacity);check(menuOpacity>0&&menuOpacity<1,'操作菜单收起时逐渐淡出');await delay(200);
  // 对话框实际渲染、所有表单标签、DOM 唯一标识。
  const pairs=[['settings-open','settings'],['gen-settings-open','gen-settings'],['batch-artists','batch-dialog'],['gen-batch-open','gen-batch'],['test-import-open','test-import']];
  for(const [trigger,id] of pairs){$(trigger).click();check($(id).open,id+' 应可打开');check($(id).scrollWidth<=$(id).clientWidth+1,id+' 内容不得横向溢出');$(id).close();}

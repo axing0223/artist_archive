@@ -101,7 +101,7 @@ async function browserChecks(){
  const after=await(await ArtistImages.fetch(uid,replaced,'thumb')).arrayBuffer();
  check(String(new Uint8Array(before))!==String(new Uint8Array(after)),'替换后不得仍返回旧图片');
  // 真正的卡片编辑表单：验证 DOM 接线、保存和读回。
- document.querySelector('.edit-button').click();await until(()=>document.querySelector('input[placeholder="画师名字（必填）"]'));
+ [...document.querySelectorAll('.artist-actions button')].find(node=>node.textContent==='编辑').click();await until(()=>document.querySelector('input[placeholder="画师名字（必填）"]'));
  const editor=document.querySelector('article.is-editing'),note=[...editor.querySelectorAll('textarea')].find(node=>node.placeholder==='备注');
  check(note,'真实编辑页必须有备注输入框');note.value='真实浏览器回归';note.dispatchEvent(new Event('input',{bubbles:true}));
  const save=[...editor.querySelectorAll('button')].find(node=>node.textContent==='保存');await save.onclick();

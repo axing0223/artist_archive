@@ -123,19 +123,19 @@ test('点击「添加画师」能进入内联编辑态，渲染过程不应抛�
 test('浏览卡片按信息、五张作品、补充资料分层，操作集中且删除须明确选择',async()=>{
  const {state}=await boot();const card=state.card(bareArtist({artistUrl:'https://example.com/artist'}));
  assert.equal(card.children.length,3);assert.ok(card.children[0].className.includes('artist-info'));assert.ok(card.children[1].className.includes('works'));assert.ok(card.children[2].className.includes('artist-footer'));
- const actions=findByClass(card,'artist-actions');assert.ok(findText(actions,'编辑'));assert.ok(findText(actions,'删除画师'));const source=actions.children.find(n=>n.tagName==='a');assert.equal(source['aria-label'],'打开 tester 的画师页面');
- assert.ok(findByClass(actions,'card-menu'),'删除位于更多操作菜单中');assert.ok(findByClass(card.children[0],'artist-meta'));assert.equal(findAllByClass(card.children[1],'work').length,5,'必须为五个作品位置');
+ const actions=findByClass(card,'artist-actions');assert.ok(findText(actions,'编辑'));assert.ok(findText(actions,'删除'));const source=actions.children.find(n=>n.tagName==='a');assert.equal(source['aria-label'],'打开 tester 的画师页面');
+ assert.deepEqual(actions.children.map(node=>node.textContent),['删除','画师页面','编辑'],'卡片右上角按删除、画师页面、编辑排列');assert.ok(findByClass(card.children[0],'artist-meta'));assert.equal(findAllByClass(card.children[1],'work').length,5,'必须为五个作品位置');
 });
 test('浏览态卡片的「删除画师」也要点两次才真删',async()=>{
   const {elements,state}=await boot();
   await createArtist(state,elements,'待删的');
   const uid=state.rows[0].uid;
-  const button=()=>findText(lastRender(state)[0],'删除画师')||findText(lastRender(state)[0],'再次点击确认删除');
+  const button=()=>findText(lastRender(state)[0],'删除')||findText(lastRender(state)[0],'确认删除');
   const first=button();
-  assert.equal(first.textContent,'删除画师','第一步是「删除画师」');
+  assert.equal(first.textContent,'删除','第一步是「删除」');
   await first.onclick();
   assert.equal(state.rows.length,1,'第一次点击只进入确认态，不删');
-  assert.equal(first.textContent,'再次点击确认删除','就地变成确认文案');
+  assert.equal(first.textContent,'确认删除','就地变成确认文案');
   await first.onclick();
   assert.equal(state.rows.length,0,'第二次点击才真的删掉');
   assert.equal(state.rows.some(artist=>artist.uid===uid),false,'删的就是这张卡片这一位');
@@ -163,7 +163,7 @@ test('画师卡片：分类与标签整合进信息区，不再跨越作品图�
   assert.ok(findByClass(metaNode,'secondary'),'标签沿用原有样式');
 });
 test('未填写画师页面时仍可编辑和删除，且不显示空链接',async()=>{
- const {state}=await boot();const actions=findByClass(state.card(bareArtist()),'artist-actions');assert.ok(findText(actions,'编辑'));assert.ok(findText(actions,'删除画师'));assert.equal(actions.children.some(n=>n.tagName==='a'),false);
+ const {state}=await boot();const actions=findByClass(state.card(bareArtist()),'artist-actions');assert.ok(findText(actions,'编辑'));assert.ok(findText(actions,'删除'));assert.equal(actions.children.some(n=>n.tagName==='a'),false);assert.equal(findText(actions,'画师页面').disabled,true);
 });
 test('卡片显示备注，但作品张数说明不再显示',async()=>{
   const {state}=await boot();
@@ -1418,7 +1418,8 @@ test('画师卡片：参考评分独立为卡片角标，1-5 分均有明确标�
     const card=state.card(bareArtist({score})),badges=findAllByClass(card,'score-badge');
     assert.equal(badges.length,1,'分数 '+score+' 应有且只有一个角标');
     assert.equal(String(badges[0].className).includes('score-'+score),true,'分数 '+score+' 要用对应的底板');
-    assert.equal(badges[0].textContent,'参考 '+score+' / 5','评分标签应明确说明数字的含义');
+    assert.equal(badges[0].textContent,String(score),'徽章只展示分数');
+    assert.equal(badges[0]['aria-label'],'参考评分 '+score+' 分','读屏仍能获知分数含义');
     assert.equal(card.children.length,4,'评分徽章独立于信息、作品和补充资料区');
     assert.equal(card.children[0],badges[0],'徽章直接属于卡片，定位不受名称行影响');
     assert.equal(findByClass(findByClass(card,'name-row'),'score-badge'),null,'评分不占名称行空间');
