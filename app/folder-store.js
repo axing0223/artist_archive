@@ -119,13 +119,16 @@
   async function saveImage(dir,uid,kind,blob,preferredName){
     if(!IMAGE_KINDS.includes(kind))throw Error('图片类型错误：'+kind);
     if(!ArtistId.valid(uid))throw Error('画师标识格式错误');
+    return saveImageIn(await artistFolder(dir,uid,true),kind,blob,preferredName);
+  }
+  async function saveImageIn(folder,kind,blob,preferredName){
     if(!blob||typeof blob.arrayBuffer!=='function'||!blob.size)throw Error('图片内容为空');
     if(blob.size>MAX_IMAGE_BYTES)throw Error('图片超过 '+(MAX_IMAGE_BYTES/1024/1024)+' MB');
     const extension=extensionOf(blob.type);
     if(!extension)throw Error('不支持的图片格式：'+(blob.type||'未知'));
     const bytes=new Uint8Array(await blob.arrayBuffer());
     const name=preferredName?preferredName+'.'+extension:(await hashOf(bytes))+'.'+extension;
-    const folder=await artistFolder(dir,uid,true),images=await folder.getDirectoryHandle(FOLDER_OF[kind],{create:true});
+    const images=await folder.getDirectoryHandle(FOLDER_OF[kind],{create:true});
     await put(images,name,bytes);
     return FOLDER_OF[kind]+'/'+name;
   }
@@ -165,11 +168,11 @@
     snapshots.set(dir,records);legacy.set(dir,moved);return data;
   }
   async function copyImages(source,target){
-    let entries;try{entries=source;}catch{return;}
-    for await(const entry of entries.values()){
-      if(entry.kind!=='file'||!ownedNamePattern.test(entry.name))continue;
+    for await(const entry of source.values()){
+      // 用户放在图片目录里的文件也要保留；遇到无法迁移的内容，保留整个源目录。
+      if(entry.kind!=='file')throw Error('图片目录含有子目录，请先手动迁移：'+entry.name);
       const file=await entry.getFile();
-      if(file.size>MAX_IMAGE_BYTES)continue;
+      if(file.size>MAX_IMAGE_BYTES)throw Error('迁移图片超过大小限制：'+entry.name);
       await put(target,entry.name,new Uint8Array(await file.arrayBuffer()));
     }
   }
@@ -200,7 +203,7 @@
     for(const a of data.artists){
       const stamp=signature(a);
       if(!moved.has(a.uid)&&before.get(a.uid)===stamp){records.set(a.uid,stamp);result.artists.push(a);continue;}
-      const oldUid=moved.get(a.uid);if(oldUid)mapped.delete(a.uid);
+      const oldUid=moved.get(a.uid); // 索引提交前保留映射，失败后仍可读旧图并重试。
       const folder=await artists.getDirectoryHandle(a.uid,{create:true}),copy=structuredClone(a),used={},taken={};
       for(const kind of IMAGE_KINDS){
         const images=await folder.getDirectoryHandle(FOLDER_OF[kind],{create:true});used[kind]=new Set();taken[kind]=new Set();
@@ -208,8 +211,12 @@
            图片就没了。缩略图可能还在旧版的「预览图」目录里，所以两处都找。 */
         if(oldUid){
           const from=await artists.getDirectoryHandle(oldUid),sources=kind==='thumb'?[FOLDER_OF[kind],LEGACY_FOLDER]:[FOLDER_OF[kind]];
-          for(const name of sources)try{await copyImages(await from.getDirectoryHandle(name),images);}
-          catch(error){if(error.name!=='NotFoundError')warn('旧图片迁移失败（'+error.message+'）');}
+          for(const name of sources){
+            let source;
+            try{source=await from.getDirectoryHandle(name);}
+            catch(error){if(error.name==='NotFoundError')continue;throw error;}
+            await copyImages(source,images);
+          }
         }
       }
       for(const w of copy.works){
@@ -221,9 +228,16 @@
             base=wanted;let n=2;while(taken[kind].has(base))base=wanted+'-'+n++;
             taken[kind].add(base);
           }
-          w[kind]=await saveImage(dir,a.uid,kind,blobOf(w[kind]),base);
+          w[kind]=await saveImageIn(folder,kind,blobOf(w[kind]),base);
         }
         for(const kind of IMAGE_KINDS)if(typeof w[kind]==='string')used[kind].add(w[kind].split('/').pop());
+      }
+      if(oldUid)for(const work of copy.works)for(const kind of IMAGE_KINDS){
+        const ref=imageOf(work,kind);
+        if(ref?.kind==='local'){
+          const [sub,name]=ref.path.split('/');
+          await (await (await folder.getDirectoryHandle(sub)).getFileHandle(name)).getFile();
+        }
       }
       await put(folder,'信息.json',JSON.stringify(copy,null,2));records.set(a.uid,signature(copy));result.artists.push(copy);cleanup.push({folder,used});
     }

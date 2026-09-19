@@ -429,3 +429,41 @@ test('2000 位画师、10000 张图片：启动零图片读取，单次修改仅
  assert.deepEqual(rewritten,['1001-artist-1000-manual'],'只有改动的那一位资料被重写');
  console.log('2000 人元数据读取与单条保存模拟耗时：'+Math.round(performance.now()-start)+' ms');
 });
+
+
+test('回归：改名迁移读取失败保留旧目录与索引，修复读取后可重试',async()=>{
+ const dir=new Directory(),old='0001-old-1',renamed='0001-new-1';
+ let data=store.empty();data.artists=[{uid:old,name:'old',works:[{id:'1',thumb:jpeg,large:png}]}];data=await store.write(dir,data);
+ const artists=await dir.getDirectoryHandle('画师'),source=await artists.getDirectoryHandle(old);
+ const thumb=await source.getDirectoryHandle('缩略图'),file=[...thumb.items.values()][0],read=file.getFile.bind(file);
+ file.getFile=async()=>{throw new DOMException('模拟图片读取失败','NotReadableError');};
+ store.rename(dir,old,renamed);data.artists[0].uid=renamed;data.artists[0].name='new';
+ await assert.rejects(()=>store.write(dir,data),/读取失败/);
+ assert.ok(artists.items.has(old),'迁移失败绝不能删除源目录');
+ assert.deepEqual(JSON.parse(await(await dir.getFileHandle('画师库.json')).getFile().then(f=>f.text())).artists,[old]);
+ file.getFile=read;
+ const saved=await store.write(dir,data);
+ assert.equal(artists.items.has(old),false);
+ assert.deepEqual(await bytesOf(await store.readImage(dir,renamed,saved.artists[0].works[0].thumb)),await bytesOf(store.blobOf(jpeg)));
+});
+
+
+test('回归：迁移索引写入失败后保留映射，重试仍能搬图并保存新图',async()=>{
+ const dir=new Directory(),old='0001-old-1',renamed='0001-new-1';
+ let data=store.empty();data.artists=[{uid:old,name:'old',works:[{id:'1',thumb:jpeg}]}];data=await store.write(dir,data);
+ const originalThumb=data.artists[0].works[0].thumb,index=await dir.getFileHandle('画师库.json'),open=index.createWritable.bind(index);
+ index.createWritable=async()=>{throw new DOMException('模拟磁盘写入失败','NotAllowedError');};
+ store.rename(dir,old,renamed);data.artists[0].uid=renamed;data.artists[0].name='new';data.artists[0].works.push({id:'',kind:'test',testSeq:1,thumb:jpeg,large:png});
+ await assert.rejects(()=>store.write(dir,data),/写入失败/);
+ const artists=await dir.getDirectoryHandle('画师');assert.ok(artists.items.has(old));
+ assert.deepEqual(await bytesOf(await store.readImage(dir,renamed,originalThumb)),await bytesOf(store.blobOf(jpeg)),'提交失败时新标识仍能读原目录');
+ index.createWritable=open;const saved=await store.write(dir,data);
+ for(const work of saved.artists[0].works)assert.ok((await store.readImage(dir,renamed,work.thumb)).size>0);
+ assert.ok((await store.readImage(dir,renamed,saved.artists[0].works[1].large)).size>0);assert.equal(artists.items.has(old),false);
+});
+test('回归：迁移源缺少被引用图片时不提交索引或删除旧目录',async()=>{
+ const dir=new Directory(),data=store.empty();data.artists=[{uid:'0001-old-1',name:'old',works:[{id:'1',thumb:jpeg}]}];
+ const saved=await store.write(dir,data),artists=await dir.getDirectoryHandle('画师'),old=await artists.getDirectoryHandle('0001-old-1'),thumb=await old.getDirectoryHandle('缩略图');thumb.items.clear();
+ store.rename(dir,'0001-old-1','0001-new-1');saved.artists[0].uid='0001-new-1';
+ await assert.rejects(()=>store.write(dir,saved),{name:'NotFoundError'});assert.ok(artists.items.has('0001-old-1'));
+});

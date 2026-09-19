@@ -3,6 +3,7 @@
     constructor(maxBytes=32*1024*1024,maxEntries=64){this.maxBytes=maxBytes;this.maxEntries=maxEntries;this.items=new Map();this.bytes=0;}
     get(key){const v=this.items.get(key);if(v){this.items.delete(key);this.items.set(key,v);}return v;}
     set(key,value){if(this.items.has(key)){this.bytes-=this.items.get(key).size;this.items.delete(key);}if(value.size>this.maxBytes)return;this.items.set(key,value);this.bytes+=value.size;while(this.bytes>this.maxBytes||this.items.size>this.maxEntries){const first=this.items.keys().next().value;this.bytes-=this.items.get(first).size;this.items.delete(first);}}
+    delete(key){const value=this.items.get(key);if(value){this.bytes-=value.size;this.items.delete(key);}}
     clear(){this.items.clear();this.bytes=0;}
   }
   class Queue{

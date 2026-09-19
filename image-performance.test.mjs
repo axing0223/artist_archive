@@ -329,3 +329,15 @@ test('扩展版本过旧时不启用接口通道，直接退回直连而不是�
   assert.equal(await canFetch(''),false,'版本号读不到时按不可用处理');
   assert.equal(await canFetch('unknown'),false);
 });
+
+
+test('回归：同路径测试图替换后清缓存并刷新已显示图片',async()=>{
+ const observers=[],window={},revoked=[];let bytes='old',reads=0;
+ class IO{constructor(fn){this.fn=fn;observers.push(this);}observe(){}unobserve(){}}
+ const context={window,ImageResources:{ByteCache,Queue},IntersectionObserver:IO,AbortController,DOMException,Date,Map,URL:{createObjectURL:()=> 'blob:'+reads,revokeObjectURL:url=>revoked.push(url)},FolderStore:{imageOf:store.imageOf,readImage:async()=>{reads++;return new Blob([bytes]);}}};
+ vm.runInNewContext(await fs.readFile('app/image-loader.js','utf8'),context);
+ const api=window.ArtistImages,work={thumb:'缩略图/a-测试风格1.jpeg'},uid='0001-a-1',img={classList:{add(){},remove(){}},removeAttribute(){this.src=undefined;}};
+ api.setFolder({});api.bind(img,uid,work,'card');observers[0].fn([{target:img,isIntersecting:true}]);await new Promise(r=>setImmediate(r));
+ assert.equal(img.src,'blob:1');bytes='replacement';api.invalidate?.(uid,work.thumb);await new Promise(r=>setImmediate(r));
+ assert.equal(await(await api.fetch(uid,work,'thumb')).text(),'replacement');assert.equal(img.src,'blob:2');assert.ok(revoked.includes('blob:1'));
+});

@@ -1,11 +1,11 @@
 (function(root){
   'use strict';
-  const $=id=>document.getElementById(id),clone=v=>structuredClone(v);
+  const $=id=>document.getElementById(id);
   let host=null,current=null;
   function init(options){host=options;}
   function dispose(){current=null;}
   function open({title,uid,work,caption,persist=false}){
-    current={uid,work,persist};
+    current={uid,work,persist,folder:host.getFolder()};
     ArtistImages.dispose('viewer');
     $('viewer-title').textContent=title;$('large-image').alt=title;
     $('viewer-caption').textContent='正在获取原图…';
@@ -24,7 +24,7 @@
   }
   async function saveOriginal(){
     if(!current||!current.persist||!host.getFolder())return;
-    const {uid,work}=current;
+    const request=current,{uid,work,folder}=request;
     refreshButton(true);
     try{
       const local=FolderStore.imageOf(work,'large');
@@ -35,12 +35,13 @@
         target={...work,largeUrl:remote};
       }
       const blob=await ArtistImages.fetch(uid,target,'large');
-      const saved=await keepLarge(uid,work,blob,remote);
-      if(saved&&current&&current.uid===uid)current.work=saved;
+      const saved=await keepLarge(uid,work,blob,remote,folder);
+      if(saved&&current===request)current.work=saved;
     }catch(error){host.notify('保存原图失败：'+error.message,true);}
     finally{refreshButton();}
   }
   async function loadLarge(uid,work,caption,persist){
+    const request=current,folder=request.folder;
     const img=$('large-image'),note=caption?caption+' · ':'',local=FolderStore.imageOf(work,'large');
     $('viewer-caption').textContent=note+'正在获取原图…';
     try{
@@ -51,24 +52,30 @@
         target={...work,largeUrl:remote};
       }
       const blob=await ArtistImages.fetch(uid,target,'large');
-      if(persist&&host.getData().saveLargeImages&&host.getFolder()&&remote&&!local){
-        kept=await keepLarge(uid,work,blob,remote);
-        if(kept&&current&&current.uid===uid)current.work=kept;
+      if(current!==request)return;
+      if(persist&&host.getData().saveLargeImages&&host.getFolder()&&remote&&local?.kind!=='local'){
+        kept=await keepLarge(uid,work,blob,remote,folder);
+        if(kept&&current===request)current.work=kept;
         refreshButton();
       }
-      if(!$('viewer').open)return;
+      if(current!==request||!$('viewer').open)return;
       img.onload=()=>{$('viewer-caption').textContent=note+(kept?'原图已保存到本地':'原图仅本次显示，不会保存到本地');};
       ArtistImages.bind(img,uid,target,'viewer','large',error=>showMiddle(uid,work,caption,error));
-    }catch(error){if(error.name!=='AbortError')showMiddle(uid,work,caption,error);}
+    }catch(error){if(current===request&&error.name!=='AbortError')showMiddle(uid,work,caption,error);}
   }
-  async function keepLarge(uid,work,blob,remote){
+  async function keepLarge(uid,work,blob,remote,folder){
     try{
-      const path=await FolderStore.saveImage(host.getFolder(),uid,'large',blob);
-      const next=clone(host.getData()),target=next.artists.find(x=>x.uid===uid),index=target?target.works.findIndex(x=>x.id===work.id):-1;
-      if(index<0)return null;
-      target.works[index]={...target.works[index],large:path,largeUrl:remote||work.largeUrl||null};
-      await host.save(next,'原图已保存到本地，之后预览直接读本地');
-      return target.works[index];
+      if(folder!==host.getFolder())throw Error('数据文件夹已经切换，未保存旧预览的图片');
+      const path=await FolderStore.saveImage(folder,uid,'large',blob);
+      let saved;
+      const ok=await host.save(next=>{
+        if(folder!==host.getFolder())throw Error('数据文件夹已经切换，未写入旧预览');
+        const target=next.artists.find(x=>x.uid===uid),index=target?target.works.findIndex(x=>work.id?x.id===work.id:x.thumb===work.thumb&&x.kind===work.kind&&x.testSeq===work.testSeq):-1;
+        if(index<0)throw Error('这张作品已经移除，未修改画师资料');
+        saved=target.works[index]={...target.works[index],large:path,largeUrl:remote||work.largeUrl||null};
+        return next;
+      },'原图已保存到本地，之后预览直接读本地');
+      return ok===false?null:saved;
     }catch(error){host.notify('原图保存失败：'+error.message,true);return null;}
   }
   function showMiddle(uid,work,caption,error){

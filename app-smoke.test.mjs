@@ -2,6 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import vm from 'node:vm';
+import {webcrypto} from 'node:crypto';
 class El{
   constructor(tag='div'){
     this.tagName=tag;this.children=[];this.className='';this._text='';this.dataset={};this.props={};
@@ -96,7 +97,7 @@ FileUrl.createObjectURL=()=>'blob:x';FileUrl.revokeObjectURL=()=>{};
     IntersectionObserver:IO,ResizeObserver:RO,Option,AbortController,AbortSignal,
     /* 记忆里的数据文件夹：给了 remembered 就预先塞进这个替身里，模拟「上次用过」。 */
     indexedDB:state.indexedDB=makeIndexedDB(options.remembered),
-    crypto:{randomUUID:()=>'uuid-'+Math.random().toString(36).slice(2)},
+    atob,DOMException,crypto:{subtle:webcrypto.subtle,randomUUID:()=>'uuid-'+Math.random().toString(36).slice(2)},
     fetch:async()=>{throw Error('测试中不应联网');},
     URL:FileUrl,Blob,structuredClone,setTimeout,clearTimeout,requestAnimationFrame:fn=>fn(),
     ArtistImages:{bind(){},dispose(){},setFolder(){},clear(){},dataUrl:async()=>'data:image/jpeg;base64,/9j/2Q==',fetch:async()=>new Blob([])},
@@ -846,10 +847,9 @@ test('拖图片到格子上：格子接住了拖放，整页兜底不会让浏�
   assert.equal(typeof ctx.window.listeners?.drop?.[0],'function');
 });
 test('批量导入：同时生成测试风格图默认关闭，且只在勾了以后才排生成需求',async()=>{
-  const html=await fs.readFile('app/index.html','utf8'),app=await fs.readFile('app/app.js','utf8');
+  const html=await fs.readFile('app/index.html','utf8');
   assert.match(html,/id="batch-generate" type="checkbox"><span><\/span>/,'默认必须是关的：不能带 checked');
   assert.match(html,/id="batch-run" class="action primary-action">添加到画师库/,'按钮要有 id，才能就地变红确认');
-  assert.match(app,/const queued=alsoGenerate\?queueTestImages\(added,batchStop\):0/,'排生成需求要在导入与采集之后');
   const {elements}=await boot();
   assert.equal(getEl(elements,'batch-generate').checked,false,'不勾就不排');
 });
@@ -1781,4 +1781,64 @@ test('「收起」就在「展开读取」旁边：同一个按钮换名字，�
   await wait(30);
   assert.equal(hosts().length,0,'收起后容器整个移除');
   assert.equal(toggle().textContent,'展开读取','名字改回来');
+});
+
+
+const tick=()=>new Promise(resolve=>setImmediate(resolve));
+const gate=()=>{let resolve;const promise=new Promise(r=>resolve=r);return {promise,resolve};};
+async function connectedApp(){
+ const app=await boot(),dir=new FakeDir('回归测试');app.ctx.window.showDirectoryPicker=async()=>dir;
+ await app.elements.get('choose-folder').onclick();return {...app,dir};
+}
+test('回归：自动展开设置在真实保存、重开设置和重新读盘后仍为开启',async()=>{
+ const {elements,ctx,dir}=await connectedApp();
+ const toggle=elements.get('auto-open-works');toggle.checked=true;await toggle.onchange();
+ elements.get('settings-open').onclick();assert.equal(toggle.checked,true);
+ assert.equal((await ctx.FolderStore.read(dir)).autoOpenWorks,true);
+ await elements.get('choose-folder').onclick();elements.get('settings-open').onclick();assert.equal(toggle.checked,true);
+});
+test('回归：全库刷新期间保存设置与新增画师，刷新完成不覆盖',async()=>{
+ const {elements,state,ctx,dir}=await connectedApp();await createArtist(state,elements,'a');
+ const started=gate(),response=gate();stub(ctx,{lookup:async()=>[],details:async()=>{started.resolve();await response.promise;return {counts:{total:7,checkedAt:'now'}};}});
+ const refreshing=elements.get('sync-all').onclick();await started.promise;
+ elements.get('save-large').checked=true;await elements.get('save-large').onchange();
+ await runBatch(elements,'b',false);response.resolve();await refreshing;
+ const saved=await ctx.FolderStore.read(dir);
+ assert.equal(saved.saveLargeImages,true);assert.deepEqual([...saved.artists].map(a=>a.name),['a','b']);assert.equal(saved.artists[0].counts.total,7);
+});
+test('回归：批采停止后重提名单只续采未完成者',async()=>{
+ const {elements,ctx,dir}=await connectedApp(),started=gate(),response=gate(),asked=[];
+ stub(ctx,{lookup:async()=>[],details:async name=>{asked.push(name);if(asked.length===1){started.resolve();await response.promise;}return {counts:{total:1,checkedAt:'now'},works:[]};}});
+ const batch=runBatch(elements,'a\nb\nc');await started.promise;elements.get('batch-stop').onclick();response.resolve();await batch;
+ await runBatch(elements,'a\nb\nc');assert.deepEqual(asked,['a','b','c']);
+ assert.equal((await ctx.FolderStore.read(dir)).artists.every(a=>a.counts.checkedAt==='now'),true);
+});
+test('回归：采集正式名变化后仍为该画师排入生成',async()=>{
+ const {elements,ctx}=await connectedApp(),asked=[];
+ stub(ctx,{lookup:async()=>[{id:7,name:'new_name',aliases:['old_name']}],details:async()=>({counts:{total:1,checkedAt:'now'},works:[]})});
+ ctx.ArtistImageGen.generate=async artist=>{asked.push(artist.name);throw Error('测试不联网');};ctx.ArtistImageGen.genGapDelay=()=>0;
+ getEl(elements,'batch-generate').checked=true;await runBatch(elements,'old_name');await tick();
+ assert.deepEqual(asked,['new_name']);
+});
+
+
+test('回归：刷新和采集同时结束时写盘串行且保留两边结果',async()=>{
+ const {elements,state,ctx,dir}=await connectedApp();await createArtist(state,elements,'a');
+ const first=gate(),second=gate(),firstReady=gate(),secondReady=gate();
+ stub(ctx,{lookup:async()=>[],details:async name=>{(name==='a'?firstReady:secondReady).resolve();await(name==='a'?first:second).promise;return {counts:{total:name==='a'?11:22,checkedAt:'now'},works:[]};}});
+ const refreshing=elements.get('sync-all').onclick();await firstReady.promise;
+ const collecting=runBatch(elements,'b');await secondReady.promise;
+ const writing=gate(),release=gate(),original=ctx.FolderStore.write;let active=0,maxActive=0,firstWrite=true;
+ ctx.FolderStore.write=async(...args)=>{active++;maxActive=Math.max(maxActive,active);try{if(firstWrite){firstWrite=false;writing.resolve();await release.promise;}return await original(...args);}finally{active--;}};
+ first.resolve();await writing.promise;second.resolve();await tick();release.resolve();await Promise.all([refreshing,collecting]);
+ const data=await ctx.FolderStore.read(dir);
+ assert.equal(maxActive,1);assert.deepEqual([...data.artists].map(a=>[a.name,a.counts.total]),[['a',11],['b',22]]);
+});
+test('回归：采集期间切换文件夹不打开选择器或写入另一库',async()=>{
+ const {elements,ctx}=await connectedApp(),started=gate(),response=gate();let opened=0;
+ ctx.window.showDirectoryPicker=async()=>{opened++;return new FakeDir('另一库');};
+ stub(ctx,{lookup:async()=>[],details:async()=>{started.resolve();await response.promise;return {counts:{total:1,checkedAt:'now'},works:[]};}});
+ const collecting=runBatch(elements,'a');await started.promise;
+ await elements.get('choose-folder').onclick();assert.equal(opened,0);assert.match(elements.get('storage-status').textContent,/任务结束/);
+ response.resolve();await collecting;
 });

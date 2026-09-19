@@ -509,13 +509,16 @@ dialog[open]::backdrop{opacity:1}
   async function saveImage(dir,uid,kind,blob,preferredName){
     if(!IMAGE_KINDS.includes(kind))throw Error('图片类型错误：'+kind);
     if(!ArtistId.valid(uid))throw Error('画师标识格式错误');
+    return saveImageIn(await artistFolder(dir,uid,true),kind,blob,preferredName);
+  }
+  async function saveImageIn(folder,kind,blob,preferredName){
     if(!blob||typeof blob.arrayBuffer!=='function'||!blob.size)throw Error('图片内容为空');
     if(blob.size>MAX_IMAGE_BYTES)throw Error('图片超过 '+(MAX_IMAGE_BYTES/1024/1024)+' MB');
     const extension=extensionOf(blob.type);
     if(!extension)throw Error('不支持的图片格式：'+(blob.type||'未知'));
     const bytes=new Uint8Array(await blob.arrayBuffer());
     const name=preferredName?preferredName+'.'+extension:(await hashOf(bytes))+'.'+extension;
-    const folder=await artistFolder(dir,uid,true),images=await folder.getDirectoryHandle(FOLDER_OF[kind],{create:true});
+    const images=await folder.getDirectoryHandle(FOLDER_OF[kind],{create:true});
     await put(images,name,bytes);
     return FOLDER_OF[kind]+'/'+name;
   }
@@ -555,11 +558,11 @@ dialog[open]::backdrop{opacity:1}
     snapshots.set(dir,records);legacy.set(dir,moved);return data;
   }
   async function copyImages(source,target){
-    let entries;try{entries=source;}catch{return;}
-    for await(const entry of entries.values()){
-      if(entry.kind!=='file'||!ownedNamePattern.test(entry.name))continue;
+    for await(const entry of source.values()){
+      // 用户放在图片目录里的文件也要保留；遇到无法迁移的内容，保留整个源目录。
+      if(entry.kind!=='file')throw Error('图片目录含有子目录，请先手动迁移：'+entry.name);
       const file=await entry.getFile();
-      if(file.size>MAX_IMAGE_BYTES)continue;
+      if(file.size>MAX_IMAGE_BYTES)throw Error('迁移图片超过大小限制：'+entry.name);
       await put(target,entry.name,new Uint8Array(await file.arrayBuffer()));
     }
   }
@@ -590,7 +593,7 @@ dialog[open]::backdrop{opacity:1}
     for(const a of data.artists){
       const stamp=signature(a);
       if(!moved.has(a.uid)&&before.get(a.uid)===stamp){records.set(a.uid,stamp);result.artists.push(a);continue;}
-      const oldUid=moved.get(a.uid);if(oldUid)mapped.delete(a.uid);
+      const oldUid=moved.get(a.uid); // 索引提交前保留映射，失败后仍可读旧图并重试。
       const folder=await artists.getDirectoryHandle(a.uid,{create:true}),copy=structuredClone(a),used={},taken={};
       for(const kind of IMAGE_KINDS){
         const images=await folder.getDirectoryHandle(FOLDER_OF[kind],{create:true});used[kind]=new Set();taken[kind]=new Set();
@@ -598,8 +601,12 @@ dialog[open]::backdrop{opacity:1}
            图片就没了。缩略图可能还在旧版的「预览图」目录里，所以两处都找。 */
         if(oldUid){
           const from=await artists.getDirectoryHandle(oldUid),sources=kind==='thumb'?[FOLDER_OF[kind],LEGACY_FOLDER]:[FOLDER_OF[kind]];
-          for(const name of sources)try{await copyImages(await from.getDirectoryHandle(name),images);}
-          catch(error){if(error.name!=='NotFoundError')warn('旧图片迁移失败（'+error.message+'）');}
+          for(const name of sources){
+            let source;
+            try{source=await from.getDirectoryHandle(name);}
+            catch(error){if(error.name==='NotFoundError')continue;throw error;}
+            await copyImages(source,images);
+          }
         }
       }
       for(const w of copy.works){
@@ -611,9 +618,16 @@ dialog[open]::backdrop{opacity:1}
             base=wanted;let n=2;while(taken[kind].has(base))base=wanted+'-'+n++;
             taken[kind].add(base);
           }
-          w[kind]=await saveImage(dir,a.uid,kind,blobOf(w[kind]),base);
+          w[kind]=await saveImageIn(folder,kind,blobOf(w[kind]),base);
         }
         for(const kind of IMAGE_KINDS)if(typeof w[kind]==='string')used[kind].add(w[kind].split('/').pop());
+      }
+      if(oldUid)for(const work of copy.works)for(const kind of IMAGE_KINDS){
+        const ref=imageOf(work,kind);
+        if(ref?.kind==='local'){
+          const [sub,name]=ref.path.split('/');
+          await (await (await folder.getDirectoryHandle(sub)).getFileHandle(name)).getFile();
+        }
       }
       await put(folder,'信息.json',JSON.stringify(copy,null,2));records.set(a.uid,signature(copy));result.artists.push(copy);cleanup.push({folder,used});
     }
@@ -1117,6 +1131,7 @@ dialog[open]::backdrop{opacity:1}
     constructor(maxBytes=32*1024*1024,maxEntries=64){this.maxBytes=maxBytes;this.maxEntries=maxEntries;this.items=new Map();this.bytes=0;}
     get(key){const v=this.items.get(key);if(v){this.items.delete(key);this.items.set(key,v);}return v;}
     set(key,value){if(this.items.has(key)){this.bytes-=this.items.get(key).size;this.items.delete(key);}if(value.size>this.maxBytes)return;this.items.set(key,value);this.bytes+=value.size;while(this.bytes>this.maxBytes||this.items.size>this.maxEntries){const first=this.items.keys().next().value;this.bytes-=this.items.get(first).size;this.items.delete(first);}}
+    delete(key){const value=this.items.get(key);if(value){this.bytes-=value.size;this.items.delete(key);}}
     clear(){this.items.clear();this.bytes=0;}
   }
   class Queue{
@@ -1127,9 +1142,9 @@ dialog[open]::backdrop{opacity:1}
   root.ImageResources={ByteCache,Queue};if(typeof module!=='undefined')module.exports=root.ImageResources;
 })(globalThis);
 </script><script>(() => {
-  const cache=new ImageResources.ByteCache(),queue=new ImageResources.Queue(3),bindings=new Map(),failures=new Map();let folder,epoch=0;
+  const cache=new ImageResources.ByteCache(),queue=new ImageResources.Queue(3),bindings=new Map(),failures=new Map(),revisions=new Map();let folder,epoch=0;
   const refOf=(w,size)=>{const ref=FolderStore.imageOf(w,size);if(!ref)throw Error(size==='large'?'这张作品没有可用的原图。':'这张作品没有可用的预览图。');return ref;};
-  const key=(uid,w,size)=>{const ref=FolderStore.imageOf(w,size);if(!ref)return uid+':'+size+':none';return ref.kind==='local'?'local:'+epoch+':'+uid+':'+ref.path:uid+':'+size+':'+(ref.url||ref.data);};
+  const key=(uid,w,size)=>{const ref=FolderStore.imageOf(w,size);if(!ref)return uid+':'+size+':none';return ref.kind==='local'?'local:'+epoch+':'+uid+':'+ref.path+':'+(revisions.get(uid+':'+ref.path)||0):uid+':'+size+':'+(ref.url||ref.data);};
   async function fetchBlob(uid,w,size,signal){
     const id=key(uid,w,size),hit=cache.get(id);if(hit)return hit;
     const failed=failures.get(id);if(failed&&Date.now()-failed.time<30000)throw Error(failed.message);
@@ -1140,7 +1155,7 @@ dialog[open]::backdrop{opacity:1}
       else if(ref.kind==='inline')blob=FolderStore.blobOf(ref.data);
       else blob=await ArtistExtension.image(ref.url,signal);
       if(signal?.aborted)throw new DOMException('已取消','AbortError');
-      if(requestedEpoch===epoch)cache.set(id,blob);return blob;
+      if(requestedEpoch===epoch&&id===key(uid,w,size))cache.set(id,blob);return blob;
     }catch(error){if(error.name!=='AbortError')failures.set(id,{time:Date.now(),message:error.message});while(failures.size>100)failures.delete(failures.keys().next().value);throw error;}},signal);
   }
   function release(record){record.controller?.abort();record.controller=null;if(record.objectUrl)URL.revokeObjectURL(record.objectUrl);record.objectUrl=null;record.img.removeAttribute('src');}
@@ -1160,17 +1175,24 @@ dialog[open]::backdrop{opacity:1}
     }
     catch(error){if(error.name!=='AbortError'&&record.controller===controller){record.img.classList.add('image-failed');record.img.title=error.message;record.img.alt='图片未加载：'+error.message;record.error?.(error);}}
   }
-  const observer=new IntersectionObserver(entries=>{for(const entry of entries){const r=bindings.get(entry.target);if(!r)continue;if(entry.isIntersecting)show(r);else release(r);}},{rootMargin:'300px'});
+  const observer=new IntersectionObserver(entries=>{for(const entry of entries){const r=bindings.get(entry.target);if(!r)continue;r.visible=entry.isIntersecting;if(r.visible)show(r);else release(r);}},{rootMargin:'300px'});
   function bind(img,uid,work,group,size='thumb',error){
     if(typeof size==='function'){error=size;size='thumb';}
     const existing=bindings.get(img);
     if(existing){observer.unobserve(img);existing.controller?.abort();if(existing.objectUrl)URL.revokeObjectURL(existing.objectUrl);bindings.delete(img);}
     const record={img,uid,work,group,size,error};bindings.set(img,record);img.decoding='async';img.onerror=()=>{if(record.objectUrl){img.classList.add('image-failed');img.title='图片内容无法解码';}};observer.observe(img);
   }
+  function invalidate(uid,path){
+    const ref=uid+':'+path,version=revisions.get(ref)||0,id='local:'+epoch+':'+ref+':'+version;
+    cache.delete(id);failures.delete(id);revisions.set(ref,version+1);
+    for(const record of bindings.values())if(record.uid===uid&&FolderStore.imageOf(record.work,record.size)?.path===path){
+      release(record);if(record.visible)show(record);
+    }
+  }
   function unbind(img){const r=bindings.get(img);if(r){observer.unobserve(img);release(r);bindings.delete(img);}}
   function dispose(group){for(const [img,r] of bindings)if(r.group===group)unbind(img);}
   function clear(){cache.clear();failures.clear();for(const r of bindings.values()){release(r);observer.unobserve(r.img);observer.observe(r.img);}}
-  window.ArtistImages={bind,dispose,fetch:fetchBlob,clear,setFolder(value){for(const img of [...bindings.keys()])unbind(img);cache.clear();failures.clear();epoch++;folder=value;},stats(){return {bytes:cache.bytes,entries:cache.items.size,active:queue.active,queued:queue.waiting.length,bound:bindings.size};},async dataUrl(uid,w,size='thumb',signal){const blob=await fetchBlob(uid,w,size,signal);return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(blob);});}};
+  window.ArtistImages={bind,dispose,fetch:fetchBlob,clear,invalidate,setFolder(value){for(const img of [...bindings.keys()])unbind(img);cache.clear();failures.clear();revisions.clear();epoch++;folder=value;},stats(){return {bytes:cache.bytes,entries:cache.items.size,active:queue.active,queued:queue.waiting.length,bound:bindings.size};},async dataUrl(uid,w,size='thumb',signal){const blob=await fetchBlob(uid,w,size,signal);return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(blob);});}};
 })();
 </script><script>(() => {
   let observer,resize,current=[],make=null,keyOf=null,uids=[];
@@ -1384,12 +1406,12 @@ dialog[open]::backdrop{opacity:1}
 })(globalThis);
 </script><script>(function(root){
   'use strict';
-  const $=id=>document.getElementById(id),clone=v=>structuredClone(v);
+  const $=id=>document.getElementById(id);
   let host=null,current=null;
   function init(options){host=options;}
   function dispose(){current=null;}
   function open({title,uid,work,caption,persist=false}){
-    current={uid,work,persist};
+    current={uid,work,persist,folder:host.getFolder()};
     ArtistImages.dispose('viewer');
     $('viewer-title').textContent=title;$('large-image').alt=title;
     $('viewer-caption').textContent='正在获取原图…';
@@ -1408,7 +1430,7 @@ dialog[open]::backdrop{opacity:1}
   }
   async function saveOriginal(){
     if(!current||!current.persist||!host.getFolder())return;
-    const {uid,work}=current;
+    const request=current,{uid,work,folder}=request;
     refreshButton(true);
     try{
       const local=FolderStore.imageOf(work,'large');
@@ -1419,12 +1441,13 @@ dialog[open]::backdrop{opacity:1}
         target={...work,largeUrl:remote};
       }
       const blob=await ArtistImages.fetch(uid,target,'large');
-      const saved=await keepLarge(uid,work,blob,remote);
-      if(saved&&current&&current.uid===uid)current.work=saved;
+      const saved=await keepLarge(uid,work,blob,remote,folder);
+      if(saved&&current===request)current.work=saved;
     }catch(error){host.notify('保存原图失败：'+error.message,true);}
     finally{refreshButton();}
   }
   async function loadLarge(uid,work,caption,persist){
+    const request=current,folder=request.folder;
     const img=$('large-image'),note=caption?caption+' · ':'',local=FolderStore.imageOf(work,'large');
     $('viewer-caption').textContent=note+'正在获取原图…';
     try{
@@ -1435,24 +1458,30 @@ dialog[open]::backdrop{opacity:1}
         target={...work,largeUrl:remote};
       }
       const blob=await ArtistImages.fetch(uid,target,'large');
-      if(persist&&host.getData().saveLargeImages&&host.getFolder()&&remote&&!local){
-        kept=await keepLarge(uid,work,blob,remote);
-        if(kept&&current&&current.uid===uid)current.work=kept;
+      if(current!==request)return;
+      if(persist&&host.getData().saveLargeImages&&host.getFolder()&&remote&&local?.kind!=='local'){
+        kept=await keepLarge(uid,work,blob,remote,folder);
+        if(kept&&current===request)current.work=kept;
         refreshButton();
       }
-      if(!$('viewer').open)return;
+      if(current!==request||!$('viewer').open)return;
       img.onload=()=>{$('viewer-caption').textContent=note+(kept?'原图已保存到本地':'原图仅本次显示，不会保存到本地');};
       ArtistImages.bind(img,uid,target,'viewer','large',error=>showMiddle(uid,work,caption,error));
-    }catch(error){if(error.name!=='AbortError')showMiddle(uid,work,caption,error);}
+    }catch(error){if(current===request&&error.name!=='AbortError')showMiddle(uid,work,caption,error);}
   }
-  async function keepLarge(uid,work,blob,remote){
+  async function keepLarge(uid,work,blob,remote,folder){
     try{
-      const path=await FolderStore.saveImage(host.getFolder(),uid,'large',blob);
-      const next=clone(host.getData()),target=next.artists.find(x=>x.uid===uid),index=target?target.works.findIndex(x=>x.id===work.id):-1;
-      if(index<0)return null;
-      target.works[index]={...target.works[index],large:path,largeUrl:remote||work.largeUrl||null};
-      await host.save(next,'原图已保存到本地，之后预览直接读本地');
-      return target.works[index];
+      if(folder!==host.getFolder())throw Error('数据文件夹已经切换，未保存旧预览的图片');
+      const path=await FolderStore.saveImage(folder,uid,'large',blob);
+      let saved;
+      const ok=await host.save(next=>{
+        if(folder!==host.getFolder())throw Error('数据文件夹已经切换，未写入旧预览');
+        const target=next.artists.find(x=>x.uid===uid),index=target?target.works.findIndex(x=>work.id?x.id===work.id:x.thumb===work.thumb&&x.kind===work.kind&&x.testSeq===work.testSeq):-1;
+        if(index<0)throw Error('这张作品已经移除，未修改画师资料');
+        saved=target.works[index]={...target.works[index],large:path,largeUrl:remote||work.largeUrl||null};
+        return next;
+      },'原图已保存到本地，之后预览直接读本地');
+      return ok===false?null:saved;
     }catch(error){host.notify('原图保存失败：'+error.message,true);return null;}
   }
   function showMiddle(uid,work,caption,error){
@@ -1623,7 +1652,7 @@ dialog[open]::backdrop{opacity:1}
       const c=a.counts||{},number=n=>Number.isSafeInteger(n)&&n>=0?n:null;
       return {uid:id,order:i+1,name,category:a.category||null,score:Number.isSafeInteger(a.score)&&a.score>=1&&a.score<=5?a.score:null,aliases:unique(Array.isArray(a.aliases)?a.aliases:[]).map(x=>x.slice(0,60)),alias:typeof a.alias==='string'&&a.alias.trim()?a.alias.trim().slice(0,60):null,tags:unique(a.tags||[]).map(t=>t.slice(0,40)),danbooruId,counts:{total:number(c.total),checkedAt:text(c.checkedAt,40),beforeDate:text(c.beforeDate,10),beforeTotal:number(c.beforeTotal)},artistUrl:url(a.artistUrl),description:text(a.description),note:text(a.note),basis:text(a.basis,100),status:text(a.status,100),works};
     });
-    return {version:1,categories:categoryList,cutoffDate:/^\d{4}-\d{2}-\d{2}$/.test(raw.cutoffDate)?raw.cutoffDate:'2026-07-01',saveLargeImages:raw.saveLargeImages===true,fixedTestSlots:raw.fixedTestSlots===true,workOrder:WORK_ORDERS.includes(raw.workOrder)?raw.workOrder:DEFAULT_WORK_ORDER,date:text(raw.date,40),method:text(raw.method,12000),tags:unique([...(Array.isArray(raw.tags)?raw.tags:defaults),...artists.flatMap(a=>a.tags)]).map(t=>t.slice(0,40)),artists};
+    return {version:1,categories:categoryList,cutoffDate:/^\d{4}-\d{2}-\d{2}$/.test(raw.cutoffDate)?raw.cutoffDate:'2026-07-01',saveLargeImages:raw.saveLargeImages===true,autoOpenWorks:raw.autoOpenWorks===true,fixedTestSlots:raw.fixedTestSlots===true,workOrder:WORK_ORDERS.includes(raw.workOrder)?raw.workOrder:DEFAULT_WORK_ORDER,date:text(raw.date,40),method:text(raw.method,12000),tags:unique([...(Array.isArray(raw.tags)?raw.tags:defaults),...artists.flatMap(a=>a.tags)]).map(t=>t.slice(0,40)),artists};
   }
   /* 文案真的变了才轻轻淡一下：保存、生图、检测都会写状态栏，一直闪反而吵。 */
   function status(t,error=false){
@@ -1641,7 +1670,15 @@ dialog[open]::backdrop{opacity:1}
       status(ok?'已复制'+what+'：'+text:'复制失败，请手动选中复制。',!ok);
     }catch{status('复制失败，请手动选中复制。',true);}
   }
-  async function write(value){if(!folder)throw Error('请先选择数据文件夹');return normalize(await FolderStore.write(folder,value));}
+  async function write(value,targetFolder=folder){
+    if(!targetFolder)throw Error('请先选择数据文件夹');
+    const saved=await FolderStore.write(targetFolder,value);
+    // 文件可能同名覆盖。逐张使缓存失效，已显示的图片也要重新读取。
+    for(let i=0;i<value.artists.length;i++)for(let j=0;j<value.artists[i].works.length;j++)for(const kind of FolderStore.IMAGE_KINDS){
+      if(value.artists[i].works[j][kind]?.startsWith('data:'))ArtistImages.invalidate?.(saved.artists[i].uid,saved.artists[i].works[j][kind]);
+    }
+    return normalize(saved);
+  }
   /* 真正把一个目录句柄接上：不管是刚选的还是从记忆里取回来的，都走这里。 */
   async function adoptFolder(chosen,{from='刚选择',remember=true}={}){
     status('正在读取画师资料（图片按需加载）…');
@@ -1663,6 +1700,7 @@ dialog[open]::backdrop{opacity:1}
   }
   async function connectFolder(){
     if(busy)return;
+    if(generating||syncingAll||batchRunning||uploading||!genQueue.idle){status('请等当前采集、刷新或生成任务结束后再切换数据文件夹。',true);return;}
     if(!window.showDirectoryPicker){status('当前浏览器不支持文件夹读写，请使用最新版 Chrome 或 Edge 打开本 HTML。',true);return;}
     if(volatile){status('请先导出备份保留尚未保存的修改，再重新打开网页切换文件夹。',true);return;}
     try{await adoptFolder(await window.showDirectoryPicker({id:'artist-library',mode:'readwrite'}));}
@@ -1695,10 +1733,29 @@ dialog[open]::backdrop{opacity:1}
     };
     status(`记得你上次用的是「${name}」：点右边按钮继续用它，或点顶部「数据库文件夹」换一个。`);
   }
-  async function save(next,message='已保存到数据文件夹'){
-    busy=true;data=next;status('正在保存…');
-    const controls=[...document.querySelectorAll('button,input,textarea,select')].map(e=>[e,e.disabled]);controls.forEach(([e])=>e.disabled=true);
-    try{data=await write(data);volatile=false;const warnings=FolderStore.takeWarnings();status(warnings.length?message+'；'+warnings.join('；'):message,warnings.length>0);}catch(error){volatile=true;status('文件保存失败：'+error.message+'；修改暂留本页，请导出备份。',true);}finally{controls.forEach(([e,disabled])=>e.disabled=disabled);busy=false;render();}
+  // 所有落盘串行执行。异步任务传入更新函数，在轮到自己时合并最新数据。
+  let saveTail=Promise.resolve(),pendingSaves=0,saveControls=[];
+  function save(next,message='已保存到数据文件夹'){
+    const targetFolder=folder;
+    if(pendingSaves++===0){
+      busy=true;
+      saveControls=[...document.querySelectorAll('button,input,textarea,select')].map(e=>[e,e.disabled]);
+      saveControls.forEach(([e])=>e.disabled=true);
+    }
+    const operation=saveTail.then(async()=>{
+      try{
+        if(targetFolder!==folder)throw Error('数据文件夹已经切换，未写入旧任务');
+        data=typeof next==='function'?next(clone(data)):next;
+        status('正在保存…');data=await write(data,targetFolder);volatile=false;
+        const warnings=FolderStore.takeWarnings(),label=typeof message==='function'?message():message;status(warnings.length?label+'；'+warnings.join('；'):label,warnings.length>0);
+        return true;
+      }catch(error){volatile=true;status('文件保存失败：'+error.message+'；修改暂留本页，请导出备份。',true);return false;}
+      finally{
+        if(--pendingSaves===0){saveControls.forEach(([e,disabled])=>e.disabled=disabled);saveControls=[];busy=false;}
+        render();
+      }
+    });
+    saveTail=operation.catch(()=>{});return operation;
   }
   function reset(){state.category='全部';state.tags.clear();state.scores.clear();state.query='';$('search').value='';}
   function showImage(a,w){ArtistViewer.open({title:a.name,uid:a.uid,work:w,caption:w.caption,persist:true});}
@@ -1771,11 +1828,13 @@ dialog[open]::backdrop{opacity:1}
         added.push({id:'',url:'',caption:'',thumb:await thumbnail(original),large:original,thumbUrl:null,largeUrl:null});
       }
       if(!added.length)throw Error('拖进来的不是支持的图片（只收 JPG、PNG、WebP、GIF、AVIF，单张不超过 50 MB）。');
-      const next=clone(data),target=next.artists.find(item=>item.uid===a.uid);
-      if(!target)throw Error('这位画师已经不在库里了。');
-      target.works=FolderStore.placeWork(target,index,added,{limit:PREVIEW_SLOTS,reserve:reservedOf()});
       const settle=rememberWorkSlots();
-      await save(next,`已把 ${added.length} 张图片放进「${a.name}」从第 ${index+1} 格起的位置${skipped.length?`；跳过 ${skipped.length} 个不支持的文件：${skipped.slice(0,3).join('、')}`:''}`);
+      await save(next=>{
+        const target=next.artists.find(item=>item.uid===a.uid);
+        if(!target)throw Error('这位画师已经不在库里了。');
+        target.works=FolderStore.placeWork(target,index,added,{limit:PREVIEW_SLOTS,reserve:reservedOf()});
+        return next;
+      },`已把 ${added.length} 张图片放进「${a.name}」从第 ${index+1} 格起的位置${skipped.length?`；跳过 ${skipped.length} 个不支持的文件：${skipped.slice(0,3).join('、')}`:''}`);
       settle();
     }catch(error){status('拖入失败：'+error.message,true);}
     finally{uploading=false;}
@@ -1861,13 +1920,15 @@ dialog[open]::backdrop{opacity:1}
       const progress=box&&progressOf(box);
       if(progress)progress.textContent='正在保存到画师目录…';
       const original=await readImage(blob),thumb=await thumbnail(original);
-      /* 缩略图算完再取快照，之后到落盘之间不再有等待，免得和别的保存互相覆盖。 */
-      const next=clone(data),into=next.artists.find(item=>item.uid===uid);
-      if(!into)throw Error('这位画师已经不在库里了，图片没有保存。');
-      const testSeq=FolderStore.nextTestSeq(into.works,seq);
-      /* 生成时用了什么提示词一并记下来：以后要复现或对比，不用去猜。 */
-      into.works.push({id:'',url:'',caption:prompt,kind:'test',testSeq,thumb,large:original,thumbUrl:null,largeUrl:null});
-      await save(next,`已为「${name}」生成测试风格 ${testSeq}（${width} × ${height} · ${steps} 步${free?' · 未用点数':''}）`);
+      let testSeq;
+      const saved=await save(next=>{
+        const into=next.artists.find(item=>item.uid===uid);
+        if(!into)throw Error('这位画师已经不在库里了，图片没有保存。');
+        testSeq=FolderStore.nextTestSeq(into.works,seq);
+        into.works.push({id:'',url:'',caption:prompt,kind:'test',testSeq,thumb,large:original,thumbUrl:null,largeUrl:null});
+        return next;
+      },()=>`已为「${name}」生成测试风格 ${testSeq}（${width} × ${height} · ${steps} 步${free?' · 未用点数':''}）`);
+      if(!saved)return;
       const after=await refreshAccount(true);
       if(after&&before&&!free&&after.anlas<before.anlas)status(`已生成测试风格 ${testSeq}；这次消耗了 ${before.anlas-after.anlas} 点 Anlas，剩余 ${after.anlas} 点。`);
     }catch(error){
@@ -2156,11 +2217,11 @@ dialog[open]::backdrop{opacity:1}
   /* 读一次作品数量（含截至日期前数量）。失败项保留原值，不覆盖成 null。
      笔名不在这里读：它在「识别添加」和「批量导入」时随画师编号一起取回，只取一次，
      保存时再查一遍纯属浪费一次完整往返。 */
-  async function refreshCounts(artist){
-    const result=await ArtistLookup.details(artist.name,data.cutoffDate,{previews:false});
+  async function refreshCounts(artist,cutoffDate=data.cutoffDate){
+    const result=await ArtistLookup.details(artist.name,cutoffDate,{previews:false});
     const counts={...(artist.counts||{})};
     if(result.counts.total!==null){counts.total=result.counts.total;counts.checkedAt=result.counts.checkedAt;}
-    if(result.counts.beforeTotal!==null){counts.beforeTotal=result.counts.beforeTotal;counts.beforeDate=data.cutoffDate;}
+    if(result.counts.beforeTotal!==null){counts.beforeTotal=result.counts.beforeTotal;counts.beforeDate=cutoffDate;}
     return {counts,partial:result.countsError};
   }
   const SYNC_CHUNK=25,SYNC_CONCURRENCY=3;
@@ -2169,7 +2230,7 @@ dialog[open]::backdrop{opacity:1}
      中途停下来时已经刷好的部分已经落盘，不会白跑。 */
   async function syncAllArtists(){
     if(busy||syncingAll)return;
-    const targets=data.artists.map(a=>({uid:a.uid,name:a.name}));
+    const targets=data.artists.map(a=>({uid:a.uid,name:a.name,counts:clone(a.counts||{})}));
     if(!targets.length){status('画师库还是空的，先添加画师。',true);return;}
     const button=$('sync-all');
     let done=0,renamed=0,skipped=0,failed=0;
@@ -2179,33 +2240,36 @@ dialog[open]::backdrop{opacity:1}
     try{
       for(let i=0;i<targets.length;i+=SYNC_CHUNK){
         if(syncAllStop)break;
-        const slice=targets.slice(i,i+SYNC_CHUNK),next=clone(data);
-        /* 重名检查与登记在同一段同步代码里完成，几个并发之间不会同时放行同一个新名字 */
-        const takenNames=new Set(next.artists.map(a=>a.name.toLowerCase()));
+        const slice=targets.slice(i,i+SYNC_CHUNK),results=[],cutoffDate=data.cutoffDate;
         let cursor=0;
         await Promise.all(Array.from({length:Math.min(SYNC_CONCURRENCY,slice.length)},async()=>{
           while(cursor<slice.length&&!syncAllStop){
-            const item=slice[cursor++],target=next.artists.find(a=>a.uid===item.uid);
-            if(!target)continue;
+            const item=slice[cursor++];
             try{
-              const [hit,counts]=await Promise.all([lookupArtist(item.name),refreshCounts({...target,name:item.name})]);
-              if(counts)target.counts=counts.counts;
-              const canonical=hit&&hit.canonical;
-              if(!canonical||canonical===target.name)skipped++;
-              else if(takenNames.has(canonical.toLowerCase()))skipped++;
-              else{
-                takenNames.delete(target.name.toLowerCase());takenNames.add(canonical.toLowerCase());
-                reidentify(target,canonical,hit.id);
-                target.name=canonical;
-                if(hit.id!=null)target.danbooruId=hit.id;
-                if(hit.aliases.length)target.aliases=hit.aliases;
-                renamed++;
-              }
+              const [hit,counts]=await Promise.all([lookupArtist(item.name),refreshCounts(item,cutoffDate)]);
+              results.push({item,hit,counts});
             }catch{failed++;}
             done++;paint();
           }
         }));
-        await save(next,`正在刷新画师数据 ${done} / ${targets.length}…`);
+        const saved=await save(next=>{
+          const takenNames=new Set(next.artists.map(a=>a.name.toLowerCase()));
+          for(const {item,hit,counts} of results){
+            const target=next.artists.find(a=>a.uid===item.uid);
+            // 查询期间删除或改名的画师不再套用旧查询结果。
+            if(!target||target.name!==item.name){skipped++;continue;}
+            if(counts)target.counts={...target.counts,...counts.counts};
+            const canonical=hit&&hit.canonical;
+            if(!canonical||canonical===target.name||takenNames.has(canonical.toLowerCase())){skipped++;continue;}
+            takenNames.delete(target.name.toLowerCase());takenNames.add(canonical.toLowerCase());
+            reidentify(target,canonical,hit.id);target.name=canonical;
+            if(hit.id!=null)target.danbooruId=hit.id;
+            if(hit.aliases.length)target.aliases=hit.aliases;
+            renamed++;
+          }
+          return next;
+        },`正在刷新画师数据 ${done} / ${targets.length}…`);
+        if(!saved&&folder)return;
       }
     }finally{
       syncingAll=false;
@@ -2247,26 +2311,30 @@ dialog[open]::backdrop{opacity:1}
     if(draft.works.some(w=>w.url&&!url(w.url))){setEditorError('作品来源链接只支持 http:// 或 https://。');return;}
     /* 旧编号、数量、笔名的作废放在名字输入框里做，这里只负责把改过的名字落到 uid 上。 */
     draft.name=name;draft.artistUrl=url(draft.artistUrl);draft.tags=unique(draft.tags);draft.basis='';draft.status='';draft.works.forEach(w=>w.url=url(w.url));
-    if(editingId){
-      const seq=ArtistId.parse(draft.uid)?.seq;
-      const uid=seq?ArtistId.create({seq,name:draft.name,danbooruId:Number.isSafeInteger(draft.danbooruId)?draft.danbooruId:null}):draft.uid;
-      if(uid!==draft.uid)reidentify(draft,draft.name,draft.danbooruId);
-    }
-    const next=clone(data),i=next.artists.findIndex(a=>a.uid===editingId);
-    if(i<0){draft.uid=ArtistId.issue(next.artists,{name:draft.name,danbooruId:draft.danbooruId});next.artists.push(draft);}else next.artists[i]=draft;
-    next.artists.forEach((a,j)=>a.order=j+1);next.tags=unique([...next.tags,...draft.tags]);
-    await new Promise(resolve=>morphAway(editingId,resolve));
+    const edited=clone(draft),editing=editingId;
+    await new Promise(resolve=>morphAway(editing,resolve));
     closeEditor();
-    await save(next,'已保存 '+name);
+    await save(next=>{
+      const i=next.artists.findIndex(a=>a.uid===editing);
+      if(editing&&i<0)throw Error('这位画师已经被删除或改名，请重新打开编辑');
+      if(next.artists.some(a=>a.uid!==editing&&a.name.toLowerCase()===name.toLowerCase()))throw Error('已有同名画师');
+      if(i<0){edited.uid=ArtistId.issue(next.artists,{name:edited.name,danbooruId:edited.danbooruId});next.artists.push(edited);}
+      else{
+        const seq=ArtistId.parse(edited.uid)?.seq;
+        if(seq&&ArtistId.create({seq,name:edited.name,danbooruId:edited.danbooruId})!==edited.uid)reidentify(edited,edited.name,edited.danbooruId);
+        next.artists[i]=edited;
+      }
+      next.artists.forEach((a,j)=>a.order=j+1);next.tags=unique([...next.tags,...edited.tags]);return next;
+    },'已保存 '+name);
   }
+
   /* 删除画师。编辑态的「删除画师」和浏览卡片上的那个都走这里：删的是 uid 这一位；
      正在编辑的就是他时，顺手把编辑态收掉。 */
   async function removeArtist(uid=editingId){
     if(busy||uploading||!uid)return;
-    const next=clone(data);next.artists=next.artists.filter(a=>a.uid!==uid);next.artists.forEach((a,i)=>a.order=i+1);
     await new Promise(resolve=>morphAway(uid,resolve));
     if(uid===editingId)closeEditor();
-    await save(next,'已删除画师');
+    await save(next=>{next.artists=next.artists.filter(a=>a.uid!==uid);next.artists.forEach((a,i)=>a.order=i+1);return next;},'已删除画师');
   }
   function confirmButton(label,armedLabel,onConfirm,cls='danger'){
     let armed=false,timer=null;
@@ -2388,7 +2456,7 @@ dialog[open]::backdrop{opacity:1}
     const f=e.target.files[0];e.target.value='';if(!f||busy)return;
     try{if(f.size>100*1024*1024)throw Error('超过 100 MB 的备份请使用完整「数据」文件夹恢复，避免一次解析全部图片占满内存。');const next=normalize(JSON.parse(await f.text()),true);if(next.artists.some(a=>a.works.some(w=>FolderStore.imageOf(w,'thumb')?.kind==='local')))throw Error('这份 JSON 里的图片指向本地文件路径，单独导入恢复不了图片；请直接选对应的「数据」文件夹。');if(!confirm(`用备份中的 ${next.artists.length} 位画师替换当前 ${data.artists.length} 位？建议先导出当前备份。`))return;reset();await save(next,'已导入备份');ArtistImages.clear();}catch(error){alert('导入失败。\n'+error.message);}
   }
-  const BATCH_CHUNK=25,BATCH_WORKS=3;
+  const BATCH_WORKS=3;
   let batchStop=false,batchRunning=false;const batchFailed=[];
   /* 采集期间：工具栏与对话框里都给出「停止采集」，并把进度同时写到页面底部——
      对话框收起以后，主页面那一行仍然看得见进度。 */
@@ -2397,40 +2465,39 @@ dialog[open]::backdrop{opacity:1}
     for(const id of ['batch-stop','batch-stop-dialog'])$(id).hidden=!value;
     const run=$('batch-run');run.disabled=value;if(!value)run.textContent='添加到画师库';
   }
-  async function enrichArtists(names,order=DEFAULT_WORK_ORDER){
-    const message=$('batch-message'),total=names.length;
+  async function enrichArtists(targets,order=DEFAULT_WORK_ORDER){
+    const message=$('batch-message'),total=targets.length;
     let done=0,failed=0,renamed=0,images=0;
     const text=()=>`正在采集 ${done} / ${total} · 补编号 ${renamed} · 缩略图 ${images} 张${failed?` · 失败 ${failed}`:''}`;
-    const report=()=>{const line=text();message.textContent=line;status(line);};
-    for(let i=0;i<total&&!batchStop;i+=BATCH_CHUNK){
-      const next=clone(data);
-      for(const name of names.slice(i,i+BATCH_CHUNK)){
-        if(batchStop)break;
-        const artist=next.artists.find(a=>a.name===name);done++;
-        if(!artist||(artist.counts&&artist.counts.checkedAt)){report();continue;}
-        try{
-          const detail=await ArtistLookup.details(name,next.cutoffDate,{previews:true,order});
-          if(detail.countsError)throw Error('作品数量读取失败');
-          let hit=null;
-          try{hit=await lookupArtist(name);}catch{}
-          /* 站点上已有正式名、且不和库里别的画师撞名，就跟着改过去 */
+    for(const job of targets){
+      if(batchStop)break;
+      const source=data.artists.find(a=>a.uid===job.uid);done++;
+      if(!source||source.counts?.checkedAt)continue;
+      const name=source.name,cutoffDate=data.cutoffDate;
+      try{
+        const detail=await ArtistLookup.details(name,cutoffDate,{previews:true,order});
+        if(detail.countsError)throw Error('作品数量读取失败');
+        let hit=null;try{hit=await lookupArtist(name);}catch{}
+        const works=await cacheWorks(job.uid,detail.works.slice(0,BATCH_WORKS));
+        const saved=await save(next=>{
+          const artist=next.artists.find(a=>a.uid===job.uid);
+          if(!artist||artist.name!==name)return next;
           const taken=new Set(next.artists.filter(a=>a!==artist).map(a=>a.name.toLowerCase()));
           const canonical=hit&&hit.canonical&&hit.canonical!==name&&!taken.has(hit.canonical.toLowerCase())?hit.canonical:name;
           const danbooruId=hit&&hit.id!=null?hit.id:(Number.isSafeInteger(artist.danbooruId)?artist.danbooruId:null);
           if(reidentify(artist,canonical,danbooruId))renamed++;
-          if(canonical!==artist.name)artist.name=canonical;
+          artist.name=canonical;job.uid=artist.uid;
           if(danbooruId!=null)artist.danbooruId=danbooruId;
           if(hit&&hit.aliases.length)artist.aliases=hit.aliases;
-          const works=await cacheWorks(artist.uid,detail.works.slice(0,BATCH_WORKS));
-          images+=works.filter(w=>typeof w.thumb==='string'&&w.thumb.startsWith('data:')).length;
-          artist.counts={...detail.counts};artist.works=works;
-        }catch(error){failed++;if(batchFailed.length<5)batchFailed.push(name+'：'+error.message);}
-        /* 这一位采完就落一次盘：卡片上的数量与缩略图当场补上（画廊按指纹只重画这一张），
-           中途关掉页面也不会白采。开销很小——写盘只写这一位画师的目录加一份索引。 */
-        const line=text();message.textContent=line;
-        await save(next,line);
-      }
-      if(batchStop)break;
+          // 保留请求期间上传、编辑或生成的作品，只追加尚未保存的采集结果。
+          const added=works.filter(w=>!artist.works.some(existing=>w.id?existing.id===w.id:w.url&&existing.url===w.url));
+          artist.works.push(...added);artist.counts={...artist.counts,...detail.counts};
+          images+=added.filter(w=>typeof w.thumb==='string'&&w.thumb.startsWith('data:')).length;
+          return next;
+        },text());
+        if(!saved&&folder){batchStop=true;return {done,failed,renamed,images,storageFailed:true};}
+      }catch(error){failed++;if(batchFailed.length<5)batchFailed.push(name+'：'+error.message);}
+      const line=text();message.textContent=line;status(line);
     }
     return {done,failed,renamed,images};
   }
@@ -2444,12 +2511,12 @@ dialog[open]::backdrop{opacity:1}
     const button=$('batch-run');
     button.textContent='添加到画师库';button.classList.remove('is-armed');
   }
-  /* 导入完成后按名字找回刚加进来的画师（补编号可能改了 uid，所以按名字找），逐个排入生成队列。
+  /* 采集会同步更新任务里的 uid，正式名变化后也能找到同一位画师，逐个排入生成队列。
      排队是异步的，导入本身该结束就结束，不等生成。 */
-  function queueTestImages(names,stopped){
+  function queueTestImages(targets,stopped){
     if(stopped){status('导入已中止，没有排入生成需求。');return 0;}
     let queued=0;
-    for(const name of names){const artist=data.artists.find(a=>a.name===name);if(artist&&enqueueGenerate(artist,1,null))queued++;}
+    for(const job of targets){const artist=data.artists.find(a=>a.uid===job.uid);if(artist&&!artist.works.some(w=>w.kind==='test'&&(w.testSeq||1)===1)&&enqueueGenerate(artist,1,null))queued++;}
     if(queued)status(`已为 ${queued} 位画师排入「生成测试风格 1」，队列一条一条跑，两条之间隔 5±3 秒。`);
     return queued;
   }
@@ -2466,24 +2533,26 @@ dialog[open]::backdrop{opacity:1}
       return;
     }
     disarmBatch();
-    const next=clone(data),seen=new Set(next.artists.map(a=>a.name.toLowerCase())),added=[];let count=0;
-    for(const name of names){if(seen.has(name.toLowerCase()))continue;seen.add(name.toLowerCase());if(next.artists.length>=20000){$('batch-message').textContent='最多支持 20,000 位画师。';return;}next.artists.push({uid:ArtistId.issue(next.artists,{name}),order:next.artists.length+1,name,category:null,score:null,aliases:[],alias:null,tags:[],artistUrl:'https://danbooru.donmai.us/posts?tags='+encodeURIComponent(name),description:'',note:'',works:[]});added.push(name);count++;}
+    const next=clone(data),seen=new Set(next.artists.map(a=>a.name.toLowerCase())),targets=[];let count=0;
+    for(const name of names){if(seen.has(name.toLowerCase())){const existing=next.artists.find(a=>a.name.toLowerCase()===name.toLowerCase());if(collect&&!existing.counts?.checkedAt&&!targets.some(job=>job.uid===existing.uid))targets.push({uid:existing.uid,name:existing.name});continue;}seen.add(name.toLowerCase());if(next.artists.length>=20000){$('batch-message').textContent='最多支持 20,000 位画师。';return;}next.artists.push({uid:ArtistId.issue(next.artists,{name}),order:next.artists.length+1,name,category:null,score:null,aliases:[],alias:null,tags:[],artistUrl:'https://danbooru.donmai.us/posts?tags='+encodeURIComponent(name),description:'',note:'',works:[]});targets.push({uid:next.artists[next.artists.length-1].uid,name});count++;}
     batchStop=false;batchFailed.length=0;
     /* 采完就能看着新卡一张张补上：清掉筛选，把分类切到「待判断」——新加的画师都落在这里。 */
     reset();state.category='待判断';
-    await save(next,`已添加 ${count} 位，跳过 ${names.length-count} 个重复名字`);
+    const saved=await save(next,`已添加 ${count} 位，跳过 ${names.length-count} 个重复名字`);
+    if(!saved&&folder)return;
     const summary=`已添加 ${count} 位，跳过 ${names.length-count} 个重复名字`;
-    if(collect&&added.length){
-      $('batch-message').textContent=`开始采集 ${added.length} 位画师的最新 ${BATCH_WORKS} 张作品…`;
+    if(collect&&targets.length){
+      $('batch-message').textContent=`开始采集 ${targets.length} 位画师的最新 ${BATCH_WORKS} 张作品…`;
       setBatchRunning(true);
       let result;
-      try{result=await enrichArtists(added,order);}
+      try{result=await enrichArtists(targets,order);}
       finally{setBatchRunning(false);}
+      if(result.storageFailed)return;
       const finished=`${summary}。采集 ${result.done} 位 · 补编号 ${result.renamed} · 缩略图 ${result.images} 张${result.failed?` · 失败 ${result.failed}（${batchFailed.join('；')}）`:''}${batchStop?' · 已中止，再次提交同一名单会跳过已采集的画师':''}。`;
       $('batch-message').textContent=finished;status(finished);
     }else $('batch-message').textContent=summary+'。';
     /* 采集完再排队：那时 uid 才是最终的，排进去的才会真的找到人。 */
-    const queued=alsoGenerate?queueTestImages(added,batchStop):0;
+    const queued=alsoGenerate?queueTestImages(targets,batchStop):0;
     if(queued)$('batch-message').textContent+=` 已排入 ${queued} 条生成需求，到后台队列慢慢跑。`;
     if($('batch-dialog').open&&!batchStop)$('batch-dialog').close();
   }
