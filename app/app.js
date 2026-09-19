@@ -341,9 +341,20 @@
   /* 认草稿有两种情况：新建时 rows 里放的就是 draft 本身；编辑已有画师时按 editingId 认，
      不能按 draft.uid——刷新同步到正式名之后 draft.uid 会和库里存的那条不一样。 */
   function card(a){return draft&&(a===draft||(editingId&&a.uid===editingId))?editingCard(a):artistCard(a);}
+  /* 这张卡片要不要重画：画师数据、是不是编辑态、生图队列状态、固定测试格数量，全一样就别动它。
+     不重画 = 图片不重新取、不重新淡入。以前只要 render() 一次，屏幕上每张卡片的图都要重新淡入一遍，
+     看着就是「整屏闪一下」——保存、生图状态变化、搜索框敲字、加载更多都会踩到。 */
+  function cardKey(a){
+    const active=genQueue.current,waiting=active&&active.uid===a.uid;
+    const editing=draft&&(a===draft||(editingId&&a.uid===editingId));
+    const queue=waiting?`run${genQueue.waiting?1:0}`:`q${genQueue.positionOf(item=>item.uid===a.uid)||0}`;
+    return `${editing?'edit':'show'}/${reservedOf()}/${PREVIEW_SLOTS}/${queue}/${JSON.stringify(editing?draft:a)}`;
+  }
+  /* 卡片内容就地更新完了（编辑态里那一排作品格），同步一下指纹。 */
+  const markEditorPainted=()=>{if(draft)ArtistGallery.markPainted(draft.uid);};
   function editingCard(a){
     const article=el('article','artist is-editing'),info=el('div','artist-info');
-    const numbers=el('div','artist-numbers');numbers.append(el('span','serial',String(seqOf(draft)).padStart(4,'0')),el('span','work-count',draft.works.length+' 张图片'));info.append(numbers);
+    const numbers=el('div','artist-numbers'),workCount=el('span','work-count',draft.works.length+' 张图片');numbers.append(el('span','serial',String(seqOf(draft)).padStart(4,'0')),workCount);info.append(numbers);
     const field=(label,node)=>{const wrap=el('label','edit-field');wrap.append(el('span','edit-label',label),node);return wrap;};
     const fieldBox=(label,node)=>{const wrap=el('div','edit-field edit-field-wide');wrap.append(el('span','edit-label',label),node);return wrap;};
     const nameInput=el('input');nameInput.value=draft.name;nameInput.maxLength=160;nameInput.placeholder='画师名字（必填）';nameInput.oninput=()=>{
@@ -423,10 +434,25 @@
     const actions=el('div','artist-actions');actions.append(btn('保存',saveDraft,'action primary-action'),btn('取消',cancelEdit,'action'),btn('刷新',refreshCurrentArtist,'action'));
     const remove=removeButton();if(!editingId)remove.hidden=true;actions.append(remove);info.append(actions);
     const works=el('div','works');
-    draft.works.forEach((w,i)=>{const figure=el('figure','work'),thumb=btn('',()=>showImage({uid:draft.uid,name:draft.name},w),'thumb'),img=el('img');figure.dataset.work=workKey(draft.uid,w,i);if(w.kind==='test')figure.classList.add('is-test');img.alt=draft.name+' 的作品';ArtistImages.bind(img,draft.uid,w,'editor','thumb');thumb.append(img);const caption=el('figcaption');caption.append(el('span','',w.kind==='test'?`测试风格 ${w.testSeq||1}`:'作品 '+(i+1)));caption.append(btn('移除',()=>{const settle=rememberWorkSlots();draft.works.splice(i,1);render();settle();},'danger-link'));figure.append(thumb,caption);works.append(figure);});
-    const uploadLabel=el('label','action upload-label','＋ 上传本地图片'),uploadInput=el('input');uploadInput.type='file';uploadInput.accept='image/jpeg,image/png,image/webp,image/gif,image/avif';uploadInput.multiple=true;uploadInput.hidden=true;uploadInput.onchange=upload;uploadLabel.append(uploadInput);
-    works.append(el('p','sample-note',`共 ${draft.works.length} 张图片 · 可单独移除；保存后才会写入画师目录`));
-    const expand=el('section','artist-expand'),head=el('div','expand-head');head.append(el('strong','','从 Danbooru 添加作品'),btn('展开读取',()=>togglePicker(expand),'action'),uploadLabel);expand.append(head);
+    /* 作品格单独可重画：从 Danbooru 勾一张就补一张，不动整张卡片——
+       重画整张会把下面正在挑作品的候选列表一起冲掉。 */
+    paintEditorWorks=()=>{
+      workCount.textContent=draft.works.length+' 张图片';
+      works.replaceChildren(...draft.works.map((w,i)=>{
+        const figure=el('figure','work'),thumb=btn('',()=>showImage({uid:draft.uid,name:draft.name},w),'thumb'),img=el('img');
+        figure.dataset.work=workKey(draft.uid,w,i);
+        if(w.kind==='test')figure.classList.add('is-test');
+        img.alt=draft.name+' 的作品';ArtistImages.bind(img,draft.uid,w,'editor','thumb');thumb.append(img);
+        const caption=el('figcaption');caption.append(el('span','',w.kind==='test'?`测试风格 ${w.testSeq||1}`:'作品 '+(i+1)));
+        caption.append(btn('移除',()=>{const settle=rememberWorkSlots();draft.works.splice(i,1);paintEditorWorks();markEditorPainted();settle();},'danger-link'));
+        figure.append(thumb,caption);return figure;
+      }),el('p','sample-note',`共 ${draft.works.length} 张图片 · 可单独移除；保存后才会写入画师目录`));
+    };
+    paintEditorWorks();
+    const expand=el('section','artist-expand'),head=el('div','expand-head');
+    /* 展开读取／收起就在标题旁边，一个按钮两副面孔：候选列表下面不再重复放一个「收起」。 */
+    editorToggle=btn('展开读取',()=>togglePicker(expand),'action');
+    head.append(el('strong','','从 Danbooru 添加作品'),editorToggle);expand.append(head);
     article.append(info,works,expand);return article;
   }
   function render(){
@@ -450,31 +476,47 @@
     /* 列表换人之后的动效由画廊负责：活下来的卡片从旧位置滑到新位置，新来的在原位淡入。
        这里不再给整屏再加一层入场动画——两层叠在一起，就是之前「一改东西整页闪一下」的观感。 */
     const gallery=$('gallery');
-    ArtistGallery.render(gallery,rows,card);
+    ArtistGallery.render(gallery,rows,card,cardKey);
     $('count').textContent=`找到 ${rows.length} / ${data.artists.length} 位 · 连续滚动，按需加载${state.tags.size>1?' · 同时包含所选标签':''}`;$('empty').hidden=rows.length!==0;
     $('library-summary').textContent=`${data.artists.length} 位画师 · ${data.artists.reduce((n,a)=>n+a.works.length,0)} 张作品 · 由你自由整理`;$('sample-date').textContent=data.date?'初始样本日期：'+data.date:'';
   }
-  let editorPicker=null,editorHost=null,editorError=null;
+  let editorPicker=null,editorHost=null,editorError=null,editorToggle=null,paintEditorWorks=null;
   function setEditorError(message){if(editorError)editorError.textContent=message;}
   /* 收起要把容器本身从页面移除：dispose() 已经清空了它的内容，只清内容会留下一个空壳。 */
-  function closeWorkPicker(){if(editorPicker){editorPicker.dispose();editorPicker=null;}if(editorHost){editorHost.remove?.();editorHost=null;}}
+  function closeWorkPicker(){if(editorPicker){editorPicker.dispose();editorPicker=null;}if(editorHost){editorHost.remove?.();editorHost=null;}if(editorToggle)editorToggle.textContent='展开读取';}
+  /* 换排序之后把视线交回画师作品：候选列表换了一批，人还停在原地就不用动（nearest 只在看不见时才滚）。 */
+  function focusEditorWorks(){
+    if(!draft)return;
+    requestAnimationFrame(()=>{
+      document.querySelector('.artist-slot[data-uid="'+(editingId||draft.uid)+'"] .works')?.scrollIntoView({block:'nearest',behavior:'smooth'});
+    });
+  }
+  /* 勾选即加入：候选列表里勾一张，这里就把它的预览图存进草稿的作品列表，并就地补上那一格。
+     全程不重画整张卡片，所以下面的候选列表不会被打断。 */
+  async function addPickedWork(work){
+    const [saved]=await cacheWorks(draft.uid,[work]);
+    const settle=rememberWorkSlots();
+    draft.works.push(saved);paintEditorWorks();markEditorPainted();settle();
+    return saved;
+  }
+  function removePickedWork(work){
+    const index=draft.works.findIndex(w=>w.id&&String(w.id)===String(work.id));
+    if(index<0)return false;
+    const settle=rememberWorkSlots();
+    draft.works.splice(index,1);paintEditorWorks();markEditorPainted();settle();
+    return true;
+  }
   function togglePicker(expand){
-    if(editorPicker){closeWorkPicker();return;}
+    /* 收起之后卡片会变矮，视图要重新对准这张卡片，否则滚动位置会跑掉。 */
+    if(editorPicker){closeWorkPicker();focusEditingCard();return;}
     const tag=(draft.name||'').trim();
     if(!tag){setEditorError('先在「画师名字」里填 Danbooru 标签，再用它去找作品。');return;}
     setEditorError('');
     editorHost=el('div','work-picker');expand.append(editorHost);
+    if(editorToggle)editorToggle.textContent='收起';
     const exclude=new Set(draft.works.map(w=>w.id).filter(Boolean));
-    editorPicker=WorkPicker.mount(editorHost,{uid:draft.uid,tag,exclude,zoom:prefs,order:data.workOrder,orderOptions:WORK_ORDER_OPTIONS,onPreview:work=>previewWork(draft.name,work,draft.uid)});
-    const action=btn('添加所选到作品列表',async()=>{
-      const chosen=editorPicker.selected();
-      if(!chosen.length){setEditorError('请先勾选要添加的作品。');return;}
-      action.disabled=true;action.textContent='正在下载缩略图…';
-      try{const settle=rememberWorkSlots();const saved=await cacheWorks(draft.uid,chosen);draft.works.push(...saved);closeWorkPicker();render();settle();focusEditingCard();}
-      catch(error){setEditorError('添加失败：'+error.message);}
-      finally{action.disabled=false;action.textContent='添加所选到作品列表';}
-    },'action primary-action'),bar=el('div','picker-actions');
-    bar.append(action,btn('收起',()=>{closeWorkPicker();focusEditingCard();}));editorHost.append(bar);
+    editorPicker=WorkPicker.mount(editorHost,{uid:draft.uid,tag,exclude,zoom:prefs,order:data.workOrder,orderOptions:WORK_ORDER_OPTIONS,
+      onPreview:work=>previewWork(draft.name,work,draft.uid),onAdd:addPickedWork,onRemove:removePickedWork,onOrderChanged:focusEditorWorks});
     focusEditingCard();
   }
   function focusEditingCard(){
@@ -512,7 +554,7 @@
     if(busy||uploading)return;
     morphAway(editingId,()=>{closeEditor();render();});
   }
-  function closeEditor(){if(editingId)ArtistGallery.pin(editingId,false);closeWorkPicker();editingId=null;draft=null;editorError=null;}
+  function closeEditor(){if(editingId)ArtistGallery.pin(editingId,false);closeWorkPicker();editingId=null;draft=null;editorError=null;editorToggle=null;paintEditorWorks=null;}
   /* 从候选里挑出唯一可信的那一位：名字完全一致优先，只有一位候选时也接受。
      其余情况返回 null —— 宁可没有编号，也不写错。 */
   const pickCandidate=(found,name)=>{
@@ -665,18 +707,6 @@
   const removeButton=()=>confirmButton('删除画师','再次点击确认删除',removeArtist);
   const readImage=file=>new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(Error('图片读取失败。'));reader.readAsDataURL(file);});
   const thumbnail=dataUrl=>new Promise((resolve,reject)=>{const img=new Image();img.onload=()=>{try{const scale=Math.min(1,400/Math.max(img.width,img.height)),c=document.createElement('canvas');c.width=Math.max(1,Math.round(img.width*scale));c.height=Math.max(1,Math.round(img.height*scale));const ctx=c.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height);ctx.drawImage(img,0,0,c.width,c.height);resolve(c.toDataURL('image/jpeg',.8));}catch{reject(Error('图片处理失败。'));}};img.onerror=()=>reject(Error('图片读取失败。'));img.src=dataUrl;});
-  async function upload(e){
-    if(busy||uploading||!draft)return;uploading=true;setEditorError('正在处理图片…');
-    try{const added=[];
-      for(const f of e.target.files){
-        if(!UPLOAD_TYPES.includes(f.type)||f.size>FolderStore.MAX_IMAGE_BYTES)throw Error('请选择不超过 50 MB 的 JPG、PNG、WebP、GIF 或 AVIF 图片。');
-        const original=await readImage(f);
-        added.push({id:'',url:'',caption:'',thumb:await thumbnail(original),large:original,thumbUrl:null,largeUrl:null});
-      }
-      draft.works.push(...added);setEditorError('');render();
-    }catch(error){setEditorError(error.message);}
-    finally{uploading=false;e.target.value='';}
-  }
   const manageFilter={category:'',tag:''};
   let dragging=null;
   const clearDropMarks=()=>{for(const node of document.querySelectorAll('.drop-before,.drop-after'))node.classList.remove('drop-before','drop-after');};

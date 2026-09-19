@@ -145,6 +145,27 @@ test('删除一位画师时，剩下的卡片从旧位置滑上来，而不是�
   /* vm 里造出来的对象和测试不在同一个 realm，deepEqual 会卡在原型不同上，所以比 JSON。 */
   assert.equal(JSON.stringify(slotC.animations[0].frames),JSON.stringify([{transform:'translateY(320px)'},{transform:'none'}]),'滑的距离正好是被删掉那张的高度');
 });
+test('卡片指纹没变就不重画；就地更新过并同步过指纹的也不再重画',async()=>{
+  const kit=stage(),{gallery,observers,window}=kit;
+  vm.runInNewContext(await fs.readFile('app/virtual-gallery.js','utf8'),kit.context);
+  let built=0,stamp='v1';
+  const make=()=>{built++;return new kit.Element();};
+  const keyOf=()=>stamp,rows=[{uid:'a'}];
+  window.ArtistGallery.render(gallery,rows,make,keyOf);
+  mountAll(observers,gallery);
+  assert.equal(built,1);
+  window.ArtistGallery.render(gallery,rows,make,keyOf);
+  assert.equal(built,1,'同一份数据再渲染一次不该重画：重画会让卡片上的图片重新淡入，看着就是整屏闪一下');
+  /* 模拟编辑态里就地补了一格作品：数据变了，但卡片 DOM 是 app 自己补好的，同步指纹之后不该再被整张重画
+     （整张重画会把下面展开着的候选列表一起冲掉）。 */
+  stamp='v2';
+  window.ArtistGallery.markPainted('a');
+  window.ArtistGallery.render(gallery,rows,make,keyOf);
+  assert.equal(built,1,'就地更新过并同步过指纹的卡片，下一次渲染不该再整张重画');
+  stamp='v3';
+  window.ArtistGallery.render(gallery,rows,make,keyOf);
+  assert.equal(built,2,'内容真的变了才重画');
+});
 test('新出现的卡片在原位淡入上浮；系统里关了动效就一个都不放',async()=>{
   const kit=stage(),{gallery,observers,window}=kit;
   vm.runInNewContext(await fs.readFile('app/virtual-gallery.js','utf8'),kit.context);
