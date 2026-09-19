@@ -35,6 +35,8 @@
     const card=Number(localStorage.getItem(PREF_CARD));if(Number.isFinite(card)&&card>=140&&card<=360)prefs.cardSize=card;
   }catch{}
   let data,folder,draft,editingId,busy=false,uploading=false,volatile=false,refreshTimer=null,generating=false;
+  /* 生图排队：一次只跑一条，两条之间隔 5±3 秒，避免一口气打过去被站点限流。 */
+  const genQueue=ArtistGenerateQueue.create({gap:()=>ArtistImageGen.genGapDelay()});
   function normalize(raw,backup=false){
     if(!raw||!Array.isArray(raw.artists)||(backup&&raw.version!==1))throw Error('不是此网页导出的备份。');
     if(raw.artists.length>20000)throw Error('最多支持 20,000 位画师。');
@@ -150,8 +152,8 @@
     label.textContent=text;armedSlot=null;
   }
   function armGenerate(a,seq,slot){
-    if(busy||generating)return;
-    if(armedSlot&&armedSlot.button===slot.button){disarmSlot();generateTest(a,seq,slot);return;}
+    if(busy)return;
+    if(armedSlot&&armedSlot.button===slot.button){disarmSlot();enqueueGenerate(a,seq,slot);return;}
     disarmSlot();
     armedSlot={...slot,text:slot.label.textContent};
     slot.button.textContent='再点一次开始';slot.button.classList.add('is-armed');slot.box.classList.add('is-armed');
@@ -160,33 +162,67 @@
   }
   /* 生成期间的过渡动画：格子里换成转动的环与一行进度文字，按钮置灰。 */
   const progressOf=box=>[...box.children].find(child=>String(child.className).includes('gen-progress'));
+  /* 卡片可能已经被重新渲染过，旧节点就是脱落的：脱落的节点不再去动它。 */
+  const liveBox=box=>box&&box.isConnected!==false?box:null;
   function generatingMark(box,text){
     box.classList.add('is-generating');
     box.replaceChildren(el('span','gen-spinner'),el('span','gen-progress',text));
   }
-  async function generateTest(a,seq,slot){
-    if(busy||generating)return;
+  function queuedMark(box,place){
+    if(!box)return;
+    box.classList.add('is-queued');
+    const button=[...box.children].find(child=>String(child.className).includes('generate-button'));
+    if(button){button.textContent='排队中 '+place;button.disabled=true;}
+    const label=[...box.children].find(child=>String(child.className).includes('generate-seq'));
+    if(label)label.textContent='等前面那条跑完';
+  }
+  function unqueuedMark(box){
+    if(!box)return;
+    box.classList.remove('is-queued');
+    const button=[...box.children].find(child=>String(child.className).includes('generate-button'));
+    if(button){button.disabled=false;button.textContent='生成';}
+  }
+  /* 排队：一次只跑一条，两条之间隔 5±3 秒。第二条起都是先入队再等，第一条立刻发。 */
+  function enqueueGenerate(a,seq,slot){
+    if(busy||!a)return;
     if(!folder){disarmSlot();status('请先选择「数据」文件夹，生成出来的图片要有地方保存。',true);return;}
-    const box=slot?.box,previous=box?[...box.children]:null;
+    const uid=a.uid;
+    if(genQueue.has(item=>item.uid===uid&&item.seq===seq)){status(`「${a.name}」的测试风格 ${seq} 已经在排队了。`,true);return;}
+    const box=liveBox(slot?.box);
+    queuedMark(box,genQueue.pending+1);
+    const place=genQueue.push({
+      uid,seq,
+      run:()=>runGenerateJob({uid,seq,box}),
+      onError:error=>status('生成失败：'+error.message,true),
+    });
+    if(place>1)status(`已排入队列：第 ${place} 位，「${a.name}」测试风格 ${seq}。`);
+  }
+  async function runGenerateJob({uid,seq,box}){
+    box=liveBox(box);
+    const target=data.artists.find(item=>item.uid===uid);
+    if(!target){unqueuedMark(box);status('这位画师已经不在库里了，这一条跳过。',true);return;}
+    const name=target.name,previous=box?[...box.children]:null;
     if(box)generatingMark(box,'正在请求 NovelAI…');
-    generating=true;status(`正在向 NovelAI 请求「${a.name}」的测试风格 ${seq}…`);
+    generating=true;status(`正在向 NovelAI 请求「${name}」的测试风格 ${seq}…`);
     try{
       const before=ArtistImageGen.cachedAccount();
-      const {blob,prompt,free,width,height,steps}=await ArtistImageGen.generate(a,seq);
+      const {blob,prompt,free,width,height,steps}=await ArtistImageGen.generate(target,seq);
       const progress=box&&progressOf(box);
       if(progress)progress.textContent='正在保存到画师目录…';
-      const original=await readImage(blob),next=clone(data),target=next.artists.find(item=>item.uid===a.uid);
-      if(!target)throw Error('这位画师已经不在库里了，图片没有保存。');
-      const testSeq=FolderStore.nextTestSeq(target.works,seq);
+      const original=await readImage(blob),thumb=await thumbnail(original);
+      /* 缩略图算完再取快照，之后到落盘之间不再有等待，免得和别的保存互相覆盖。 */
+      const next=clone(data),into=next.artists.find(item=>item.uid===uid);
+      if(!into)throw Error('这位画师已经不在库里了，图片没有保存。');
+      const testSeq=FolderStore.nextTestSeq(into.works,seq);
       /* 生成时用了什么提示词一并记下来：以后要复现或对比，不用去猜。 */
-      target.works.push({id:'',url:'',caption:prompt,kind:'test',testSeq,thumb:await thumbnail(original),large:original,thumbUrl:null,largeUrl:null});
-      await save(next,`已为「${a.name}」生成测试风格 ${testSeq}（${width} × ${height} · ${steps} 步${free?' · 未用点数':''}）`);
+      into.works.push({id:'',url:'',caption:prompt,kind:'test',testSeq,thumb,large:original,thumbUrl:null,largeUrl:null});
+      await save(next,`已为「${name}」生成测试风格 ${testSeq}（${width} × ${height} · ${steps} 步${free?' · 未用点数':''}）`);
       const after=await refreshAccount(true);
       if(after&&before&&!free&&after.anlas<before.anlas)status(`已生成测试风格 ${testSeq}；这次消耗了 ${before.anlas-after.anlas} 点 Anlas，剩余 ${after.anlas} 点。`);
     }catch(error){
       status('生成失败：'+error.message,true);
-      if(box){box.classList.remove('is-generating');box.replaceChildren(...previous);}
-    }finally{generating=false;disarmSlot();}
+      if(box){box.classList.remove('is-generating');box.replaceChildren(...previous);unqueuedMark(box);}
+    }finally{generating=false;}
   }
   function artistCard(a){
     const article=el('article','artist'),info=el('div','artist-info'),top=el('div','artist-top');article.dataset.artist=a.name;
@@ -884,7 +920,7 @@
        在窗口这一层兜住：整页都不接受文件拖放，只有格子上的处理器会把事件拿走。 */
     window.addEventListener('dragover',event=>event.preventDefault());
     window.addEventListener('drop',event=>event.preventDefault());
-    window.addEventListener('beforeunload',e=>{if(volatile||busy){e.preventDefault();e.returnValue='';}});render();document.querySelectorAll('button,input,textarea,select').forEach(b=>b.disabled=true);$('choose-folder').disabled=false;$('extension-status').disabled=false;$('choose-folder').onclick=connectFolder;checkExtension().then(autoAccount);
+    window.addEventListener('beforeunload',e=>{if(volatile||busy||generating||!genQueue.idle){e.preventDefault();e.returnValue='';}});render();document.querySelectorAll('button,input,textarea,select').forEach(b=>b.disabled=true);$('choose-folder').disabled=false;$('extension-status').disabled=false;$('choose-folder').onclick=connectFolder;checkExtension().then(autoAccount);
   }
   init();
 })();

@@ -3,6 +3,8 @@
   /* 生图参数只存在本机浏览器里：token 单独一个键，其余参数一个键。
      绝不写进「画师库.json」，导出的备份也就不会带上 token。 */
   const KEY='artist-library.image-gen',TOKEN_KEY='artist-library.novelai-token',MIN_VERSION='0.4.1';
+  /* 排队时两条需求之间的间隔：基准 5 秒，上下抖动 3 秒，也就是 2–8 秒之间随机。 */
+  const GAP_BASE=5000,GAP_JITTER=3000;
   const DEFAULT_PROMPTS={
     prompt1:'{tag}, 1girl, solo, upper body, looking at viewer, simple background, white background',
     prompt2:'{tag}, 1girl, solo, full body, standing, outdoors, day, scenery',
@@ -82,6 +84,8 @@
   const cachedAccount=()=>accountCache?accountCache.value:null;
   const clearAccount=()=>{accountCache=null;};
   const needsPoints=(width,height,steps)=>width*height>root.ArtistNovelAI.FREE_PIXELS||steps>root.ArtistNovelAI.FREE_STEPS;
+  /* 排队间隔：5 ± 3 秒。random 可注入，方便测试卡住范围。 */
+  const genGapDelay=(random=Math.random)=>Math.round(GAP_BASE+(random()*2-1)*GAP_JITTER);
   /* 拿扩展当代理去调 NovelAI：请求由扩展的后台发出，不受页面所在 file:// 的跨域限制。 */
   async function generate(artist,seq,{bridge=root.ArtistExtension,signal,settings=load(),token=loadToken()}={}){
     if(!token)throw Error('还没有填写 NovelAI token：请打开「生图参数」。');
@@ -114,6 +118,6 @@
     const blob=await root.ArtistNovelAI.firstImageFromZip(new Uint8Array(await zip.arrayBuffer()));
     return {blob,prompt,settings,free,width,height,steps,account:info,accountError};
   }
-  root.ArtistImageGen={load,save,loadToken,saveToken,sanitize,promptFor,bodyFor,generate,account,cachedAccount,clearAccount,normalizeAccount,needsPoints,DEFAULTS,DEFAULT_PROMPTS,ACCOUNT_ENDPOINTS,KEY,TOKEN_KEY,MIN_VERSION};
+  root.ArtistImageGen={load,save,loadToken,saveToken,sanitize,promptFor,bodyFor,generate,account,cachedAccount,clearAccount,normalizeAccount,needsPoints,genGapDelay,DEFAULTS,DEFAULT_PROMPTS,ACCOUNT_ENDPOINTS,GAP_BASE,GAP_JITTER,KEY,TOKEN_KEY,MIN_VERSION};
   if(typeof module!=='undefined')module.exports=root.ArtistImageGen;
 })(globalThis);

@@ -56,7 +56,7 @@ FileUrl.createObjectURL=()=>'blob:x';FileUrl.revokeObjectURL=()=>{};
     ArtistGallery:{render(container,rows,card){state.card=card;state.rows=rows;state.renders.push(rows.map(row=>card(row)));},clear(){},pin(){},visible:()=>[],mount(uid){state.mounted.push(uid);return true;}},
     ArtistLookup:{plan(){throw Error('测试中不查询');},lookup:async()=>[],posts:async()=>[],details:async()=>({counts:{total:null,beforeTotal:null}})},
   };
-  for(const file of ['artist-id.js','image-cache.js','image-loader.js','folder-store.js','novelai.js','image-gen.js','work-picker.js','viewer.js','test-images.js','app.js'])
+  for(const file of ['artist-id.js','image-cache.js','image-loader.js','folder-store.js','novelai.js','image-gen.js','generate-queue.js','work-picker.js','viewer.js','test-images.js','app.js'])
     vm.runInNewContext(await fs.readFile('app/'+file,'utf8'),ctx);
   return {elements,state,ctx};
 }
@@ -786,6 +786,16 @@ test('拖图片到格子上：格子接住了拖放，整页兜底不会让浏�
   /* 整页兜底：window 上挂着 dragover/drop 的 preventDefault */
   assert.equal(typeof ctx.window.listeners?.dragover?.[0],'function','窗口层要兜住拖放，免得浏览器直接打开文件');
   assert.equal(typeof ctx.window.listeners?.drop?.[0],'function');
+});
+test('生图排队接进了页面：公用一条队列，间隔取 5±3 秒的抖动值',async()=>{
+  const html=await fs.readFile('app/index.html','utf8'),app=await fs.readFile('app/app.js','utf8');
+  assert.match(html,/<script src="generate-queue\.js" defer><\/script>/,'开发页也要加载队列模块');
+  assert.match(app,/ArtistGenerateQueue\.create\(\{gap:\(\)=>ArtistImageGen\.genGapDelay\(\)\}\)/,'队列的间隔必须来自那个 5±3 秒的函数');
+  assert.match(app,/function enqueueGenerate\(/,'生成走排队入口');
+  assert.equal(app.includes('function generateTest('),false,'旧的直发函数要撤掉，免得绕过队列');
+  assert.match(app,/if\(volatile\|\|busy\|\|generating\|\|!genQueue\.idle\)/,'还没跑完就关页面要拦一下');
+  const {ctx}=await boot();
+  assert.equal(typeof ctx.ArtistGenerateQueue.create,'function','队列模块在页面里可用');
 });
 test('生图参数独立成一个对话框，入口在顶部「设置」右边',async()=>{
   const html=await fs.readFile('app/index.html','utf8');

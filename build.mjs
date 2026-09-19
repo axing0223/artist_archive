@@ -3,7 +3,7 @@ import {pathToFileURL} from 'node:url';
 const root=new URL('./',import.meta.url);
 // 统一行尾为 LF：源文件行尾不一致时，产物字节仍保持稳定，构建结果可复现。
 const text=async path=>(await fs.readFile(new URL(path,root),'utf8')).replace(/\r\n/g,'\n');
-const scripts=['artist-id.js','artist-lookup.js','folder-store.js','extension-bridge.js','novelai.js','image-gen.js','image-cache.js','image-loader.js','virtual-gallery.js','work-picker.js','viewer.js','test-images.js','app.js'];
+const scripts=['artist-id.js','artist-lookup.js','folder-store.js','extension-bridge.js','novelai.js','image-gen.js','generate-queue.js','image-cache.js','image-loader.js','virtual-gallery.js','work-picker.js','viewer.js','test-images.js','app.js'];
 export async function build(){
   const css=await text('app/style.css'),favicon=(await fs.readFile(new URL('app/favicon.svg',root))).toString('base64');
   let html=(await text('app/index.html'))
