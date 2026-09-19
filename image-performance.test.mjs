@@ -1,6 +1,8 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import vm from 'node:vm';
 import {createRequire} from 'node:module';
 import {allowedSender} from './图片取图扩展/bridge-policy.mjs';
@@ -154,6 +156,81 @@ test('HTML 与隔离脚本按块取回大图，端到端返回可用 Blob 并传
   assert.equal((await win.ArtistExtension.api('https://danbooru.donmai.us/posts.json')).status,200,'失败后要能恢复');
   fail=true;await assert.rejects(win.ArtistExtension.image('https://cdn.donmai.us/test.jpg'),/403/);
   fail=false;chunkFail=true;await assert.rejects(win.ArtistExtension.image('https://cdn.donmai.us/test.jpg'),/过期/,'分块失败要如实报错而不是返回残缺图片');
+});
+/* ---------- 真实磁盘测量：删一位画师到底该碰多少东西 ----------
+   这里把 File System Access 那套接口架在 node:fs 上，用真的磁盘、真的目录树跑一遍 write()，
+   目的不是模拟浏览器那点 IPC 延迟（node 每步都快得多），而是数「碰了多少个目录、写了多少个文件」：
+   浏览器的耗时几乎就等于这个次数乘上每次的往返延迟，所以次数才是那个 2 秒卡顿的根。 */
+const notFound=()=>new DOMException('不存在','NotFoundError');
+async function kindOf(target){try{const info=await fs.stat(target);return info.isDirectory()?'dir':info.isFile()?'file':'';}catch{return '';}}
+class NodeFile{
+  constructor(file,counters){this.file=file;this.counters=counters;this.kind='file';this.name=path.basename(file);}
+  async getFile(){const bytes=await fs.readFile(this.file);return {name:this.name,size:bytes.length,type:'',text:async()=>bytes.toString('utf8'),arrayBuffer:async()=>bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength)};}
+  async createWritable(){this.counters.write++;const self=this;return {write:async value=>{await fs.writeFile(self.file,value);},close:async()=>{},abort:async()=>{}};}
+}
+class NodeDir{
+  constructor(dir,counters){this.dir=dir;this.counters=counters;this.kind='directory';}
+  async getDirectoryHandle(name,{create=false}={}){
+    this.counters.dir++;const target=path.join(this.dir,name);
+    if(create)await fs.mkdir(target,{recursive:true});
+    else if(await kindOf(target)!=='dir')throw notFound();
+    return new NodeDir(target,this.counters);
+  }
+  async getFileHandle(name,{create=false}={}){
+    this.counters.file++;const target=path.join(this.dir,name),kind=await kindOf(target);
+    if(create){if(kind!=='file')await fs.writeFile(target,'');}
+    else if(kind!=='file')throw notFound();
+    return new NodeFile(target,this.counters);
+  }
+  async *values(){
+    for(const entry of await fs.readdir(this.dir,{withFileTypes:true})){const target=path.join(this.dir,entry.name);yield entry.isDirectory()?new NodeDir(target,this.counters):new NodeFile(target,this.counters);}
+  }
+  async removeEntry(name,{recursive=false}={}){this.counters.remove++;await fs.rm(path.join(this.dir,name),{recursive});}
+}
+function sampleLibrary(total){
+  return {...store.empty(),artists:Array.from({length:total},(_,i)=>({
+    uid:String(i+1).padStart(4,'0')+'-tester'+i+'-'+(1000+i),order:i+1,name:'tester'+i,category:null,score:null,aliases:[],alias:null,tags:[],artistUrl:'',description:'',note:'',
+    works:Array.from({length:3},(_,j)=>({id:String(i*10+j),thumb:'https://cdn.donmai.us/preview/'+i+'-'+j+'.jpg'})),
+  }))};
+}
+test('删除一位画师只该动它自己的目录，不能重写后面每位画师的信息.json',async()=>{
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),'artist-delete-')),counters={dir:0,file:0,write:0,remove:0};
+  try{
+    const library=sampleLibrary(233),dir=new NodeDir(root,counters);
+    await store.write(dir,library);
+    const before={...counters},started=performance.now();
+    /* 与 app.js 里 removeArtist 的做法完全一致：滤掉一位，再给剩下的人重排序号。 */
+    const next={...library,artists:library.artists.filter(a=>a.uid!==library.artists[2].uid)};
+    next.artists.forEach((a,i)=>a.order=i+1);
+    await store.write(dir,next);
+    const ms=performance.now()-started,delta=key=>counters[key]-before[key];
+    const detail=`用时 ${ms.toFixed(0)}ms，目录查询 ${delta('dir')} 次，文件写入 ${delta('write')} 个，删除 ${delta('remove')} 次`;
+    assert.equal(delta('remove'),1,'只该删掉那一位画师的目录：'+detail);
+    assert.ok(delta('write')<=2,'删除一位画师最多只该写 画师库.json，实际写了 '+delta('write')+' 个文件（'+detail+'）');
+    assert.ok(delta('dir')<=8,'删除一位画师不该遍历其它画师的目录，实际查询 '+delta('dir')+' 次（'+detail+'）');
+    assert.equal((await fs.readdir(path.join(root,'画师'))).length,232,'磁盘上应真的少一个画师目录');
+  }finally{await fs.rm(root,{recursive:true,force:true});}
+});
+/* 反过来也要守住：指纹忽略 order 之后，作品真变了必须照样重写、旧图片必须照样清掉，
+   否则「删了一格但磁盘上的图和 信息.json 还是旧的」这种更难查的问题会悄悄回来。 */
+test('作品真的变了照样重写 信息.json 并清掉不再引用的旧图片',async()=>{
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),'artist-change-')),counters={dir:0,file:0,write:0,remove:0};
+  try{
+    const library=sampleLibrary(3),dir=new NodeDir(root,counters);
+    await store.write(dir,library);
+    const target=library.artists[1],stale='a'.repeat(24)+'.png',images=path.join(root,'画师',target.uid,'缩略图');
+    await fs.writeFile(path.join(images,stale),'旧图');
+    const edited=structuredClone(library);
+    edited.artists[1].works[1].thumb='缩略图/'+stale;
+    const before={...counters};
+    await store.write(dir,edited);
+    assert.equal(counters.write-before.write,2,'改了作品要重写这位画师的 信息.json，外加 画师库.json');
+    assert.ok((await fs.readdir(images)).includes(stale),'还在引用的图片不能被当成垃圾删掉');
+    const dropped=structuredClone(edited);
+    dropped.artists[1].works[1].thumb='https://cdn.donmai.us/preview/other.jpg';
+    await store.write(dir,dropped);
+    assert.ok(!(await fs.readdir(images)).includes(stale),'不再被引用的旧图片要清掉');
+  }finally{await fs.rm(root,{recursive:true,force:true});}
 });
 test('扩展版本过旧时不启用接口通道，直接退回直连而不是干等到超时',async()=>{
   const code=await fs.readFile('app/extension-bridge.js','utf8'),content=await fs.readFile('图片取图扩展/content.js','utf8');

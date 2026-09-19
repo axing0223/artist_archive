@@ -15,7 +15,11 @@
   const snapshots=new WeakMap(),legacy=new WeakMap(),warnings=[];
   const warn=message=>warnings.push(message);
   function takeWarnings(){const list=warnings.slice();warnings.length=0;return list;}
-  const signature=value=>JSON.stringify(value,(_,v)=>v&&typeof v==='object'&&!Array.isArray(v)?Object.fromEntries(Object.keys(v).sort().map(k=>[k,v[k]])):v);
+  /* order 不进指纹：它就是画师在 画师库.json 里的位置，读回来一律按位置重排，
+     写进 信息.json 的那份只是顺手记一笔，谁都不拿它当依据。
+     把它算进指纹的话，删掉中间一位画师（后面所有人序号前移）会让后面每位画师都「看起来变了」，
+     于是每一位的 信息.json 连同三个图片目录都要重新走一遍磁盘——两百多位就是上千次往返，界面卡两秒。 */
+  const signature=value=>JSON.stringify(value,(key,v)=>key==='order'?undefined:v&&typeof v==='object'&&!Array.isArray(v)?Object.fromEntries(Object.keys(v).sort().map(k=>[k,v[k]])):v);
   function remember(dir,data){snapshots.set(dir,new Map(data.artists.map(a=>[a.uid,signature(a)])));}
   /* 登记一次 uid 变更（改名、补编号）。下一次 write 会把旧目录里的图片搬到新目录再删旧目录；
      不登记的话新目录是空的，而旧目录照样会被清理，图片就丢了。 */
