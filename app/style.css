@@ -60,7 +60,7 @@ h3{font-size:16px}
 .header-actions{display:flex;gap:7px;align-items:center}
 .header-actions .action{padding:7px 11px;font-size:14px}
 main{max-width:1440px;margin:0 auto;padding:30px 28px 12px;min-width:0;overflow-x:clip}
-.collection-heading{display:flex;justify-content:space-between;align-items:center;gap:20px;margin-bottom:27px}
+.collection-heading{display:flex;justify-content:space-between;align-items:center;gap:20px;margin-bottom:27px;position:relative;z-index:30}
 .collection-actions{display:flex;align-items:center;gap:8px}
 .collection-actions .primary-action{padding:10px 17px}
 .library-controls{position:sticky;top:var(--header);z-index:25;background:var(--bg);padding-top:10px;border-bottom:1px solid var(--line)}
@@ -174,7 +174,7 @@ img:not([src]){opacity:0}
 .work.is-drop-target .thumb{background:var(--accent-soft)}
 .artist-footer{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:4px 12px;margin-top:4px;padding-top:4px;border-top:1px solid var(--line-soft)}
 .work-count{font-size:12px;color:var(--faint)}
-.artist-notes{font-size:13px;color:var(--muted);text-align:right;max-width:65%}
+.artist-notes{font-size:13px;color:var(--muted);text-align:left;max-width:65%}
 .artist-notes summary{cursor:pointer;overflow-wrap:anywhere}
 .artist-notes[open]{flex-basis:100%;max-width:none;text-align:left}
 .description,.sample-note{font-size:14px;line-height:1.8;color:var(--muted);margin:8px 0 0;overflow-wrap:anywhere}
@@ -493,7 +493,7 @@ to{opacity:1;transform:none}
 /* 分页选择器与卡片元信息 */
 .artist-site-count,.artist-before-count{font-size:12px;color:var(--muted);border-inline-start:1px solid var(--faint);padding-inline-start:10px;white-space:nowrap}
 .artist-footer:empty{display:none}
-.artist-footer{justify-content:flex-end}
+.artist-footer{justify-content:flex-start}
 .is-armed:is(.danger,.slot-delete,.primary-action,.danger-link),.artist-actions>.danger.is-armed{color:#fff}
 .picker-status{display:flex;align-items:center;gap:8px 14px;flex-wrap:wrap;min-width:0}
 .picker-status .picker-order{flex-shrink:0}

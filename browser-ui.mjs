@@ -91,6 +91,26 @@ try{
  assert.ok(barCover.leftOk&&barCover.rightOk,'筛选栏背景应铺满整屏（含两侧内边距）：'+JSON.stringify(barCover));
  assert.ok(barCover.scrollWidth<=barCover.clientWidth+1,'铺满整屏不能引入横向溢出：'+JSON.stringify(barCover));
 
+ /* 顶部菜单往下弹时会盖住筛选栏。过渡期间面板有自己的 transform 动画，
+    层叠顺序会短暂翻转，所以要在动画进行中多点采样，而不是只看动画结束。 */
+ const menuStack=[];
+ for(const wait of [60,140,260]){
+  await evaluate('document.getElementById("test-menu").open=false');await sleep(280);
+  await evaluate('document.getElementById("test-menu").open=true');await sleep(wait);
+  menuStack.push(await evaluate(`(()=>{const p=document.querySelector('#test-menu .menu-panel'),b=document.querySelector('.library-controls');const pr=p.getBoundingClientRect(),br=b.getBoundingClientRect();const y=(Math.max(pr.top,br.top)+Math.min(pr.bottom,br.bottom))/2;const x=(Math.max(pr.left,br.left)+Math.min(pr.right,br.right))/2;const stack=document.elementsFromPoint(Math.round(x),Math.round(y)).map(n=>String(n.className).slice(0,24)||n.tagName);return {wait:${wait},overlap:Math.round(Math.min(pr.bottom,br.bottom)-Math.max(pr.top,br.top)),top:stack[0],panelIndex:stack.findIndex(s=>s.includes('menu-panel')),barIndex:stack.findIndex(s=>s.includes('library-controls'))};})()`));
+ }
+ await evaluate('document.getElementById("test-menu").open=false');await sleep(240);
+ assert.ok(menuStack.every(m=>m.overlap<=0||(m.panelIndex>=0&&(m.barIndex<0||m.panelIndex<m.barIndex))),'菜单展开的过程中必须始终盖住固定筛选栏：'+JSON.stringify(menuStack));
+
+ /* 「画风与备注」展开与收缩要停在同一个位置（最左边），否则每次开合标题都会横跳。 */
+ const notesLeft=async()=>evaluate(`(()=>{const n=document.querySelector('.artist:not(.is-editing) .artist-notes');const s=n.querySelector('summary').getBoundingClientRect(),c=n.closest('.artist').getBoundingClientRect();return Math.round(s.left-c.left);})()`);
+ await evaluate(`(()=>{document.querySelector('.artist:not(.is-editing) .artist-notes').open=false;})()`);await sleep(280);
+ const closedLeft=await notesLeft();
+ await evaluate(`(()=>{document.querySelector('.artist:not(.is-editing) .artist-notes').open=true;})()`);await sleep(320);
+ const openedLeft=await notesLeft();
+ await evaluate(`(()=>{document.querySelector('.artist:not(.is-editing) .artist-notes').open=false;})()`);await sleep(240);
+ assert.ok(Math.abs(openedLeft-closedLeft)<=2,'「画风与备注」展开与收缩都要停在最左边：收缩 '+closedLeft+'px / 展开 '+openedLeft+'px');
+
  await evaluate('document.getElementById("theme-toggle").click()');await sleep(200);await capture('portrait-light');await evaluate('document.getElementById("theme-toggle").click()');
  await evaluate('document.getElementById("settings-open").click()');await sleep(250);await capture('settings');
  await send('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});await send('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
