@@ -30,7 +30,6 @@
   connected=hasFolder;total=count;
   $('filter-number').textContent=String(filterCount);$('filter-number').hidden=!filterCount;
   $('connection-dot').classList.toggle('connected',connected);$('choose-folder').textContent=connected?'切换资料库':'打开资料库';
-  $('view-title').textContent=category==='全部'?'全部画师':category;
   $('task-controls').hidden=!tasks;$('task-label').textContent=tasks||'后台任务进行中';
   if(rows||editing)return;
   $('empty-title').textContent=!connected?'让喜欢的画风，有迹可循':total?'没有符合条件的画师':'开始建立你的画风收藏';

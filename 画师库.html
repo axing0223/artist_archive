@@ -69,7 +69,7 @@ h3{font-size:16px}
 .header-actions .action{padding:7px 11px;font-size:14px}
 main{max-width:1440px;margin:0 auto;padding:30px 28px 12px;min-width:0}
 .collection-heading{display:flex;justify-content:space-between;align-items:center;gap:20px;margin-bottom:27px}
-.collection-actions{display:flex;gap:8px}
+.collection-actions{display:flex;align-items:center;gap:8px}
 .collection-actions .primary-action{padding:10px 17px}
 .library-controls{position:sticky;top:var(--header);z-index:25;background:var(--bg);padding-top:10px;border-bottom:1px solid var(--line)}
 .search-row{display:flex;gap:9px;align-items:center}
@@ -105,12 +105,6 @@ main{max-width:1440px;margin:0 auto;padding:30px 28px 12px;min-width:0}
 .active-filters{display:flex;gap:7px;flex-wrap:wrap;padding:15px 0 0}
 .filter-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:5px;padding:4px 9px;background:var(--raised);color:var(--muted);font-size:13px}
 .filter-chip:hover{color:var(--accent);border-color:var(--accent)}
-.view-toolbar{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:22px 0 14px;font-size:14px}
-.view-toolbar>div{display:flex;align-items:center;gap:9px}
-.view-indicator{width:4px;height:12px;border-radius:2px;background:var(--accent)}
-#view-title{font-weight:600}
-#count{font:13px ui-monospace,"Microsoft YaHei",monospace;color:var(--faint)}
-.view-actions{gap:15px!important}
 .action-menu{position:relative}
 .action-menu summary{list-style:none;cursor:pointer;font-size:14px;color:var(--muted);border-radius:5px;padding:4px 0}
 .action-menu summary::-webkit-details-marker{display:none}
@@ -126,7 +120,7 @@ main{max-width:1440px;margin:0 auto;padding:30px 28px 12px;min-width:0}
 .task-controls .action{padding:5px 9px;font-size:13px}
 .task-spinner{width:13px;height:13px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite}
 /* 每位画师占一行：信息在上，五张作品在下，所有尺寸都不换列、不裁图。 */
-#gallery{display:grid;gap:16px}
+#gallery{display:grid;gap:16px;margin-top:22px}
 .artist-slot{min-width:0;scroll-margin-top:200px;overflow-anchor:auto}
 .artist-slot:empty{border:1px solid var(--line-soft);border-radius:12px;background:var(--panel)}
 .artist{min-width:0;position:relative;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:13px 12px 8px;transition:border-color .18s}
@@ -506,7 +500,7 @@ to{opacity:1;transform:none}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after,*::backdrop,*::details-content{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 
 /* 分页选择器与卡片元信息 */
-.artist-site-count{font-size:12px;color:var(--muted);border-inline-start:1px solid var(--faint);padding-inline-start:10px;white-space:nowrap}
+.artist-site-count,.artist-before-count{font-size:12px;color:var(--muted);border-inline-start:1px solid var(--faint);padding-inline-start:10px;white-space:nowrap}
 .artist-footer:empty{display:none}
 .artist-footer{justify-content:flex-end}
 .is-armed:is(.danger,.slot-delete,.primary-action,.danger-link),.artist-actions>.danger.is-armed{color:#fff}
@@ -548,14 +542,13 @@ to{opacity:1;transform:none}
   <a class="skip-link" href="#workspace">跳到画师与作品</a>
   <header class="app-header"><a class="brand" href="#workspace"><span class="brand-symbol" aria-hidden="true">画</span><span>画师库<small>ARTIST ARCHIVE</small></span></a><div class="connection"><span id="connection-dot" aria-hidden="true"></span><span id="folder-name">尚未连接资料库</span></div><div class="header-actions"><button id="opus-status" class="quota-control" type="button" title="点击刷新 NovelAI 额度"><span id="quota-label" class="quota-label">NovelAI 额度</span><span id="quota-images">约 — 张</span><span id="quota-percent">—%</span><span id="quota-points">— 点</span></button><button id="choose-folder" class="action">打开资料库</button><button id="theme-toggle" class="icon-button" aria-label="切换浅色外观" title="切换浅色外观">◐</button><button id="settings-open" class="action">设置</button></div></header>
   <main id="workspace" tabindex="-1">
-    <div class="collection-heading"><div><p class="eyebrow">YOUR CREATIVE REFERENCE</p><h1>画师与作品<span class="title-dot">.</span></h1><p id="library-summary" class="intro">正在打开画师库…</p></div><div class="collection-actions"><button id="batch-artists" class="action">批量采集画师</button><button id="quick-open" class="action primary-action">＋ 添加画师</button></div></div>
+    <div class="collection-heading"><div><p class="eyebrow">YOUR CREATIVE REFERENCE</p><h1>画师与作品<span class="title-dot">.</span></h1><p id="library-summary" class="intro">正在打开画师库…</p></div><div class="collection-actions"><details id="library-menu" class="action-menu"><summary>更多操作 <span aria-hidden="true">⌄</span></summary><div class="menu-panel"><button id="add-artist">手动添加画师</button><button id="export-data">导出资料备份</button><button id="import-data">从备份恢复资料</button><p>JSON 包含资料与图片链接。<br>完整备份请复制数据文件夹。</p><hr><button id="extension-status">检测图片助手…</button><button id="command-open">快捷操作 <kbd>Ctrl K</kbd></button></div></details><details id="test-menu" class="action-menu"><summary>测试风格图 <span aria-hidden="true">⌄</span></summary><div class="menu-panel"><p>与作品参考并排对比画风</p><button id="test-import-open">导入测试风格图</button><button id="gen-batch-open">批量生成测试风格图</button><button id="gen-settings-open">NovelAI 生图参数</button></div></details><button id="batch-artists" class="action">批量采集画师</button><button id="quick-open" class="action primary-action">＋ 添加画师</button><input id="import-file" type="file" accept=".json" hidden></div></div>
     <section class="library-controls" aria-label="查找画师">
       <div class="search-row"><label class="search"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg><span class="sr-only">搜索画师、笔名、标签与备注</span><input id="search" type="search" placeholder="搜索画师、笔名、标签与备注" autocomplete="off" aria-keyshortcuts="/"><kbd>/</kbd></label><label class="sort-control"><span class="sr-only">画师排序</span><select id="library-sort"><option value="order">序号顺序</option><option value="name">名称 A–Z</option><option value="score">参考评分优先</option><option value="works">收录图片最多</option></select></label><button id="density-toggle" class="action" aria-pressed="false" title="切换图片显示密度">紧凑视图</button><button id="filter-toggle" class="action" aria-expanded="false" aria-controls="filter-panel">筛选 <span id="filter-number" hidden></span></button></div>
       <div class="category-row"><nav id="categories" class="categories" aria-label="画师分类"></nav><button id="manage-tags" class="icon-button" title="管理分类与标签" aria-label="管理分类与标签">＋</button></div>
       <div id="filter-panel" class="filter-panel" hidden><section aria-labelledby="tags-title"><h2 id="tags-title">画风标签 <small>多选时同时匹配</small></h2><div id="tags" class="tags"></div></section><section aria-labelledby="scores-title"><h2 id="scores-title">参考评分 <small>可多选</small></h2><div id="scores" class="score-filter"></div></section><button id="reset" class="reset">清除全部筛选</button></div>
     </section>
     <div id="active-filters" class="active-filters" aria-label="已应用的筛选条件" hidden></div>
-    <div class="view-toolbar"><div><span class="view-indicator" aria-hidden="true"></span><span id="view-title">全部画师</span><span id="count" role="status" aria-live="polite" aria-atomic="true"></span></div><div class="view-actions"><details id="test-menu" class="action-menu"><summary>测试风格图 <span aria-hidden="true">⌄</span></summary><div class="menu-panel"><p>与作品参考并排对比画风</p><button id="test-import-open">导入测试风格图</button><button id="gen-batch-open">批量生成测试风格图</button><button id="gen-settings-open">NovelAI 生图参数</button></div></details><details id="library-menu" class="action-menu"><summary>更多操作 <span aria-hidden="true">⌄</span></summary><div class="menu-panel"><button id="add-artist">手动添加画师</button><button id="export-data">导出资料备份</button><button id="import-data">从备份恢复资料</button><p>JSON 包含资料与图片链接。<br>完整备份请复制数据文件夹。</p><hr><button id="extension-status">检测图片助手…</button><button id="command-open">快捷操作 <kbd>Ctrl K</kbd></button></div></details><input id="import-file" type="file" accept=".json" hidden></div></div>
     <div id="task-controls" class="task-controls" hidden><span class="task-spinner" aria-hidden="true"></span><span id="task-label">后台任务进行中</span><button id="batch-stop" class="action danger" hidden>停止采集</button><button id="gen-queue" class="action" hidden>排队 0</button></div>
     <section id="gallery" aria-label="画师与作品，每行五张图片"></section>
     <section id="empty" class="empty-state" aria-labelledby="empty-title" hidden><div class="empty-preview" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></div><p class="eyebrow">A PLACE FOR YOUR INSPIRATION</p><h2 id="empty-title">让喜欢的画风，有迹可循</h2><p id="empty-description">连接资料库，开始整理画师与作品。已有文件夹可以继续使用，也可以选择空文件夹新建。</p><button id="empty-action" class="action primary-action">打开数据文件夹</button><button id="resume-folder" class="action" hidden>继续使用上次的文件夹</button></section>
@@ -2037,7 +2030,6 @@ to{opacity:1;transform:none}
   connected=hasFolder;total=count;
   $('filter-number').textContent=String(filterCount);$('filter-number').hidden=!filterCount;
   $('connection-dot').classList.toggle('connected',connected);$('choose-folder').textContent=connected?'切换资料库':'打开资料库';
-  $('view-title').textContent=category==='全部'?'全部画师':category;
   $('task-controls').hidden=!tasks;$('task-label').textContent=tasks||'后台任务进行中';
   if(rows||editing)return;
   $('empty-title').textContent=!connected?'让喜欢的画风，有迹可循':total?'没有符合条件的画师':'开始建立你的画风收藏';
@@ -2475,7 +2467,9 @@ to{opacity:1;transform:none}
     article.dataset.artist=a.name;article.setAttribute('aria-label','画师 '+a.name);
     const heading=el('h2'),name=btn(a.name,()=>copyText(a.name,'画师 tag'),'artist-name');name.title='点击复制画师 tag';name.setAttribute('aria-label','复制画师 tag：'+a.name);heading.append(name);
     row.append(el('span','serial',String(seqOf(a)).padStart(4,'0')),heading);if(a.alias)row.append(el('span','alias',a.alias));
-    const count=el('span','artist-site-count','站点作品 '+(a.counts?.total??'未读取'));count.title='截至日期前 '+(a.counts?.beforeTotal??'未读取')+' 张；截至日期：'+(a.counts?.beforeDate||data.cutoffDate)+'；本库收录 '+a.works.length+' 张';row.append(count);
+    const count=el('span','artist-site-count','站点作品 '+(a.counts?.total??'未读取'));count.title='本库收录 '+a.works.length+' 张；截至日期：'+(a.counts?.beforeDate||data.cutoffDate);row.append(count);
+    /* 站点作品是「现在有多少」，这一项是「截至日期之前有多少」：两者并排才看得出涨了多少。 */
+    const beforeCount=el('span','artist-before-count','数据截至日前作品 '+(a.counts?.beforeTotal??'未读取'));beforeCount.title='截至日期：'+(a.counts?.beforeDate||data.cutoffDate);row.append(beforeCount);
     const meta=el('div','artist-meta');meta.append(el('span',a.category?'primary':'pending-badge',a.category||'待判断'));
     if(a.tags.length){const tags=el('div','secondary');a.tags.forEach(t=>tags.append(el('span','',t)));meta.append(tags);}
     if(Number.isSafeInteger(a.score)&&a.score>=1&&a.score<=5){const score=el('span','score-badge score-'+a.score,String(a.score));score.setAttribute('aria-label','参考评分 '+a.score+' 分');score.title='参考评分 '+a.score+' / 5';article.append(score);}
@@ -2646,11 +2640,10 @@ to{opacity:1;transform:none}
     for(const score of state.scores)chip('score:'+score,score?score+' 分':'未评分',()=>state.scores.delete(score));
     if(state.query)chip('query','搜索：'+state.query,()=>{state.query='';$('search').value='';});
     $('active-filters').replaceChildren(...chips);$('active-filters').hidden=!chips.length;
-    const rows=currentRows(),matched=rows.length;
+    const rows=currentRows();
     if(draft&&!editingId)rows.push(draft);
     else if(draft&&editingId&&!rows.some(a=>a.uid===editingId)){const editing=data.artists.find(a=>a.uid===editingId);if(editing)rows.unshift(editing);}
     ArtistGallery.render($('gallery'),rows,card,cardKey);
-    $('count').textContent=matched+' / '+summary.total+(draft?' · 编辑中':'');
     $('empty').hidden=rows.length!==0;
     $('library-summary').textContent=summary.total+' 位画师 · '+summary.works+' 张作品参考 · '+summary.tests+' 张测试风格图';
     $('sample-date').textContent=data.date?'样本日期 '+data.date:'';

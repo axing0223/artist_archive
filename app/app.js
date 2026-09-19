@@ -382,7 +382,9 @@
     article.dataset.artist=a.name;article.setAttribute('aria-label','画师 '+a.name);
     const heading=el('h2'),name=btn(a.name,()=>copyText(a.name,'画师 tag'),'artist-name');name.title='点击复制画师 tag';name.setAttribute('aria-label','复制画师 tag：'+a.name);heading.append(name);
     row.append(el('span','serial',String(seqOf(a)).padStart(4,'0')),heading);if(a.alias)row.append(el('span','alias',a.alias));
-    const count=el('span','artist-site-count','站点作品 '+(a.counts?.total??'未读取'));count.title='截至日期前 '+(a.counts?.beforeTotal??'未读取')+' 张；截至日期：'+(a.counts?.beforeDate||data.cutoffDate)+'；本库收录 '+a.works.length+' 张';row.append(count);
+    const count=el('span','artist-site-count','站点作品 '+(a.counts?.total??'未读取'));count.title='本库收录 '+a.works.length+' 张；截至日期：'+(a.counts?.beforeDate||data.cutoffDate);row.append(count);
+    /* 站点作品是「现在有多少」，这一项是「截至日期之前有多少」：两者并排才看得出涨了多少。 */
+    const beforeCount=el('span','artist-before-count','数据截至日前作品 '+(a.counts?.beforeTotal??'未读取'));beforeCount.title='截至日期：'+(a.counts?.beforeDate||data.cutoffDate);row.append(beforeCount);
     const meta=el('div','artist-meta');meta.append(el('span',a.category?'primary':'pending-badge',a.category||'待判断'));
     if(a.tags.length){const tags=el('div','secondary');a.tags.forEach(t=>tags.append(el('span','',t)));meta.append(tags);}
     if(Number.isSafeInteger(a.score)&&a.score>=1&&a.score<=5){const score=el('span','score-badge score-'+a.score,String(a.score));score.setAttribute('aria-label','参考评分 '+a.score+' 分');score.title='参考评分 '+a.score+' / 5';article.append(score);}
@@ -553,11 +555,10 @@
     for(const score of state.scores)chip('score:'+score,score?score+' 分':'未评分',()=>state.scores.delete(score));
     if(state.query)chip('query','搜索：'+state.query,()=>{state.query='';$('search').value='';});
     $('active-filters').replaceChildren(...chips);$('active-filters').hidden=!chips.length;
-    const rows=currentRows(),matched=rows.length;
+    const rows=currentRows();
     if(draft&&!editingId)rows.push(draft);
     else if(draft&&editingId&&!rows.some(a=>a.uid===editingId)){const editing=data.artists.find(a=>a.uid===editingId);if(editing)rows.unshift(editing);}
     ArtistGallery.render($('gallery'),rows,card,cardKey);
-    $('count').textContent=matched+' / '+summary.total+(draft?' · 编辑中':'');
     $('empty').hidden=rows.length!==0;
     $('library-summary').textContent=summary.total+' 位画师 · '+summary.works+' 张作品参考 · '+summary.tests+' 张测试风格图';
     $('sample-date').textContent=data.date?'样本日期 '+data.date:'';

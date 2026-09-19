@@ -2022,3 +2022,43 @@ test('回归：勾选作品下载缩略图期间仍然可以按 a/d 翻页',asyn
   assert.equal(findByClass(card(),'picker-page').textContent,'第 2 页','缩略图还在下载时也该能翻页，不能静默吞掉按键');
   release.resolve();await adding;
 });
+
+
+/* ── 回归：卡片计数与顶部动作区 ─────────────────────────────────────── */
+
+test('画师卡片：站点作品后面跟着「数据截至日前作品」',async()=>{
+  const {state}=await boot();
+  const card=state.card(bareArtist({counts:{total:456,beforeTotal:332,beforeDate:'2026-07-01'}}));
+  const before=findByClass(card,'artist-before-count');
+  assert.ok(before,'卡片要显示数据截至日前的作品数');
+  assert.equal(before.textContent,'数据截至日前作品 332');
+  assert.equal(findByClass(card,'artist-site-count').textContent,'站点作品 456','原来那一项不受影响');
+  const row=findByClass(card,'name-row');
+  assert.ok(row.children.indexOf(before)>row.children.indexOf(findByClass(card,'artist-site-count')),'排在「站点作品」后面');
+  assert.match(String(before.title),/2026-07-01/,'悬停要说明这是哪个截至日期');
+});
+test('画师卡片：没读过数量时，数据截至日前作品显示未读取',async()=>{
+  const {state}=await boot();
+  const card=state.card(bareArtist({counts:{}}));
+  assert.equal(findByClass(card,'artist-before-count').textContent,'数据截至日前作品 未读取');
+});
+test('顶部动作：菜单并进标题区，顺序为更多操作 / 测试风格图 / 批量采集画师 / 添加画师',async()=>{
+  const html=await fs.readFile('app/index.html','utf8');
+  assert.equal(html.includes('view-toolbar'),false,'view-toolbar 已经删掉');
+  assert.equal(html.includes('id="view-title"'),false,'#view-title 一并删掉');
+  assert.equal(html.includes('id="count"'),false,'#count 一并删掉');
+  const at=id=>html.indexOf('id="'+id+'"');
+  const order=['library-menu','test-menu','batch-artists','quick-open'].map(at);
+  assert.ok(order.every(index=>index>0),'四个动作都要还在页面上');
+  assert.deepEqual(order,[...order].sort((a,b)=>a-b),'顺序应为更多操作 / 测试风格图 / 批量采集画师 / 添加画师');
+  assert.ok(at('library-menu')>html.indexOf('collection-actions'),'两个菜单要并进 collection-actions');
+  assert.ok(at('quick-open')<html.indexOf('task-controls'),'并且仍留在 collection-actions 里');
+  assert.ok(at('import-file')>0,'隐藏的备份文件输入框不能跟着一起删掉');
+});
+test('已经删掉的计数元素不再被任何脚本写入',async()=>{
+  for(const file of ['app/app.js','app/workspace.js']){
+    const source=await fs.readFile(file,'utf8');
+    assert.equal(source.includes("$('count')"),false,file+' 不能再去写 #count');
+    assert.equal(source.includes("$('view-title')"),false,file+' 不能再去写 #view-title');
+  }
+});
