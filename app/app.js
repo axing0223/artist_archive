@@ -152,6 +152,9 @@
   }
   // 所有落盘串行执行。异步任务传入更新函数，在轮到自己时合并最新数据。
   let saveTail=Promise.resolve(),pendingSaves=0;
+  /* 「添加一位画师」要先取图、再查数量，最后才落盘；这段等待里 data 会被别的操作改掉。
+     所以这类添加排队串行，各自轮到自己时才取最新数据、发序号——不能各自克隆整库快照。 */
+  let addArtistTail=Promise.resolve();
   const saveControls=new Map();
   function lockSaveControls(){
     // 惰性挂载的卡片也不可在写盘中再次修改；inert 不阻止页面滚动。
@@ -161,6 +164,8 @@
       node.disabled=true;
     }
   }
+  /* 业务校验拒绝（重名、目标已被删除…）与真正的写盘失败是两回事，不能混成一个 catch。 */
+  const reject=message=>Object.assign(Error(message),{validation:true});
   // onApplied 在数据校验合并后呈现本次操作，界面无需等待文件系统往返。
   function save(next,message='已保存到数据文件夹',onApplied){
     const targetFolder=folder;
@@ -175,7 +180,11 @@
         status('正在保存…');onApplied?.();data=await write(data,targetFolder);volatile=false;
         const warnings=FolderStore.takeWarnings(),label=typeof message==='function'?message():message;status(warnings.length?label+'；'+warnings.join('；'):label,warnings.length>0);
         return true;
-      }catch(error){volatile=true;status('文件保存失败：'+error.message+'；修改暂留本页，请导出备份。',true);return false;}
+      }catch(error){
+        /* 校验类拒绝不是写盘失败：数据没丢，不该让用户去导出备份，更不该锁住切换文件夹。 */
+        if(error?.validation){status(error.message,true);return false;}
+        volatile=true;status('文件保存失败：'+error.message+'；修改暂留本页，请导出备份。',true);return false;
+      }
       finally{
         if(--pendingSaves===0){saveControls.forEach((disabled,node)=>node.disabled=disabled);saveControls.clear();$('gallery').inert=false;busy=false;}
         render();
@@ -184,7 +193,9 @@
     saveTail=operation.catch(()=>{});return operation;
   }
   function reset(){state.category='全部';state.tags.clear();state.scores.clear();state.query='';$('search').value='';}
-  function showImage(a,w){const items=a.works?FolderStore.previewWorks(a,PREVIEW_SLOTS,reservedOf()).filter(Boolean):(draft?.uid===a.uid?draft.works:null);ArtistViewer.open({title:a.name,uid:a.uid,work:w,caption:w.caption,persist:true,items});}
+  /* 只有拿到正式标识的画师才谈得上「保存原图」：草稿态放行会在数据目录里写下一个
+     没人认领的 draft- 目录（不在索引里，扫描与清理都够不到）。 */
+  function showImage(a,w){const items=a.works?FolderStore.previewWorks(a,PREVIEW_SLOTS,reservedOf()).filter(Boolean):(draft?.uid===a.uid?draft.works:null);ArtistViewer.open({title:a.name,uid:a.uid,work:w,caption:w.caption,persist:ArtistId.parse(a.uid)!==null,items});}
   /* 一格作品的稳定编号：重画之后靠它认出「还是这一格」，好让它滑到新位置而不是跳过去。
      既没有作品编号也没有来源链接的，只能拿它在列表里的位置凑合（这种一格本来也没什么可对的）。 */
   const workKey=(uid,w,slot)=>uid+':'+(w.kind==='test'?`test${w.testSeq||1}`:(w.id||w.url||'i'+slot));
@@ -631,7 +642,9 @@
     const previous=editingId;
     closeEditor();
     editingId=a?.uid||null;
-    draft=a?clone(a):{uid:uid(),name:'',category:null,score:null,aliases:[],alias:null,tags:[],artistUrl:'',description:'',note:'',works:[]};
+    /* 草稿也要带上「将要拿到的序号」：卡片顶部按它显示，缺了就画出 undefined。
+       真正的序号在保存时才发，这里只是给它一个可读的占位。 */
+    draft=a?clone(a):{uid:uid(),order:ArtistId.nextSeq(data.artists),name:'',category:null,score:null,aliases:[],alias:null,tags:[],artistUrl:'',description:'',note:'',works:[]};
     editorRevision++;ArtistGallery.pin(editingId||draft.uid,true);
     morphAway(previous||editingId,()=>{render();focusEditingCard();autoOpenPicker();});
   }
@@ -769,8 +782,8 @@
     const edited=clone(draft),editing=editingId;
     await save(next=>{
       const i=next.artists.findIndex(a=>a.uid===editing);
-      if(editing&&i<0)throw Error('这位画师已经被删除或改名，请重新打开编辑');
-      if(next.artists.some(a=>a.uid!==editing&&a.name.toLowerCase()===name.toLowerCase()))throw Error('已有同名画师');
+      if(editing&&i<0)throw reject('这位画师已经被删除或改名，请重新打开编辑');
+      if(next.artists.some(a=>a.uid!==editing&&a.name.toLowerCase()===name.toLowerCase()))throw reject('已有同名画师');
       if(i<0){edited.uid=ArtistId.issue(next.artists,{name:edited.name,danbooruId:edited.danbooruId});next.artists.push(edited);}
       else{
         const seq=ArtistId.parse(edited.uid)?.seq;
@@ -1072,15 +1085,25 @@
         const chosen=picker.selected();
         if(!chosen.length){$('quick-status').textContent='请先勾选至少一张要保存的作品。';return;}
         add.disabled=true;add.textContent='正在保存预览图…';
-        try{
-          await picker.ready;
-          const next=clone(data),uid=ArtistId.issue(next.artists,{name:artist.name,danbooruId:artist.id});
-          const [saved,quantity]=await Promise.all([cacheWorks(uid,chosen),ArtistLookup.details(artist.name,data.cutoffDate,{previews:false})]);
-          if(sequence!==lookupSequence||exists())return;
-          next.artists.push({uid,order:next.artists.length+1,name:artist.name,danbooruId:artist.id,counts:{...quantity.counts},category:null,score:null,aliases:[...artist.aliases],alias:null,tags:[],artistUrl:artist.pageUrl,description:'',note:'',works:saved});
-          await save(next,`已添加 ${artist.name} · ${saved.length} 张预览图`);
-          if(sequence===lookupSequence){cancelLookup();$('quick-input').value='';clearCandidates();$('quick-site').hidden=true;$('quick-status').textContent=`已添加 ${artist.name}。可继续输入下一位；如列表被筛选，可按名字搜索。`;$('quick-input').focus();}
-        }catch(error){add.disabled=false;add.textContent='添加此画师';$('quick-status').textContent='添加失败：'+error.message;}
+        const task=addArtistTail.then(async()=>{
+          try{
+            /* 轮到自己时先看这次识别是否还有效：上一位添加成功后会作废并清空候选列表，
+               此时再往下走只会取一堆图、在磁盘上留下没人认领的目录。 */
+            if(sequence!==lookupSequence)return;
+            await picker.ready;
+            const uid=ArtistId.issue(data.artists,{name:artist.name,danbooruId:artist.id});
+            const [saved,quantity]=await Promise.all([cacheWorks(uid,chosen),ArtistLookup.details(artist.name,data.cutoffDate,{previews:false})]);
+            if(sequence!==lookupSequence||exists())return;
+            await save(next=>{
+              if(next.artists.some(a=>a.uid===uid))return next;
+              next.artists.push({uid,order:next.artists.length+1,name:artist.name,danbooruId:artist.id,counts:{...quantity.counts},category:null,score:null,aliases:[...artist.aliases],alias:null,tags:[],artistUrl:artist.pageUrl,description:'',note:'',works:saved});
+              return next;
+            },`已添加 ${artist.name} · ${saved.length} 张预览图`);
+            if(sequence===lookupSequence){cancelLookup();$('quick-input').value='';clearCandidates();$('quick-site').hidden=true;$('quick-status').textContent=`已添加 ${artist.name}。可继续输入下一位；如列表被筛选，可按名字搜索。`;$('quick-input').focus();}
+          }catch(error){add.disabled=false;add.textContent='添加此画师';$('quick-status').textContent='添加失败：'+error.message;}
+        });
+        addArtistTail=task.catch(()=>{});
+        await task;
       },'action primary-action');add.disabled=exists();picker.tools.append(add);row.append(detail);$('quick-results').append(row);
     }
   }
@@ -1137,10 +1160,13 @@
     let works=[];try{works=await ArtistLookup.posts(chosen.name,{limit:3,order:data.workOrder});}catch{}
     if(!works.length)return {ok:false,reason:`找到「${chosen.name}」，但没取到作品（可能都被隐藏了），没有建卡`,text:value};
     try{
-      const next=clone(data),uid=ArtistId.issue(next.artists,{name:chosen.name,danbooruId:chosen.id});
+      const uid=ArtistId.issue(data.artists,{name:chosen.name,danbooruId:chosen.id});
       const [saved,quantity]=await Promise.all([cacheWorks(uid,works),ArtistLookup.details(chosen.name,data.cutoffDate,{previews:false,order:data.workOrder})]);
-      next.artists.push({uid,order:next.artists.length+1,name:chosen.name,danbooruId:chosen.id,counts:{...quantity.counts},category:null,score:null,aliases:[...chosen.aliases],alias:null,tags:[],artistUrl:chosen.pageUrl,description:'',note:'',works:saved});
-      await save(next,`右键菜单已添加 ${chosen.name} · ${saved.length} 张作品`);
+      await save(next=>{
+        if(next.artists.some(a=>a.uid===uid))return next;
+        next.artists.push({uid,order:next.artists.length+1,name:chosen.name,danbooruId:chosen.id,counts:{...quantity.counts},category:null,score:null,aliases:[...chosen.aliases],alias:null,tags:[],artistUrl:chosen.pageUrl,description:'',note:'',works:saved});
+        return next;
+      },`右键菜单已添加 ${chosen.name} · ${saved.length} 张作品`);
       return {ok:true,uid,name:chosen.name,danbooruId:chosen.id,works:saved.length,text:value};
     }catch(error){return {ok:false,reason:'写入失败：'+error.message,text:value};}
   }

@@ -89,7 +89,7 @@
       const ok=await host.save(next=>{
         if(folder!==host.getFolder())throw Error('数据文件夹已经切换，未写入旧预览');
         const target=next.artists.find(x=>x.uid===uid),index=target?target.works.findIndex(x=>work.id?x.id===work.id:x.thumb===work.thumb&&x.kind===work.kind&&x.testSeq===work.testSeq):-1;
-        if(index<0)throw Error('这张作品已经移除，未修改画师资料');
+        if(index<0)throw Object.assign(Error('这张作品已经移除，未修改画师资料'),{validation:true});
         saved=target.works[index]={...target.works[index],large:path,largeUrl:remote||work.largeUrl||null};
         return next;
       },'原图已保存到本地，之后预览直接读本地');

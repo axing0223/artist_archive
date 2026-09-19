@@ -1863,3 +1863,99 @@ for(const action of ['保存','删除画师'])test(action+'提前呈现后写盘
  if(action==='保存')assert.equal(stored.artists[0].note,'尚未落盘的备注');
  assert.equal(stored.saveLargeImages,true);
 });
+
+
+/* ── 回归：草稿（还没拿到正式序号的新画师）不能当正式画师对待 ───────────── */
+
+test('回归：新建画师时编辑态的序号不能显示 undefined',async()=>{
+  const {elements,state}=await boot();
+  elements.get('add-artist').onclick();
+  const serial=findByClass(lastRender(state)[0],'serial');
+  assert.ok(serial,'编辑态应有序号节点');
+  assert.notEqual(serial.textContent,'undefined','草稿还没有正式序号，但不能把 undefined 画到卡片上');
+  assert.match(serial.textContent,/^\d{4}$/,'序号位置应显示补足四位的数字');
+});
+test('回归：草稿标识不能写进画师目录',async()=>{
+  const {ctx,dir}=await connectedApp();
+  await assert.rejects(()=>ctx.FolderStore.saveImage(dir,'draft-abc-1','large',new Blob(['x'],{type:'image/png'})),/草稿/);
+  const artists=dir.items.get('画师');
+  assert.equal(artists?artists.items.has('draft-abc-1'):false,false,'不能在数据目录里留下 draft- 开头的孤儿目录');
+});
+test('回归：草稿态点开作品不该放行「保存原图」',async()=>{
+  const {elements,state,ctx}=await boot();let opened=null;
+  ctx.ArtistViewer.open=value=>opened=value;
+  stub(ctx,{lookup:async()=>[],details:async()=>({counts:{}}),posts:async()=>[post('11')]});
+  elements.get('add-artist').onclick();
+  const card=()=>lastRender(state)[0];
+  const input=findByPlaceholder(card(),'画师名字（必填）');input.value='tester';input.oninput();
+  findText(card(),'展开读取').onclick();await wait(30);
+  const grid=findByClass(card(),'candidate-previews'),box=grid.children[0].children[0];
+  box.checked=true;await box.onchange();
+  findAllByClass(card(),'thumb')[0].onclick();
+  assert.ok(opened,'点作品应打开大图');
+  assert.equal(opened.persist,false,'草稿还没有正式标识，不该出现「保存原图」按钮');
+});
+
+/* ── 回归：业务校验被拒绝 ≠ 写盘失败 ────────────────────────────────── */
+
+test('回归：重名被拒绝时不算写盘失败，也不该锁住切换数据文件夹',async()=>{
+  const {elements,state,ctx}=await connectedApp();
+  await createArtist(state,elements,'同名');
+  let opened=0;ctx.window.showDirectoryPicker=async()=>{opened++;return new FakeDir('另一库');};
+  elements.get('add-artist').onclick();
+  const card=lastRender(state).slice(-1)[0];
+  const input=findByPlaceholder(card,'画师名字（必填）');assert.ok(input,'新草稿排在列表末尾');
+  input.value='同名';input.oninput();
+  await findText(card,'保存').onclick();
+  assert.equal(findText(card,'已有同名画师。')!==null,true,'仍要给出重名提示');
+  assert.doesNotMatch(getEl(elements,'storage-status').textContent,/文件保存失败/,'校验拒绝不是写盘失败，不能吓唬用户去导出备份');
+  await elements.get('choose-folder').onclick();
+  assert.equal(opened,1,'校验失败之后仍应能切换数据文件夹');
+});
+
+/* ── 回归：两次异步添加各自克隆整库，不能以旧盖新 ───────────────────── */
+
+test('回归：连点两位候选画师「添加」，两位都要留下，不能互相覆盖',async()=>{
+  const {elements,state,ctx,dir}=await connectedApp();
+  const release1=gate(),release2=gate(),started1=gate(),started2=gate();let started=0;
+  stub(ctx,{lookup:async()=>[{id:196870,name:'alpha',aliases:[],pageUrl:'https://danbooru.donmai.us/artists/196870'},{id:196871,name:'beta',aliases:[],pageUrl:'https://danbooru.donmai.us/artists/196871'}],
+    details:async()=>{started++;if(started===1){started1.resolve();await release1.promise;}else{started2.resolve();await release2.promise;}return {counts:{total:5}};},
+    posts:async()=>[post('11')]});
+  getEl(elements,'quick-input').value='两位候选';
+  await getEl(elements,'quick-form').onsubmit({preventDefault(){}});
+  await wait(30);
+  const rows=findAllByClass(getEl(elements,'quick-results'),'candidate');
+  assert.equal(rows.length,2,'应列出两位候选画师');
+  for(const row of rows){const grid=findByClass(row,'candidate-previews'),box=grid.children[0].children[0];box.checked=true;await box.onchange();}
+  await wait(30);
+  const first=findText(rows[0],'添加此画师').onclick();
+  const second=findText(rows[1],'添加此画师').onclick();
+  await started1.promise;release1.resolve();
+  await started2.promise;release2.resolve();
+  await Promise.all([first,second]);await tick();
+  const stored=await ctx.FolderStore.read(dir);
+  assert.deepEqual([...stored.artists].map(a=>a.name),['alpha'],'先加进来的那位必须留在库里，不能被后一次提交覆盖掉');
+  assert.equal(state.rows.length,1,'界面上也要留着它');
+  /* 修复前这里会反过来：alpha 被 beta 覆盖，folder-store 随即把 alpha 的目录整个删掉。 */
+  const artistsDir=dir.items.get('画师'),kept=[...(artistsDir?artistsDir.items.keys():[])].filter(name=>!['缩略图','大图'].includes(name));
+  assert.equal(artistsDir?.items.has('0001-alpha-196870'),true,'它的图片目录也要在，不能被后续提交顺手删掉');
+  assert.deepEqual(kept,['0001-alpha-196870'],'没入库的那位不该在磁盘上留下目录');
+});
+test('回归：导入测试风格图期间落地的保存不能被旧快照覆盖',async()=>{
+  const {elements,ctx}=await boot();
+  let stored={version:1,categories:[],tags:[],saveLargeImages:false,artists:[{uid:'0001-甲-manual',order:1,name:'甲',category:null,score:null,aliases:[],alias:null,tags:[],artistUrl:'',description:'',note:'',works:[]}]};
+  const release=gate(),reading=gate();
+  const host={getData:()=>stored,getBusy:()=>false,
+    readImage:async()=>{reading.resolve();await release.promise;return 'data:image/png;base64,AAAA';},
+    thumbnail:async()=>'data:image/png;base64,AAAA',
+    save:async next=>{stored=typeof next==='function'?next(structuredClone(stored)):next;return true;}};
+  ctx.ArtistTestImages.init(host);ctx.ArtistTestImages.files=[{name:'t.png',type:'image/png',size:10}];
+  getEl(elements,'test-start').value='1';getEl(elements,'test-seq').value='1';
+  const running=ctx.ArtistTestImages.runImport();
+  await reading.promise;
+  /* 导入还在读图片的时候，别处保存了一个设置。 */
+  stored={...stored,saveLargeImages:true};
+  release.resolve();await running;
+  assert.equal(stored.saveLargeImages,true,'并发保存的设置不能被导入带出的旧快照抹掉');
+  assert.equal(stored.artists[0].works.length,1,'导入的测试风格图要落在这位画师身上');
+});

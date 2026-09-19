@@ -119,6 +119,9 @@
   async function saveImage(dir,uid,kind,blob,preferredName){
     if(!IMAGE_KINDS.includes(kind))throw Error('图片类型错误：'+kind);
     if(!ArtistId.valid(uid))throw Error('画师标识格式错误');
+    /* 草稿（draft-…）还没有正式标识。让它落盘就会在「画师」下留一个没人认领的目录：
+       它不在索引里，扫描与清理都够不到，删画师也删不到它。宁可在入口就拒绝。 */
+    if(/^draft-/.test(uid))throw Error('草稿还没有正式标识，不能写入画师目录');
     return saveImageIn(await artistFolder(dir,uid,true),kind,blob,preferredName);
   }
   async function saveImageIn(folder,kind,blob,preferredName){

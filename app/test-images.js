@@ -24,16 +24,25 @@
     if(!list.length){message.textContent='这个序号之后没有画师，请检查序号。';return;}
     $('test-run').disabled=true;
     try{
-      const next=clone(host.getData());let done=0;
+      /* 读图与生成缩略图都很慢，先在落盘之外做完；真正写盘时改用更新函数在最新数据上合并。
+         否则这段时间里别处保存过的改动，会被这份一开始克隆出来的旧快照整个盖掉。 */
+      const prepared=[];
       for(let i=0;i<list.length;i++){
         const file=files[i];message.textContent=`正在处理第 ${i+1} / ${list.length} 张…`;
         if(!TYPES.includes(file.type)||file.size>MAX)throw Error(file.name+'：只支持不超过 50 MB 的 JPG、PNG、WebP、GIF 或 AVIF。');
-        const original=await host.readImage(file),target=next.artists.find(a=>a.uid===list[i].artist.uid);
-        if(!target)continue;
-        target.works.push({id:'',url:'',caption:'',kind:'test',testSeq:FolderStore.nextTestSeq(target.works,want),thumb:await host.thumbnail(original),large:original,thumbUrl:null,largeUrl:null});
-        done++;
+        const original=await host.readImage(file);
+        prepared.push({uid:list[i].artist.uid,original,thumb:await host.thumbnail(original)});
       }
-      await host.save(next,`已为 ${done} 位画师导入测试风格图片`);
+      let done=0;
+      await host.save(next=>{
+        for(const item of prepared){
+          const target=next.artists.find(a=>a.uid===item.uid);
+          if(!target)continue;
+          target.works.push({id:'',url:'',caption:'',kind:'test',testSeq:FolderStore.nextTestSeq(target.works,want),thumb:item.thumb,large:item.original,thumbUrl:null,largeUrl:null});
+          done++;
+        }
+        return next;
+      },()=>`已为 ${done} 位画师导入测试风格图片`);
       message.textContent=`完成：${done} 张测试风格图片已导入，各自排在作品图之后。`;
       files=[];$('test-files').value='';$('test-preview').replaceChildren();$('test-files-info').textContent='还没有选择图片。';
     }catch(error){message.textContent='导入失败：'+error.message;}
