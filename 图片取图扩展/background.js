@@ -58,7 +58,7 @@ const toast=async payload=>{
     try{
       await chrome.scripting.executeScript({target:{tabId},files:['toast.js']});
       await chrome.tabs.sendMessage(tabId,{type:'artist-library.toast',payload});
-      console.info('[画师库] 已在标签页',tabId,'显示漂浮提示：',payload?.ok?'成功':'失败');
+      console.info('[画师库] 已在标签页',tabId,'显示漂浮提示：',payload?.state?('状态 '+payload.state):(payload?.ok?'成功':'失败'));
       return true;
     }catch(error){console.warn('[画师库] 漂浮提示注入失败，改用角标：',error?.message||error);}
   }else console.warn('[画师库] 没有来源标签页，漂浮提示无处可画，改用角标。');
@@ -66,6 +66,15 @@ const toast=async payload=>{
   return false;
 };
 let handledRequestId=null;
+/* 收到建卡结果：更新那朵漂浮提示，成功顺手清掉角标。同一个请求只认第一条。
+   要 await——不然提示还没画出去，服务工作线程就可能被回收。 */
+const finish=async result=>{
+  if(!result||typeof result!=='object')return;
+  if(result.requestId&&result.requestId===handledRequestId)return;
+  handledRequestId=result.requestId||null;
+  await toast(result);
+  if(result.ok)setTimeout(()=>chrome.action.setBadgeText({text:''}).catch(()=>{}),6000);
+};
 chrome.contextMenus.onClicked.addListener(async (info,tab)=>{
   if(info.menuItemId!==MENU_ID)return;
   const text=String(info.selectionText||'').replace(/\s+/g,' ').trim().slice(0,SELECTION_MAX);
@@ -75,8 +84,10 @@ chrome.contextMenus.onClicked.addListener(async (info,tab)=>{
   /* 先弹出「正在尝试」，再问开着的画师库；没人接就记下来，等你下次打开画师库时自动添加。
      全程不主动开页面。 */
   await toast({state:'pending',text,sourceTabId:request.sourceTabId});
-  try{await chrome.runtime.sendMessage({type:'artist-library.create',...request});return;}
-  catch{}
+  let delivered=false,result=null;
+  try{result=await chrome.runtime.sendMessage({type:'artist-library.create',...request});delivered=true;}catch{}
+  /* 页面回了结果就用它把提示改成成功/失败；没接住才排队。 */
+  if(delivered){await finish(result);return;}
   await queueAction({kind:'create',...request});
   await toast({state:'queued',text,sourceTabId:request.sourceTabId});
   try{await chrome.action.setBadgeText({text:''});}catch{}
@@ -85,15 +96,7 @@ chrome.contextMenus.onClicked.addListener(async (info,tab)=>{
 chrome.runtime.onMessage.addListener((message,sender,respond)=>{
   if(message?.channel!=='artist-library-page')return;
   if(message.type==='ready'){drainActions().then(actions=>respond({actions}));return true;}
-  if(message.type==='created'){
-    const result=message.result||{};
-    /* 同一个请求只认第一条结果：万一同时开着两个画师库页面，第二个会报「已经在库里」，
-       不该把已经显示出来的成功提示刷成红的。 */
-    if(result.requestId&&result.requestId===handledRequestId)return;
-    handledRequestId=result.requestId||null;
-    toast(result);
-    if(result.ok)setTimeout(()=>chrome.action.setBadgeText({text:''}).catch(()=>{}),6000);
-  }
+  if(message.type==='created'){finish(message.result);}
 });
 /* 点漂浮提示：打开（或切到）画师库，让它定位到新卡片；失败的那种就把文字送回「添加下一位画师」。 */
 chrome.runtime.onMessage.addListener((message,sender,respond)=>{

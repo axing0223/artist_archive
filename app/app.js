@@ -985,18 +985,25 @@
     status(`已定位到「${name}」`);
   }
   if(typeof document!=='undefined'&&document.addEventListener)document.addEventListener('visibilitychange',()=>{if(!document.hidden)applyFocus();});
-  /* 页面自己来找后台要一次待办（右键时页面还没打开的那种），并把建卡结果回传。 */
+  /* 页面自己来找后台要一次待办（右键时页面还没打开的那种），并把建卡结果回传。
+     结果同时走两条路：直接回复这次请求，另外再发一条 created 消息——
+     万一后台在这期间被回收重启，那条消息能把它叫醒，提示不至于永远停在「正在尝试」。 */
   function bindExtensionMessages(){
     const runtime=typeof chrome!=='undefined'?chrome.runtime:null;
     if(!runtime?.onMessage?.addListener)return;
+    const send=payload=>{try{runtime.sendMessage(payload).catch(()=>{});}catch{}};
     runtime.onMessage.addListener((message,sender,respond)=>{
       if(message?.type==='artist-library.create'){
-        createArtistFromSelection(message.text).then(result=>respond({...result,requestId:message.requestId,sourceTabId:message.sourceTabId}));
+        const done=result=>{
+          const report={...result,requestId:message.requestId,sourceTabId:message.sourceTabId};
+          try{respond(report);}catch{}
+          send({channel:'artist-library-page',type:'created',result:report});
+        };
+        createArtistFromSelection(message.text).then(done,error=>done({ok:false,reason:'内部错误：'+(error?.message||error),text:message.text}));
         return true;
       }
       if(message?.type==='artist-library.focus'){focusArtist(message.uid,message.text);return;}
     });
-    const send=payload=>{try{runtime.sendMessage(payload).catch(()=>{});}catch{}};
     try{
       runtime.sendMessage({channel:'artist-library-page',type:'ready'}).then(answer=>{
         for(const action of answer?.actions||[])handleAction(action,send);

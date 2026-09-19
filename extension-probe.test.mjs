@@ -102,14 +102,19 @@ test('右键菜单：静默建卡（后台标签页）→ 结果画在当前页�
   assert.equal(manifest.permissions.includes('scripting'),true,'要在用户当前页面画漂浮提示');
   assert.equal(manifest.permissions.includes('activeTab'),true,'只在你主动用菜单的那一页临时取权限，不要全站权限');
   const code=(await fs.readFile('图片取图扩展/background.js','utf8')).replace(/^import .*$/gm,'');
-  const run=async({pageOpen=false}={})=>{
+  const run=async({pageOpen=false,reply=null}={})=>{
     const messages=[],createdTabs=[],injected=[],sentToTabs=[],badges=[],stored=new Map();
     const chrome={
       runtime:{
         id:'self',
         getURL:path=>'chrome-extension://self/'+path,
         getContexts:async()=>(pageOpen?[{tabId:7,windowId:3,documentUrl:'chrome-extension://self/app/index.html'}]:[]),
-        sendMessage:async message=>{messages.push(message);if(!pageOpen)throw Error('没有接收方');return null;},
+        sendMessage:async message=>{
+          messages.push(message);
+          if(!pageOpen)throw Error('没有接收方');
+          if(reply&&message.type==='artist-library.create')return {...reply,requestId:message.requestId,sourceTabId:message.sourceTabId};
+          return null;
+        },
         onMessage:{addListener:fn=>messages.push({listener:fn})},
         onInstalled:{addListener:()=>{}},onStartup:{addListener:()=>{}},
         getManifest:()=>({version:'0.5.0'}),
@@ -178,6 +183,20 @@ test('右键菜单：静默建卡（后台标签页）→ 结果画在当前页�
   assert.equal(warm.sentToTabs[0][1].payload.state,'pending');
   assert.equal(warm.messages.some(message=>message.type==='artist-library.create'&&message.text==='atdan'),true,'然后把活交给它');
   assert.equal(warm.stored.has('pendingArtistActions'),false);
+  /* 页面把结果当回复交回来时，提示必须就地变成结果——不能一直停在「正在尝试」 */
+  const answered=await run({pageOpen:true,reply:{ok:true,uid:'0001-atdan-7',name:'atdan',danbooruId:7,works:3}});
+  await answered.menu()({menuItemId:'artist-library-add',selectionText:'atdan'},{id:42});
+  const finalToast=answered.sentToTabs[answered.sentToTabs.length-1][1].payload;
+  assert.equal(answered.sentToTabs.length,2,'两次提示：正在尝试 → 结果');
+  assert.equal(finalToast.ok,true,'结果要盖掉「正在尝试」');
+  assert.equal(finalToast.name,'atdan');
+  assert.equal(finalToast.state,undefined,'结果态不该再带 pending/queued');
+  /* 页面报失败时同样要变成红色结果 */
+  const failed=await run({pageOpen:true,reply:{ok:false,reason:'站点上没找到这个画师'}});
+  await failed.menu()({menuItemId:'artist-library-add',selectionText:'nope'},{id:42});
+  const failedToast=failed.sentToTabs[failed.sentToTabs.length-1][1].payload;
+  assert.equal(failedToast.ok,false);
+  assert.equal(failedToast.reason,'站点上没找到这个画师');
   /* 菜单本身：只在选中文字时出现，点了别的菜单项不做事 */
   const menu=cold.messages.find(item=>item.menu)?.menu;
   assert.equal(menu.title,'添加到画师库');
