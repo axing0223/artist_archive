@@ -84,6 +84,9 @@ a.action{display:inline-flex;align-items:center;text-decoration:none}
 .primary-action:hover{background:#2d4bd6;border-color:#2d4bd6;box-shadow:0 4px 12px #375af53d}
 /* 大批量导入前的二次确认：主按钮就地变红，形状不变 */
 .primary-action.is-armed,.primary-action.is-armed:hover{background:#d9483c;border-color:#d9483c;color:#fff;box-shadow:0 4px 12px #d9483c40}
+/* 「批量生成测试风格图」里的序号段与风格序号：并排一行，数字框别撑满 */
+.range-control{display:flex;align-items:center;gap:8px;flex-shrink:0;color:#78808e;font-size:13px}
+.range-control input[type=number],.range-control input[type=text]{width:104px;padding:9px 10px;font-size:14px}
 .edit-button:hover{background:#e2e8ff}
 .danger:hover{background:#fbebe9;border-color:#e6b2ae}
 .danger.is-armed,.danger.is-armed:hover{background:#d9483c;border-color:#d9483c;color:#fff}

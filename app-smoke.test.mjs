@@ -1585,6 +1585,118 @@ test('设置里可以打开「编辑画师时自动展开 danbooru 作品」，�
   assert.ok(findByClass(lastRender(state)[0],'candidate-previews'),'开了开关，进编辑态就把候选列出来');
   assert.equal(findText(lastRender(state)[0],'收起')!==null,true,'按钮同时变成「收起」');
 });
+test('批量生成测试风格图：按钮在「导入测试风格图」右边，对话框有范围与序号',async()=>{
+  const html=await fs.readFile('app/index.html','utf8');
+  assert.match(html,/id="test-import-open"[^>]*>导入测试风格图<\/button><button id="gen-batch-open"[^>]*>批量生成测试风格图<\/button>/,'按钮紧挨着「导入测试风格图」，在它右边');
+  for(const id of ['gen-batch','gen-batch-from','gen-batch-to','gen-batch-seqs','gen-batch-skip','gen-batch-preview','gen-batch-run'])assert.match(html,new RegExp('id="'+id+'"'),'对话框要有 '+id);
+  assert.match(html,/id="gen-batch-skip"[^>]*checked/,'「跳过已经有的」默认开着');
+});
+test('批量生成测试风格图：序号段 × 测试风格序号＝排入的条数',async()=>{
+  const {elements,state,ctx}=await boot();
+  /* 第一条会立刻开跑；让它停在那里，pending 才数得准。 */
+  ctx.ArtistImageGen.generate=()=>new Promise(()=>{});
+  ctx.ArtistImageGen.cachedAccount=()=>({opusPercent:60,opusImages:1038,anlas:0,tier:3});
+  await getEl(elements,'choose-folder').onclick();
+  await runBatch(elements,'甲\n乙\n丙',false);
+  assert.equal(state.rows.length,3);
+  getEl(elements,'gen-batch-open').onclick();
+  const from=getEl(elements,'gen-batch-from'),to=getEl(elements,'gen-batch-to'),seqs=getEl(elements,'gen-batch-seqs'),preview=getEl(elements,'gen-batch-preview');
+  assert.equal(from.value,'1','默认填当前看到的这一段（这里是全部）');
+  assert.equal(to.value,'3');
+  seqs.value='1,2';seqs.oninput();
+  assert.match(String(preview.textContent),/将排入 6 条/,'3 位画师 × 2 个序号');
+  assert.match(String(preview.textContent),/额度上限参考：当前 Opus 免费额度只剩约 1038 张/);
+  const button=getEl(elements,'gen-batch-run');
+  button.textContent='排入生成队列';   /* 假 DOM 不解析 index.html 里的初始文案，这里补上 */
+  await button.onclick();
+  assert.equal(button.textContent,'排入生成队列','额度够就不必二次确认（预览：'+String(preview.textContent)+'）');
+  assert.equal(getEl(elements,'gen-queue').hidden,false,'顶部出现排队徽标');
+  assert.match(String(getEl(elements,'gen-queue').textContent),/排队 5 · 清空/,'排入 6 条，第一条已经开跑');
+  assert.match(String(getEl(elements,'storage-status').textContent),/已排入 6 条生成需求/);
+  /* 「1-2」这种写法与「1,2」等价 */
+  seqs.value='1-2';seqs.oninput();
+  assert.match(String(preview.textContent),/将排入 6 条/);
+  /* 空白的风格序号要给出提示，而不是静默排出 0 条 */
+  seqs.value='';seqs.oninput();
+  assert.match(String(preview.textContent),/要写成像 1、1,2 或 1-2/);
+});
+test('批量生成测试风格图：超过当前额度时先变红，第二次点才真的排',async()=>{
+  const {elements,state,ctx}=await boot();
+  ctx.ArtistImageGen.generate=()=>new Promise(()=>{});
+  ctx.ArtistImageGen.cachedAccount=()=>({opusPercent:0.5,opusImages:9,anlas:0,tier:3});
+  await getEl(elements,'choose-folder').onclick();
+  await runBatch(elements,'甲\n乙\n丙\n丁',false);
+  assert.equal(state.rows.length,4);
+  getEl(elements,'gen-batch-open').onclick();
+  const seqs=getEl(elements,'gen-batch-seqs'),button=getEl(elements,'gen-batch-run'),preview=getEl(elements,'gen-batch-preview');
+  seqs.value='1-3';seqs.oninput();
+  assert.match(String(preview.textContent),/将排入 12 条/);
+  await button.onclick();
+  assert.equal(button.textContent,'确认排入 12 条？','超额度要先确认');
+  assert.equal(String(button.className).includes('is-armed'),true,'按钮变红');
+  assert.match(String(preview.textContent),/Opus 免费额度只剩约 9 张/,'说明为什么拦下来');
+  assert.equal(getEl(elements,'gen-queue').hidden,true,'第一次点击不该排入任何东西');
+  /* 改了输入就要撤销确认状态：确认针对的是刚才那份计算 */
+  seqs.value='1-2';seqs.oninput();
+  assert.equal(button.textContent,'排入生成队列','改输入后撤销确认');
+  assert.equal(String(button.className).includes('is-armed'),false);
+  seqs.value='1-3';seqs.oninput();
+  await button.onclick();
+  assert.equal(button.textContent,'确认排入 12 条？');
+  await button.onclick();
+  assert.match(String(getEl(elements,'gen-queue').textContent),/排队 11 · 清空/,'第二次点才真的排');
+  assert.equal(String(button.className).includes('is-armed'),false,'排完恢复原样');
+});
+test('批量生成测试风格图：读不到额度也要先确认一次',async()=>{
+  const {elements,state,ctx}=await boot();
+  ctx.ArtistImageGen.generate=()=>new Promise(()=>{});
+  await getEl(elements,'choose-folder').onclick();
+  await runBatch(elements,'甲\n乙',false);
+  assert.equal(state.rows.length,2);
+  getEl(elements,'gen-batch-open').onclick();
+  getEl(elements,'gen-batch-seqs').value='1';
+  getEl(elements,'gen-batch-seqs').oninput();
+  const button=getEl(elements,'gen-batch-run');
+  await button.onclick();
+  assert.equal(button.textContent,'确认排入 2 条？','额度未知就不能默认放行');
+  assert.match(String(getEl(elements,'gen-batch-preview').textContent),/读不到剩余额度/);
+  assert.equal(getEl(elements,'gen-queue').hidden,true,'第一次点击不该排入任何东西');
+  await button.onclick();
+  assert.match(String(getEl(elements,'gen-queue').textContent),/排队 1 · 清空/,'确认后照常排入（第一条已经开跑）');
+});
+test('批量生成测试风格图：默认跳过已经有这个序号的画师，也能关掉',async()=>{
+  const {elements,state,ctx}=await boot();
+  ctx.ArtistImageGen.generate=()=>new Promise(()=>{});
+  ctx.ArtistImageGen.cachedAccount=()=>({opusPercent:60,opusImages:1038,anlas:0});
+  await getEl(elements,'choose-folder').onclick();
+  await runBatch(elements,'甲\n乙',false);
+  state.rows[0].works.push({id:'',kind:'test',testSeq:1,thumb:null});
+  getEl(elements,'gen-batch-open').onclick();
+  getEl(elements,'gen-batch-seqs').value='1';
+  getEl(elements,'gen-batch-seqs').oninput();
+  const preview=getEl(elements,'gen-batch-preview'),skip=getEl(elements,'gen-batch-skip');
+  skip.checked=true;skip.onchange();
+  assert.match(String(preview.textContent),/将排入 1 条/,'甲已经有测试风格 1，只剩乙要排');
+  assert.match(String(preview.textContent),/跳过 1 条已经有这个序号的/);
+  skip.checked=false;skip.onchange();
+  assert.match(String(preview.textContent),/将排入 2 条/,'关掉跳过就两位都排');
+  assert.equal(/跳过 1 条/.test(String(preview.textContent)),false);
+});
+test('批量生成测试风格图：默认序号段跟着当前筛选走',async()=>{
+  const {elements,state}=await boot();
+  await getEl(elements,'choose-folder').onclick();
+  await runBatch(elements,'甲\n乙\n丙',false);
+  const search=getEl(elements,'search');
+  search.value='丙';search.oninput({target:search});
+  await wait(200);
+  assert.equal(state.rows.length,1,'搜索把列表收到一位');
+  getEl(elements,'gen-batch-open').onclick();
+  assert.equal(getEl(elements,'gen-batch-from').value,'3','默认从当前看到的这一位开始');
+  assert.equal(getEl(elements,'gen-batch-to').value,'3');
+  getEl(elements,'gen-batch-seqs').value='1';
+  getEl(elements,'gen-batch-seqs').oninput();
+  assert.match(String(getEl(elements,'gen-batch-preview').textContent),/将排入 1 条/);
+});
 test('工具栏按钮与对话框标题都叫「批量采集画师」',async()=>{
   const html=await fs.readFile('app/index.html','utf8');
   assert.match(html,/id="batch-artists"[^>]*>批量采集画师</);

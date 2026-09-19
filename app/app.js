@@ -37,7 +37,9 @@
   let data,folder,draft,editingId,busy=false,uploading=false,volatile=false,generating=false,queueCount=null;
   /* 生图排队：一次只跑一条，两条之间隔 5±3 秒，避免一口气打过去被站点限流。
      排了长队就得能喊停，所以顶部有一个「排队 N · 清空」，只在真的有人排队时才出现。 */
-  const genQueue=ArtistGenerateQueue.create({gap:()=>ArtistImageGen.genGapDelay(),onChange:()=>{paintQueue();/* 队列状态变了，格子上的「正在生成／排队中」要跟着走 */if(!busy&&data)render();}});
+  /* 批量排入期间不要每条都重画一次界面：几百条排队只是在同一个任务里跑完的，中间那些渲染没人看得见。 */
+  let enqueueBulk=false;
+  const genQueue=ArtistGenerateQueue.create({gap:()=>ArtistImageGen.genGapDelay(),onChange:()=>{paintQueue();/* 队列状态变了，格子上的「正在生成／排队中」要跟着走 */if(!enqueueBulk&&!busy&&data)render();}});
   function paintQueue(){
     const node=$('gen-queue'),count=genQueue.pending;
     /* 排队数变了就轻轻弹一下，让「已经排上了」有个交代。 */
@@ -270,12 +272,13 @@
     const button=[...box.children].find(child=>String(child.className).includes('generate-button'));
     if(button){button.disabled=false;button.textContent='生成';}
   }
-  /* 排队：一次只跑一条，两条之间隔 5±3 秒。第二条起都是先入队再等，第一条立刻发。 */
-  function enqueueGenerate(a,seq,slot){
+  /* 排队：一次只跑一条，两条之间隔 5±3 秒。第二条起都是先入队再等，第一条立刻发。
+     批量排入时用 quiet：几百条挨个写状态栏只是白费，最后由调用方给一句总结。 */
+  function enqueueGenerate(a,seq,slot,quiet=false){
     if(busy||!a)return false;
-    if(!folder){disarmSlot();status('请先选择「数据」文件夹，生成出来的图片要有地方保存。',true);return false;}
+    if(!folder){if(!quiet)disarmSlot();status('请先选择「数据」文件夹，生成出来的图片要有地方保存。',true);return false;}
     const uid=a.uid;
-    if(genQueue.has(item=>item.uid===uid&&item.seq===seq)){status(`「${a.name}」的测试风格 ${seq} 已经在排队了。`,true);return false;}
+    if(genQueue.has(item=>item.uid===uid&&item.seq===seq)){if(!quiet)status(`「${a.name}」的测试风格 ${seq} 已经在排队了。`,true);return false;}
     const box=liveBox(slot?.box);
     queuedMark(box,genQueue.pending+1);
     const place=genQueue.push({
@@ -283,7 +286,7 @@
       run:()=>runGenerateJob({uid,seq,box}),
       onError:error=>status('生成失败：'+error.message,true),
     });
-    if(place>1)status(`已排入队列：第 ${place} 位，「${a.name}」测试风格 ${seq}。`);
+    if(place>1&&!quiet)status(`已排入队列：第 ${place} 位，「${a.name}」测试风格 ${seq}。`);
     return true;
   }
   async function runGenerateJob({uid,seq,box}){
@@ -458,6 +461,11 @@
     head.append(el('strong','','从 Danbooru 添加作品'),editorToggle);expand.append(head);
     article.append(info,works,expand);return article;
   }
+  /* 当前筛选条件下的画师。渲染按它出卡片；「批量生成测试风格图」也按它填默认序号段。 */
+  function currentRows(){
+    const activeTags=[...state.tags];
+    return data.artists.filter(a=>(state.category==='全部'||(state.category==='待判断'?!a.category:a.category===state.category))&&activeTags.every(t=>a.tags.includes(t))&&(state.scores.size===0||state.scores.has(a.score||0))&&a.name.toLowerCase().includes(state.query));
+  }
   function render(){
     $('history-date').value=data.cutoffDate;
     $('save-large').checked=data.saveLargeImages===true;
@@ -473,8 +481,7 @@
       const on=state.scores.has(n),b=btn(String(n),()=>toggleScore(n),`score-pick score-${n}${on?' active':''}`);
       b.setAttribute('aria-pressed',String(on));b.setAttribute('aria-label',n+' 分');b.title=n+' 分';return b;
     }),(()=>{const on=state.scores.has(0),b=btn('未评分',()=>toggleScore(0),`score-any${on?' active':''}`);b.setAttribute('aria-pressed',String(on));return b;})());
-    const activeTags=[...state.tags];
-    const rows=data.artists.filter(a=>(state.category==='全部'||(state.category==='待判断'?!a.category:a.category===state.category))&&activeTags.every(t=>a.tags.includes(t))&&(state.scores.size===0||state.scores.has(a.score||0))&&a.name.toLowerCase().includes(state.query));
+    const rows=currentRows();
     if(draft&&!editingId)rows.push(draft);
     /* 列表换人之后的动效由画廊负责：活下来的卡片从旧位置滑到新位置，新来的在原位淡入。
        这里不再给整屏再加一层入场动画——两层叠在一起，就是之前「一改东西整页闪一下」的观感。 */
@@ -1176,6 +1183,116 @@
     try{const info=await ArtistImageGen.account({force});showAccount('');return info;}
     catch(error){showAccount('读取额度失败：'+error.message,true);return null;}
   }
+  /* ---------- 批量生成测试风格图 ----------
+     让用户自己划一段画师序号、选几号测试风格，展开成一条条生成需求塞进同一条队列。
+     排得比当前额度还多时，先让按钮变红再点一次——一次点掉几百条额度，值得拦一下。 */
+  const GEN_BATCH_ARM_MS=8000,GEN_BATCH_MAX_SEQS=20;
+  let genBatchArmed=false,genBatchTimer=null;
+  const testSeqOf=work=>Number.isSafeInteger(work.testSeq)&&work.testSeq>0?work.testSeq:1;
+  /* 「1」→1；「1,2」→1、2；「1-2」→1、2。别的字符当分隔符丢掉。 */
+  function parseGenSeqs(text){
+    const seqs=new Set();
+    for(const part of String(text||'').split(/[^0-9-]+/).filter(Boolean)){
+      const range=/^(\d+)-(\d+)$/.exec(part);
+      if(range){
+        const [from,to]=[Number(range[1]),Number(range[2])].sort((a,b)=>a-b);
+        for(let n=Math.max(1,from);n<=Math.min(to,999);n++)seqs.add(n);
+      }else{
+        const n=Number(part);
+        if(Number.isSafeInteger(n)&&n>=1&&n<=999)seqs.add(n);
+      }
+    }
+    return [...seqs].sort((a,b)=>a-b);
+  }
+  /* 当前额度还允许生成多少张：真要花点数的看 Anlas，否则（免费额度模式，或者参数本来就在免费范围内）
+     看 Opus 剩余张数。读不到额度返回 null，交给调用方按「说不准」处理。 */
+  function genQuota(){
+    const info=ArtistImageGen.cachedAccount();
+    if(!info)return null;
+    let points=false;
+    try{
+      const settings=ArtistImageGen.load(),p=ArtistImageGen.bodyFor(settings,1,{name:'x'}).parameters;
+      points=settings.useAnlas===true&&ArtistImageGen.needsPoints(p.width,p.height,p.steps);
+    }catch{}
+    if(points)return {value:info.anlas,text:`当前 Anlas 点数只有 ${info.anlas}`};
+    if(info.opusImages==null)return null;
+    return {value:info.opusImages,text:`当前 Opus 免费额度只剩约 ${info.opusImages} 张${info.opusPercent==null?'':`（${info.opusPercent}%）`}`};
+  }
+  const genBatchSkip=()=>$('gen-batch-skip').checked;
+  /* 把「序号段 × 测试风格序号」展开成一条条需求。 */
+  function genBatchPlan(){
+    const raw=Math.max(1,Number($('gen-batch-from').value)||1),from=Math.max(1,raw);
+    const to=Math.max(from,Number($('gen-batch-to').value)||from);
+    const seqs=parseGenSeqs($('gen-batch-seqs').value),skip=genBatchSkip();
+    const matched=data.artists.filter(a=>{const seq=seqOf(a);return Number.isSafeInteger(seq)&&seq>=from&&seq<=to;});
+    const jobs=[];let done=0;
+    for(const a of matched)for(const seq of seqs){
+      if(skip&&(a.works||[]).some(w=>w.kind==='test'&&testSeqOf(w)===seq)){done++;continue;}
+      jobs.push({artist:a,seq});
+    }
+    return {from,to,seqs,matched,jobs,done,quota:genQuota()};
+  }
+  function disarmGenBatch(){
+    clearTimeout(genBatchTimer);genBatchTimer=null;
+    if(!genBatchArmed)return;
+    genBatchArmed=false;
+    const button=$('gen-batch-run');
+    button.textContent='排入生成队列';button.classList.remove('is-armed');
+  }
+  /* 预览：会排多少条、跳过多少、当前额度还剩多少。改任何一个输入都重新算一遍并撤销「确认」状态。 */
+  function paintGenBatch(){
+    disarmGenBatch();
+    const plan=genBatchPlan(),node=$('gen-batch-preview');
+    if(!data.artists.length){node.textContent='画师库还是空的，先添加或采集画师。';return;}
+    if(!plan.seqs.length){node.textContent='测试风格序号要写成像 1、1,2 或 1-2 这样的数字。';return;}
+    if(!plan.matched.length){node.textContent=`序号 ${plan.from} – ${plan.to} 之间没有画师。`;return;}
+    const parts=[`将排入 ${plan.jobs.length} 条：${plan.matched.length} 位画师 × ${plan.seqs.length} 个序号（测试风格 ${plan.seqs.join('、')}）`];
+    if(plan.done)parts.push(`跳过 ${plan.done} 条已经有这个序号的`);
+    parts.push(plan.quota?`额度上限参考：${plan.quota.text}`:'当前额度还没查过，排入前会要求再确认一次');
+    node.textContent=parts.join('；')+'。';
+  }
+  async function runGenBatch(){
+    if(busy)return;
+    const plan=genBatchPlan(),node=$('gen-batch-preview');
+    if(!plan.seqs.length){node.textContent='测试风格序号要写成像 1、1,2 或 1-2 这样的数字。';return;}
+    if(plan.seqs.length>GEN_BATCH_MAX_SEQS){node.textContent=`测试风格序号最多 ${GEN_BATCH_MAX_SEQS} 个，现在是 ${plan.seqs.length} 个。`;return;}
+    if(!plan.jobs.length){node.textContent='这个范围里没有需要排入的画师（都在范围外，或者都生成过了）。';return;}
+    if(!folder){node.textContent='请先选择「数据」文件夹，生成出来的图片要有地方保存。';return;}
+    /* 超出额度（或者读不到额度、说不准）就先变红，第二次点才真的排。 */
+    const quota=plan.quota,over=!quota||plan.jobs.length>quota.value;
+    if(over&&!genBatchArmed){
+      genBatchArmed=true;
+      const button=$('gen-batch-run');
+      button.classList.add('is-armed');button.textContent=`确认排入 ${plan.jobs.length} 条？`;
+      node.textContent=quota
+        ?`要排入 ${plan.jobs.length} 条，而${quota.text}。超出的那些会失败或要等额度回复，每条都算一次消耗——确认无误请再点一次按钮。`
+        :`要排入 ${plan.jobs.length} 条，但现在读不到剩余额度（可以先去「生图参数」点一次「刷新额度」）。确认无误请再点一次按钮。`;
+      genBatchTimer=setTimeout(disarmGenBatch,GEN_BATCH_ARM_MS);
+      return;
+    }
+    disarmGenBatch();
+    let queued=0,skipped=0;
+    /* 几百条是在同一个任务里排完的，中间那些重画没人看得见，先关掉。 */
+    enqueueBulk=true;
+    try{for(const job of plan.jobs){if(enqueueGenerate(job.artist,job.seq,null,true))queued++;else skipped++;}}
+    finally{enqueueBulk=false;}
+    paintQueue();render();
+    node.textContent=`已排入 ${queued} 条${skipped?`，跳过 ${skipped} 条（已经在队列里）`:''}。`;
+    status(`已排入 ${queued} 条生成需求${skipped?`（${skipped} 条已在队列里）`:''}：一条一条跑，两条之间隔 5±3 秒，顶部「排队 N」可以一次清空。`);
+    $('gen-batch').close();
+  }
+  /* 打开时默认就填你当前看到的那一段：采集完切到「待判断」之后，最常见的就是给这批新人生成。 */
+  function openGenBatch(){
+    const visible=currentRows().filter(a=>Number.isSafeInteger(seqOf(a)));
+    const use=visible.length?visible:data.artists.filter(a=>Number.isSafeInteger(seqOf(a)));
+    if(use.length){
+      const seqs=use.map(seqOf);
+      $('gen-batch-from').value=String(Math.min(...seqs));
+      $('gen-batch-to').value=String(Math.max(...seqs));
+    }
+    paintGenBatch();
+    $('gen-batch').showModal();
+  }
   /* 顶部按钮上的额度：只在已经配好 token 与扩展时自动查一次，其余交给用户点。 */
   function autoAccount(){
     if(!ArtistImageGen.loadToken()){showAccount();return;}
@@ -1199,6 +1316,10 @@
     $('gen-settings-open').onclick=()=>{fillGenSettings();showAccount();updateGenStatus();$('gen-settings').showModal();if(ArtistImageGen.loadToken()&&!ArtistImageGen.cachedAccount())refreshAccount(false);};$('close-gen-settings').onclick=()=>$('gen-settings').close();
     $('opus-status').onclick=()=>refreshAccount(true);
     $('gen-queue').onclick=()=>{const dropped=genQueue.clear();status(dropped?`已取消排队的 ${dropped} 条生成需求；正在跑的那条会跑完。`:'队列里没有等待中的需求。');};paintQueue();
+    $('gen-batch-open').onclick=openGenBatch;$('close-gen-batch').onclick=()=>$('gen-batch').close();$('gen-batch').addEventListener('close',disarmGenBatch);
+    $('gen-batch-run').onclick=runGenBatch;
+    for(const id of ['gen-batch-from','gen-batch-to','gen-batch-seqs'])$(id).oninput=paintGenBatch;
+    $('gen-batch-skip').onchange=paintGenBatch;
     $('gen-account-refresh').onclick=()=>refreshAccount(true);
     $('card-size').oninput=()=>{const value=Number($('card-size').value);$('card-size-value').textContent=value;prefs.setCardSize(value);};
     $('save-large').onchange=async()=>{const next=clone(data);next.saveLargeImages=$('save-large').checked;await save(next,next.saveLargeImages?'已开启「保存大图」：预览作品时会保存原图':'已关闭「保存大图」：预览作品时不再保存原图');};
