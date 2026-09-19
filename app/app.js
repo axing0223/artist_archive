@@ -34,7 +34,7 @@
     const stored=Number(localStorage.getItem(PREF_KEY));if(Number.isFinite(stored)&&stored>=70&&stored<=220)prefs.thumbHeight=stored;
     const card=Number(localStorage.getItem(PREF_CARD));if(Number.isFinite(card)&&card>=140&&card<=360)prefs.cardSize=card;
   }catch{}
-  let data,folder,draft,editingId,busy=false,uploading=false,volatile=false,refreshTimer=null,generating=false;
+  let data,folder,draft,editingId,busy=false,uploading=false,volatile=false,refreshTimer=null,generating=false,lastRowSignature=null;
   /* 生图排队：一次只跑一条，两条之间隔 5±3 秒，避免一口气打过去被站点限流。
      排了长队就得能喊停，所以顶部有一个「排队 N · 清空」，只在真的有人排队时才出现。 */
   const genQueue=ArtistGenerateQueue.create({gap:()=>ArtistImageGen.genGapDelay(),onChange:()=>{paintQueue();/* 队列状态变了，格子上的「正在生成／排队中」要跟着走 */if(!busy&&data)render();}});
@@ -194,7 +194,7 @@
     button.title=`用 NovelAI 生成「测试风格 ${seq}」并回填到这一格`;
     box.append(button,label);
     const active=genQueue.current;
-    if(active&&active.uid===a.uid&&active.seq===seq)generatingMark(box,'正在请求 NovelAI…');
+    if(active&&active.uid===a.uid&&active.seq===seq)generatingMark(box,genQueue.waiting?'间隔等待中，马上开始…':'正在请求 NovelAI…');
     else{const place=genQueue.positionOf(item=>item.uid===a.uid&&item.seq===seq);if(place)queuedMark(box,place);}
     return box;
   }
@@ -414,7 +414,16 @@
     const activeTags=[...state.tags];
     const rows=data.artists.filter(a=>(state.category==='全部'||(state.category==='待判断'?!a.category:a.category===state.category))&&activeTags.every(t=>a.tags.includes(t))&&(state.scores.size===0||state.scores.has(a.score||0))&&a.name.toLowerCase().includes(state.query));
     if(draft&&!editingId)rows.push(draft);
-    const gallery=$('gallery');gallery.classList.add('is-refreshing');ArtistGallery.render(gallery,rows,card);clearTimeout(refreshTimer);refreshTimer=setTimeout(()=>gallery.classList.remove('is-refreshing'),260);
+    /* 只有「画师列表本身变了」（筛选、搜索、新增、删除、重排）才让卡片重新入场。
+       单纯保存某一位画师的改动、或者生图队列状态变化，不该让整屏卡片重播淡入动画——
+       那正是「一改东西整页闪一下」的来源。 */
+    const gallery=$('gallery'),signature=rows.map(a=>a.uid).join(',');
+    if(signature!==lastRowSignature){
+      lastRowSignature=signature;
+      gallery.classList.add('is-refreshing');
+      clearTimeout(refreshTimer);refreshTimer=setTimeout(()=>gallery.classList.remove('is-refreshing'),260);
+    }
+    ArtistGallery.render(gallery,rows,card);
     $('count').textContent=`找到 ${rows.length} / ${data.artists.length} 位 · 连续滚动，按需加载${state.tags.size>1?' · 同时包含所选标签':''}`;$('empty').hidden=rows.length!==0;
     $('library-summary').textContent=`${data.artists.length} 位画师 · ${data.artists.reduce((n,a)=>n+a.works.length,0)} 张作品 · 由你自由整理`;$('sample-date').textContent=data.date?'初始样本日期：'+data.date:'';
   }

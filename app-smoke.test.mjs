@@ -993,6 +993,43 @@ test('固定格的生成按钮：排队/正在生成时，重建卡片也要显�
   release?.({blob:new Blob([]),prompt:'x',free:true,width:832,height:1216,steps:28,account:null});
   await wait(30);
 });
+test('保存一位画师不会让整屏卡片重播入场动画；列表本身变了才重播',async()=>{
+  const {elements,state}=await boot();
+  await createArtist(state,elements,'tester');
+  const gallery=()=>getEl(elements,'gallery');
+  assert.equal(String(gallery().className).includes('is-refreshing'),true,'第一次出现列表时要重播（新卡片入场）');
+  gallery().classList.remove('is-refreshing');
+  /* 只是改内容（保存设置、保存某位画师）：列表还是那一批人，不该再重播 */
+  getEl(elements,'save-large').checked=true;
+  await getEl(elements,'save-large').onchange();
+  assert.equal(String(gallery().className).includes('is-refreshing'),false,'保存不该让整屏重播动画');
+  /* 列表本身变了（筛选出 0 位）：要重播 */
+  const tags=getEl(elements,'tags');
+  assert.equal(tags.children.length>0,true,'默认标签按钮应当已经渲染');
+  tags.children[0].onclick();
+  assert.equal(String(gallery().className).includes('is-refreshing'),true,'筛选改变了列表，才重播');
+  assert.equal(state.rows.length,0,'筛选后列表确实变了');
+});
+test('生图抖动等待期间，格子上显示的是「正在生成」而不是「排队中」',async()=>{
+  const {elements,state,ctx}=await boot();
+  await getEl(elements,'choose-folder').onclick();
+  await createArtist(state,elements,'tester');
+  const toggle=getEl(elements,'fixed-test');toggle.checked=true;await toggle.onchange();
+  const artist=state.rows[0];
+  ctx.ArtistImageGen.genGapDelay=()=>5000;   // 拉长抖动，好在等待期间观察
+  let release=null;
+  ctx.ArtistImageGen.generate=()=>new Promise(resolve=>{release=resolve;});
+  const [left,right]=findAllByClass(state.card(artist),'work-generate');
+  const arm=node=>{const button=findByClass(node,'generate-button');button.onclick();button.onclick();};
+  arm(right);arm(left);                       // 右格先跑，左格排队
+  release?.({blob:new Blob([]),prompt:'x',free:true,width:832,height:1216,steps:28,account:null});
+  await wait(20);                             // 让第一条跑完，进入抖动等待
+  const waiting=findAllByClass(state.card(artist),'work-generate').find(node=>String(node.className).includes('is-generating'));
+  assert.ok(waiting,'等待间隔的那一格应当是「正在生成」状态');
+  assert.equal(findByClass(waiting,'generate-button'),null,'不该显示可点的生成按钮');
+  assert.match(String(findByClass(waiting,'gen-progress')?.textContent),/间隔|正在请求/,'要写清是在等间隔还是已经在请求');
+  assert.equal(findAllByClass(state.card(artist),'work-generate').some(node=>String(node.className).includes('is-queued')),false,'这时不该有任何一格还写着「排队中」');
+});
 test('右键菜单：能定位到唯一的画师就直接建一张新卡，并把结果回传',async()=>{
   const {elements,state,ctx}=await boot();
   await getEl(elements,'choose-folder').onclick();
