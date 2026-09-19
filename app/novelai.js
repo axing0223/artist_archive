@@ -76,13 +76,15 @@
     return String(template??'').replace(/\{(\w+)\}/g,(all,key)=>Object.prototype.hasOwnProperty.call(vars,key)?String(vars[key]):all);
   }
   /* V5/V4 要求 negative_prompt 与 v4_negative_prompt.caption.base_caption 同步，
-     少了任何一处服务器都会直接报内部错误。 */
+     少了任何一处服务器都会直接报内部错误。
+     质量标签默认跟着站点预设走，但和 UC 预设一样由用户决定要不要：settings.qualityTags===false 就一点都不加。 */
   function buildBody(settings={},prompt=''){
     const model=MODELS.some(m=>m.value===settings.model)?settings.model:MODELS[0].value;
     const preset=UC_PRESETS.some(p=>p.value===settings.ucPreset)?settings.ucPreset:'heavy';
     const sampler=SAMPLERS.some(s=>s.value===settings.sampler)?settings.sampler:'k_euler_ancestral';
     const size=sizeOf(settings.size);
-    const finalPrompt=String(prompt)+qualityTagsOf(model);
+    const wantQuality=settings.qualityTags!==false;
+    const finalPrompt=String(prompt)+(wantQuality?qualityTagsOf(model):'');
     const finalUc=ucTagsOf(model,preset)+String(settings.negativePrompt??'');
     const steps=Number.isSafeInteger(settings.steps)&&settings.steps>0?settings.steps:28;
     const scale=Number.isFinite(settings.scale)&&settings.scale>=0?settings.scale:5;
@@ -106,8 +108,9 @@
     if(isV5(model)){
       parameters.params_version=4;
       parameters.ucPresetId=preset;
-      parameters.qualityPresetId='standard';
-      parameters.tag_hint_qt=1;parameters.tag_hint_uc_preset=2;
+      /* 关掉质量标签时连预设提示一起撤掉，免得服务器按预设自己再补一份。 */
+      if(wantQuality){parameters.qualityPresetId='standard';parameters.tag_hint_qt=1;}
+      parameters.tag_hint_uc_preset=2;
       parameters.normalize_reference_strength_multiple=true;
       parameters.image_format='png';
       parameters.inpaintImg2ImgStrength=1;parameters.add_original_image=true;

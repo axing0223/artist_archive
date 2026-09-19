@@ -38,12 +38,15 @@
 @keyframes gen-fade{0%,100%{opacity:.55}50%{opacity:1}}
 @keyframes arm-pulse{0%,100%{box-shadow:0 0 0 0 #e08b1f55}50%{box-shadow:0 0 0 6px #e08b1f00}}
 @media(prefers-reduced-motion:reduce){.gen-spinner{animation-duration:2.4s}.generate-button.is-armed{animation:none}.work-generate.is-generating .gen-progress{animation:none}}
-.setting-row textarea{width:100%;min-width:0;max-width:520px;flex:1 1 300px;font-size:13px;line-height:1.6;min-height:150px;resize:vertical}
+.setting-row textarea{flex:1 1 auto;width:auto;max-width:none;min-width:260px;font-size:13px;line-height:1.6;min-height:160px;resize:vertical}
+/* 反向提示词与两份提示词模板：左侧说明栏固定同宽，三个框因此一样宽，并且吃掉整行剩余宽度。 */
+.setting-row.textarea-row>div:first-child{flex:0 0 320px}
+@media(max-width:900px){.setting-row.textarea-row{flex-wrap:wrap}.setting-row.textarea-row>div:first-child{flex:1 1 100%}.setting-row.textarea-row textarea{flex:1 1 100%}}
 .setting-row .field-help.error,.setting-row p.error{color:#b4453c;font-weight:600}
 .size-pair{display:flex;align-items:center;gap:8px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;max-width:440px}
 .size-pair select{min-width:170px}
 .size-pair input[type=number]{width:104px}
-.wide-dialog{width:min(920px,94vw)}
+.wide-dialog{width:min(1180px,96vw)}
 .wide-dialog .form-body{max-height:78vh;overflow-y:auto}
 button.error,.action.error{border-color:#e6b2ae;color:#b4453c}
 .artist.is-editing{grid-template-columns:1fr;background:#fbfcff;border-color:#c9d4f5}

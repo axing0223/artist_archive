@@ -184,6 +184,17 @@ test('新参数跟着保存：Prompt Guidance Rescale、透明背景、使用点
   assert.equal(bad.transparentBg,false,'不是布尔真值就当没开');
   assert.equal(bad.useAnlas,false);
 });
+test('质量标签：默认开，关掉之后请求体里就没有那一段',()=>{
+  reset();
+  assert.equal(gen.load().qualityTags,true,'没存过时默认跟随站点');
+  assert.equal(gen.sanitize({}).qualityTags,true);
+  assert.equal(gen.sanitize({qualityTags:false}).qualityTags,false);
+  assert.equal(gen.save({qualityTags:false}).qualityTags,false);
+  const settings=gen.sanitize({qualityTags:false});
+  const body=gen.bodyFor(settings,1,{name:'modare'});
+  assert.equal(body.parameters.qualityPresetId,undefined);
+  assert.equal(require('./app/novelai.js').QUALITY_TAGS.v5.includes(body.input.slice(-8)),false,'关掉后提示词尾巴上不该挂着质量标签');
+});
 test('生成：请求体带模型与尺寸，返回的 zip 解出图片 Blob',async()=>{
   reset();gen.saveToken('pst-abcdefghijklmnop');gen.save({model:'nai-diffusion-5-full',size:'832x1216',steps:30,seed:7,useAnlas:true});
   const png=Uint8Array.from([137,80,78,71,13,10,26,10,9,9,9]);

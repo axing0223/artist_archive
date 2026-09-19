@@ -65,6 +65,24 @@ test('V4.5 与 V5 的 heavy UC 文字确实不同（V4.5 结尾多一个逗号�
   assert.notEqual(ai.UC_HEAVY.v3,ai.UC_HEAVY.v5);
 });
 
+test('质量标签和 UC 预设一样由用户决定：关掉就一点都不加',()=>{
+  const on=ai.buildBody({model:'nai-diffusion-5-full'},'x');
+  assert.equal(on.input,'x'+ai.QUALITY_TAGS.v5,'默认跟着站点预设走');
+  assert.equal(on.parameters.qualityPresetId,'standard');
+  assert.equal(on.parameters.tag_hint_qt,1);
+  const off=ai.buildBody({model:'nai-diffusion-5-full',qualityTags:false},'x');
+  assert.equal(off.input,'x','关掉后提示词就是用户自己写的那些');
+  assert.equal('qualityPresetId' in off.parameters,false,'连质量预设字段一起撤掉，免得服务器再补一份');
+  assert.equal('tag_hint_qt' in off.parameters,false);
+  assert.equal('qualityToggle' in off.parameters,false,'V5 请求体本来就没有这个字段');
+  assert.equal(off.parameters.ucPresetId,'heavy','关质量标签不影响 UC 预设');
+  assert.equal(off.parameters.negative_prompt,ai.UC_HEAVY.v5);
+  for(const [model,family] of [['nai-diffusion-4-5-full','v45'],['nai-diffusion-4-full','v4'],['nai-diffusion-3','v3']]){
+    const body=ai.buildBody({model,qualityTags:false},'x');
+    assert.equal(body.input,'x',model+' 关掉后也不加');
+    assert.equal(ai.buildBody({model},'x').input,'x'+ai.QUALITY_TAGS[family],model+' 默认加自己家族那份');
+  }
+});
 test('V3 请求体不带 v4_prompt，也不带 V5 专有字段',()=>{
   const body=ai.buildBody({model:'nai-diffusion-3',size:'1024x1024',ucPreset:'heavy'},'x');
   assert.equal(body.parameters.params_version,3);

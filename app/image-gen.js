@@ -7,7 +7,7 @@
     prompt1:'{tag}, 1girl, solo, upper body, looking at viewer, simple background, white background',
     prompt2:'{tag}, 1girl, solo, full body, standing, outdoors, day, scenery',
   };
-  const DEFAULTS={model:'nai-diffusion-5-full',size:'832x1216',width:null,height:null,steps:28,scale:5,cfgRescale:0,sampler:'k_euler_ancestral',seed:null,ucPreset:'heavy',negativePrompt:'',transparentBg:false,useAnlas:false,...DEFAULT_PROMPTS};
+  const DEFAULTS={model:'nai-diffusion-5-full',size:'832x1216',width:null,height:null,steps:28,scale:5,cfgRescale:0,sampler:'k_euler_ancestral',seed:null,ucPreset:'heavy',qualityTags:true,negativePrompt:'',transparentBg:false,useAnlas:false,...DEFAULT_PROMPTS};
   /* 两个都能答订阅信息，站点客户端会先问 image 再问 api。 */
   const ACCOUNT_ENDPOINTS=['https://image.novelai.net/user/subscription','https://api.novelai.net/user/subscription'];
   const ACCOUNT_TTL=60000;
@@ -28,6 +28,8 @@
       sampler:pick(root.ArtistNovelAI.SAMPLERS,input.sampler,DEFAULTS.sampler),
       seed:int(input.seed,0,4294967295),
       ucPreset:pick(root.ArtistNovelAI.UC_PRESETS,input.ucPreset,DEFAULTS.ucPreset),
+      /* 质量标签默认开（跟站点一致），但和 UC 预设一样交给用户决定。 */
+      qualityTags:input.qualityTags!==false,
       negativePrompt:text(input.negativePrompt,4000),
       transparentBg:input.transparentBg===true,
       useAnlas:input.useAnlas===true,

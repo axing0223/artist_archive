@@ -803,6 +803,28 @@ test('生成中的过渡动画有旋转环与进度文字，样式表里也有�
   assert.match(app,/gen-spinner/);
   assert.match(app,/gen-progress/);
 });
+test('质量标签开关跟着生图参数走，界面默认是开的',async()=>{
+  const html=await fs.readFile('app/index.html','utf8');
+  assert.match(html,/id="gen-quality" type="checkbox"/);
+  const {elements,ctx}=await boot();
+  getEl(elements,'gen-settings-open').onclick();
+  assert.equal(getEl(elements,'gen-quality').checked,true,'默认开启，跟站点一致');
+  const box=getEl(elements,'gen-quality');box.checked=false;box.onchange();
+  assert.equal(JSON.parse(ctx.localStorage.getItem('artist-library.image-gen')).qualityTags,false,'关掉要存回本机');
+  getEl(elements,'gen-settings-open').onclick();
+  assert.equal(getEl(elements,'gen-quality').checked,false,'再打开对话框要还是关着');
+});
+test('三个提示词输入框用同一套尺寸规则：同一行结构、同一档宽度',async()=>{
+  const html=await fs.readFile('app/index.html','utf8'),css=await fs.readFile('app/style.css','utf8');
+  for(const id of ['gen-negative','gen-prompt1','gen-prompt2'])
+    assert.match(html,new RegExp('class="setting-row textarea-row"[^>]*>[\\s\\S]{0,400}?id="'+id+'"'),id+' 要和其他两个一样挂在 textarea-row 上');
+  assert.equal((html.match(/setting-row textarea-row/g)||[]).length,3,'只该有这三个长文本框');
+  assert.match(css,/\.setting-row\.textarea-row>div:first-child\{flex:0 0 320px\}/,'说明栏固定同宽，三个框才会一样宽');
+  assert.match(css,/\.setting-row textarea\{[^}]*max-width:none/,'不再封顶，能占满整行剩余宽度');
+  assert.match(css,/\.setting-row textarea\{[^}]*flex:1 1 auto/);
+  assert.equal(css.includes('max-width:520px'),false,'旧的 520px 上限要去掉');
+  assert.match(css,/\.wide-dialog\{width:min\(1180px,96vw\)\}/,'对话框加宽，行内比例不变');
+});
 test('生图参数的下拉框来自 NovelAI 模块，模板与尺寸不会写死两遍',async()=>{
   const {elements,ctx}=await boot();
   const values=id=>getEl(elements,id).children.map(o=>o.value).join(',');

@@ -743,14 +743,15 @@
   /* ---- 生图参数：只存在本机浏览器里，绝不写进画师库数据文件，导出备份也就不会带 token ---- */
   const GEN_LISTS=[['gen-model',()=>ArtistNovelAI.MODELS],['gen-size',()=>ArtistNovelAI.SIZES],['gen-sampler',()=>ArtistNovelAI.SAMPLERS],['gen-uc',()=>ArtistNovelAI.UC_PRESETS]];
   const GEN_FIELDS=[['gen-model','model'],['gen-size','size'],['gen-width','width'],['gen-height','height'],['gen-steps','steps'],['gen-scale','scale'],['gen-cfg-rescale','cfgRescale'],['gen-sampler','sampler'],['gen-seed','seed'],['gen-uc','ucPreset'],['gen-negative','negativePrompt'],['gen-prompt1','prompt1'],['gen-prompt2','prompt2']];
-  const GEN_SWITCHES=[['gen-transparent','transparentBg'],['gen-anlas','useAnlas']];
+  const GEN_SWITCHES=[['gen-transparent','transparentBg'],['gen-anlas','useAnlas'],['gen-quality','qualityTags']];
   function fillGenSettings(){
     const settings=ArtistImageGen.load();
     for(const [id,key] of GEN_FIELDS)$(id).value=settings[key]==null?'':String(settings[key]);
     for(const [id,key] of GEN_SWITCHES)$(id).checked=settings[key]===true;
     $('gen-token').value=ArtistImageGen.loadToken();
   }
-  /* 输入框里是字符串、可能是空、可能超范围：统一交给 sanitize 收口，坏值回落到默认。 */
+  /* 输入框里是字符串、可能是空、可能超范围：统一交给 sanitize 收口，坏值回落到默认。
+     开关按 DOM 给的真假值传，sanitize 那边负责「不是 false 就算开」的默认语义。 */
   function readGenSettings(){const raw={};for(const [id,key] of GEN_FIELDS)raw[key]=$(id).value;for(const [id,key] of GEN_SWITCHES)raw[key]=$(id).checked;return ArtistImageGen.save(raw);}
   function bindGenSettings(){
     for(const [id,list] of GEN_LISTS)$(id).replaceChildren(...list().map(item=>new Option(item.label,item.value)));
