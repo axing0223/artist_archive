@@ -71,9 +71,19 @@ try{
  await evaluate('document.querySelector(".artist-expand button").click()');await sleep(650);
  assert.ok(await evaluate('document.activeElement===document.querySelector(".work-picker .candidate-previews")'),'手动展开的键盘焦点位于作品区域');
  assert.ok(await evaluate('document.querySelector(".work-picker .picker-status").getBoundingClientRect().top>=document.querySelector(".library-controls").getBoundingClientRect().bottom-1'),'手动展开后排序与分页不被固定栏遮挡');
- assert.ok(await evaluate('document.querySelector(".work-picker .picker-status").getBoundingClientRect().top<document.querySelector(".library-controls").getBoundingClientRect().bottom+90'),'展开后的作品区紧接固定工具栏');
+ const editorWorks=await evaluate('(()=>{const w=document.querySelector(".is-editing .works").getBoundingClientRect(),b=document.querySelector(".library-controls").getBoundingClientRect();return Math.round(w.top-b.bottom);})()');
+ assert.ok(editorWorks>=0&&editorWorks<200,'展开后视线交给作品格，且紧接在固定工具栏下方：间距 '+editorWorks+'px');
  await capture('picker-portrait');
  await evaluate('[...document.querySelector(".is-editing .artist-actions").children].find(n=>n.textContent==="取消").click()');await sleep(220);await evaluate('window.scrollTo(0,0)');await sleep(450);
+
+ /* 评分角标故意溢出卡片左上角 10px：卡片滚过固定筛选栏时，它连「筛选栏左右内边距之外那条缝」
+    也必须被挡住，否则会从栏边露出一角。采样点取角标最左侧，正是修复前漏光的位置。 */
+ await evaluate(`(()=>{const bar=document.querySelector('.library-controls'),badges=[...document.querySelectorAll('.score-badge')];const b=bar.getBoundingClientRect();let best=null,gap=1e9;for(const x of badges){const r=x.getBoundingClientRect(),g=r.top-b.bottom;if(Math.abs(g)<Math.abs(gap)){gap=g;best=x;}}/* 先滚到筛选栏粘住（top:var(--header)），再多滚一点让角标钻进栏内。 */const stick=Math.max(0,Math.round(b.top-66));window.scrollBy({top:Math.round(gap)+stick+26,behavior:'instant'});})()`);
+ await sleep(320);
+ const badgeCover=await evaluate(`(()=>{const bar=document.querySelector('.library-controls'),badges=[...document.querySelectorAll('.score-badge')];const b=bar.getBoundingClientRect();let best=null,gap=1e9;for(const x of badges){const r=x.getBoundingClientRect(),g=r.top-b.bottom;if(Math.abs(g)<Math.abs(gap)){gap=g;best=x;}}const r=best.getBoundingClientRect();const overlap=Math.min(b.bottom,r.bottom)-Math.max(b.top,r.top);if(overlap<6)return {overlap:Math.round(overlap),probed:false};const y=(Math.max(b.top,r.top)+Math.min(b.bottom,r.bottom))/2;const stack=document.elementsFromPoint(Math.round(r.left+3),Math.round(y)).map(n=>String(n.className).slice(0,30)||n.tagName);return {overlap:Math.round(overlap),probed:true,badgeLeft:Math.round(r.left),barLeft:Math.round(b.left),top:stack[0],badgeIndex:stack.findIndex(s=>s.includes('score-badge'))};})()`);
+ assert.ok(badgeCover.probed,'评分角标必须能与固定筛选栏重叠，否则这条断言没测到东西：'+JSON.stringify(badgeCover));
+ assert.ok(!String(badgeCover.top).includes('score-badge'),'角标与筛选栏重叠时不能压在栏上（含栏左右内边距之外那条缝）：'+JSON.stringify(badgeCover));
+ await evaluate('window.scrollTo(0,0)');await sleep(320);
 
  await evaluate('document.getElementById("theme-toggle").click()');await sleep(200);await capture('portrait-light');await evaluate('document.getElementById("theme-toggle").click()');
  await evaluate('document.getElementById("settings-open").click()');await sleep(250);await capture('settings');
