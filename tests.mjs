@@ -331,29 +331,30 @@ test('修改全局截至日期会保存设置但不会改写既有数量',async(
  const dir=new Directory();const library={version:1,cutoffDate:'2026-07-01',tags:[],artists:[{uid:'0001-test',name:'artist',counts:{total:20,beforeTotal:12,beforeDate:'2026-07-01'},works:[]}]};
  await store.write(dir,library);library.cutoffDate='2026-08-01';await store.write(dir,library);const restored=await store.read(dir);assert.equal(restored.cutoffDate,'2026-08-01');assert.deepEqual(restored.artists[0].counts,{total:20,beforeTotal:12,beforeDate:'2026-07-01'});
 });
-test('流式导出只带缩略图，原图一律不进备份，在线链接保留',async()=>{
+test('导出只有地址不带图片数据：缩略图与原图都只留在线的那个',async()=>{
  const dir=new Directory();
- await store.write(dir,{version:1,tags:[],artists:[{uid:'0001-sample',name:'artist',works:[{id:'1',thumb:png,large:jpeg,thumbUrl:'https://cdn.donmai.us/a.jpg',largeUrl:'https://cdn.donmai.us/original/a.jpg'}]}]});
- const data=await store.read(dir),chunks=[];await store.exportTo(dir,data,{write:async s=>chunks.push(s)});const backup=JSON.parse(chunks.join(''));
- const work=backup.artists[0].works[0];
- assert.equal(work.thumb,png,'本地缩略图被还原成 data:');
+ await store.write(dir,{version:1,tags:[],artists:[{uid:'0001-sample',name:'artist',works:[{id:'1',thumb:png,large:jpeg,thumbUrl:'https://cdn.donmai.us/360x360/a.jpg',largeUrl:'https://cdn.donmai.us/original/a.jpg'}]}]});
+ const data=await store.read(dir),chunks=[];await store.exportTo(dir,data,{write:async s=>chunks.push(s)});const text=chunks.join(''),backup=JSON.parse(text),work=backup.artists[0].works[0];
+ assert.equal(work.thumb,null,'本地缩略图不进备份');
  assert.equal(work.large,null,'本地原图不进备份');
- assert.equal(work.thumbUrl,'https://cdn.donmai.us/a.jpg','在线地址原样保留');
+ assert.equal(work.thumbUrl,'https://cdn.donmai.us/360x360/a.jpg','在线地址原样保留');
  assert.equal(work.largeUrl,'https://cdn.donmai.us/original/a.jpg','原图的在线链接保留，恢复后还能按链接取回');
- assert.equal(JSON.stringify(backup).includes(jpeg.slice(0,40)),false,'整份备份里不该出现原图字节');
+ assert.equal(text.includes('base64'),false,'整份备份里不该有任何图片数据');
+ assert.equal(text.length<400,true,'只有地址时备份应该很小，现在是 '+text.length+' 字符');
  const restoredDir=new Directory();await store.write(restoredDir,backup);const restored=await store.read(restoredDir);
- assert.match(restored.artists[0].works[0].thumb,/^缩略图\//);
- assert.equal(restored.artists[0].works[0].large,null,'恢复出来的作品没有本地原图');
- assert.equal(restored.artists[0].works[0].largeUrl,'https://cdn.donmai.us/original/a.jpg');
+ assert.equal(restored.artists[0].works[0].thumb,null,'恢复出来没有本地缩略图');
+ assert.equal(restored.artists[0].works[0].thumbUrl,'https://cdn.donmai.us/360x360/a.jpg','卡片要能按链接把缩略图取回来');
 });
-test('导出不带原图：上传或生成的原图没有在线链接，链接字段就留空',async()=>{
+test('导出不带图片数据：上传或生成的原图没有在线链接，字段一并留空',async()=>{
  const dir=new Directory();
  await store.write(dir,{version:1,tags:[],artists:[{uid:'0001-only',name:'artist',works:[{id:'',kind:'test',testSeq:1,thumb:jpeg,large:png}]}]});
- const data=await store.read(dir),chunks=[];await store.exportTo(dir,data,{write:async s=>chunks.push(s)});const work=JSON.parse(chunks.join('')).artists[0].works[0];
+ const data=await store.read(dir),chunks=[];await store.exportTo(dir,data,{write:async s=>chunks.push(s)});const text=chunks.join(''),work=JSON.parse(text).artists[0].works[0];
+ assert.equal(work.thumb,null);
  assert.equal(work.large,null);
- assert.ok(!work.largeUrl,'本来就没有链接，不能编一个出来');
- assert.equal(work.thumb,jpeg);
+ assert.ok(!work.thumbUrl,'本来就没有链接，不能编一个出来');
+ assert.ok(!work.largeUrl);
  assert.equal(work.kind,'test');assert.equal(work.testSeq,1,'标记与序号照旧保留');
+ assert.equal(text.includes('base64'),false);
 });
 test('清理失败会记录为警告，不再静默忽略',async()=>{
  const dir=new Directory();await store.write(dir,{version:1,tags:[],artists:[{uid:'0001-keep',name:'artist',works:[]}]});store.takeWarnings();

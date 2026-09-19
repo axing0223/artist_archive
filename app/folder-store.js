@@ -24,7 +24,6 @@
   async function json(dir,name){return JSON.parse(await (await (await dir.getFileHandle(name)).getFile()).text());}
   async function put(dir,name,value){const f=await dir.getFileHandle(name,{create:true}),s=await f.createWritable();try{await s.write(value);await s.close();}catch(e){try{await s.abort();}catch{}throw e;}}
   const extensionOf=type=>Object.keys(TYPES).find(k=>TYPES[k]===type)||'';
-  const base64Of=bytes=>{let s='';for(let i=0;i<bytes.length;i+=32768)s+=String.fromCharCode(...bytes.subarray(i,i+32768));return btoa(s);};
   const hashOf=async bytes=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(x=>x.toString(16).padStart(2,'0')).join('').slice(0,24);
   function blobOf(value){
     const m=inlinePattern.exec(value);
@@ -151,16 +150,14 @@
     const tag=String(artistName||'').replace(/[\u0000-\u001f\\/:*?"<>|]/g,'_').trim().slice(0,80)||'画师';
     return tag+'-测试风格'+seq;
   }
-  /* 导出备份：只带缩略图，不带任何原图——原图动辄是缩略图的十几倍，备份会因此小一大截。
-     原图字段只保留在线链接（那只是个地址，不是图片数据）；本地上传/生成的原图不进备份，
-     要连原图一起备份就复制整个「数据」文件夹。 */
+  /* 导出备份：只有资料与地址，不带任何图片数据——缩略图与原来一样只留在线链接。
+     这样备份体积基本等于纯文本（几十 KB 级），代价是恢复后看图要联网按链接取；
+     链接指向的图被站点删掉就再也回不来，所以「要留下图本身」只能复制整个「数据」文件夹。 */
   async function exportTo(dir,data,stream,progress=()=>{}){
     const {artists,...header}=data;await stream.write(JSON.stringify(header).slice(0,-1)+',"artists":[');
     for(let i=0;i<artists.length;i++){const {works,...meta}=artists[i];progress(i+1,artists.length);await stream.write((i?',':'')+JSON.stringify(meta).slice(0,-1)+',"works":[');
       for(let j=0;j<works.length;j++){const copy={...works[j]};
-        copy.large=typeof copy.large==='string'&&remotePattern.test(copy.large)?copy.large:null;
-        const value=copy.thumb;
-        if(typeof value==='string'&&!value.startsWith('data:')){const blob=await readImage(dir,meta.uid,value);copy.thumb='data:'+blob.type+';base64,'+base64Of(new Uint8Array(await blob.arrayBuffer()));}
+        for(const kind of IMAGE_KINDS)copy[kind]=typeof copy[kind]==='string'&&remotePattern.test(copy[kind])?copy[kind]:null;
         await stream.write((j?',':'')+JSON.stringify(copy));}
       await stream.write(']}');}
     await stream.write(']}');

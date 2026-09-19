@@ -384,7 +384,6 @@ dialog[open]::backdrop{opacity:1}
   async function json(dir,name){return JSON.parse(await (await (await dir.getFileHandle(name)).getFile()).text());}
   async function put(dir,name,value){const f=await dir.getFileHandle(name,{create:true}),s=await f.createWritable();try{await s.write(value);await s.close();}catch(e){try{await s.abort();}catch{}throw e;}}
   const extensionOf=type=>Object.keys(TYPES).find(k=>TYPES[k]===type)||'';
-  const base64Of=bytes=>{let s='';for(let i=0;i<bytes.length;i+=32768)s+=String.fromCharCode(...bytes.subarray(i,i+32768));return btoa(s);};
   const hashOf=async bytes=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(x=>x.toString(16).padStart(2,'0')).join('').slice(0,24);
   function blobOf(value){
     const m=inlinePattern.exec(value);
@@ -511,16 +510,14 @@ dialog[open]::backdrop{opacity:1}
     const tag=String(artistName||'').replace(/[\u0000-\u001f\\/:*?"<>|]/g,'_').trim().slice(0,80)||'画师';
     return tag+'-测试风格'+seq;
   }
-  /* 导出备份：只带缩略图，不带任何原图——原图动辄是缩略图的十几倍，备份会因此小一大截。
-     原图字段只保留在线链接（那只是个地址，不是图片数据）；本地上传/生成的原图不进备份，
-     要连原图一起备份就复制整个「数据」文件夹。 */
+  /* 导出备份：只有资料与地址，不带任何图片数据——缩略图与原来一样只留在线链接。
+     这样备份体积基本等于纯文本（几十 KB 级），代价是恢复后看图要联网按链接取；
+     链接指向的图被站点删掉就再也回不来，所以「要留下图本身」只能复制整个「数据」文件夹。 */
   async function exportTo(dir,data,stream,progress=()=>{}){
     const {artists,...header}=data;await stream.write(JSON.stringify(header).slice(0,-1)+',"artists":[');
     for(let i=0;i<artists.length;i++){const {works,...meta}=artists[i];progress(i+1,artists.length);await stream.write((i?',':'')+JSON.stringify(meta).slice(0,-1)+',"works":[');
       for(let j=0;j<works.length;j++){const copy={...works[j]};
-        copy.large=typeof copy.large==='string'&&remotePattern.test(copy.large)?copy.large:null;
-        const value=copy.thumb;
-        if(typeof value==='string'&&!value.startsWith('data:')){const blob=await readImage(dir,meta.uid,value);copy.thumb='data:'+blob.type+';base64,'+base64Of(new Uint8Array(await blob.arrayBuffer()));}
+        for(const kind of IMAGE_KINDS)copy[kind]=typeof copy[kind]==='string'&&remotePattern.test(copy[kind])?copy[kind]:null;
         await stream.write((j?',':'')+JSON.stringify(copy));}
       await stream.write(']}');}
     await stream.write(']}');
@@ -1804,12 +1801,12 @@ dialog[open]::backdrop{opacity:1}
   }
   async function exportData(){
     if(busy)return;let stream;const controls=[...document.querySelectorAll('button,input,textarea,select')].map(e=>[e,e.disabled]);
-    try{const handle=await window.showSaveFilePicker({suggestedName:'画师库备份_'+new Date().toISOString().slice(0,10)+'.json',types:[{description:'画师库 JSON',accept:{'application/json':['.json']}}]});busy=true;controls.forEach(([e])=>e.disabled=true);stream=await handle.createWritable();await FolderStore.exportTo(folder,data,stream,(i,n)=>status(`正在导出 ${i} / ${n} 位画师…`));await stream.close();stream=null;status('备份已保存：只含缩略图，不含任何原图（原图只保留在线链接）。要连原图一起备份，请复制整个「数据」文件夹。');
+    try{const handle=await window.showSaveFilePicker({suggestedName:'画师库备份_'+new Date().toISOString().slice(0,10)+'.json',types:[{description:'画师库 JSON',accept:{'application/json':['.json']}}]});busy=true;controls.forEach(([e])=>e.disabled=true);stream=await handle.createWritable();await FolderStore.exportTo(folder,data,stream,(i,n)=>status(`正在导出 ${i} / ${n} 位画师…`));await stream.close();stream=null;status('备份已保存：只有资料和图片地址，不含任何图片数据；恢复后缩略图与原图都按链接重新取。要留下图片本身，请复制整个「数据」文件夹。');
     }catch(error){if(stream)await stream.abort().catch(()=>{});if(error.name!=='AbortError')status('备份失败：'+error.message,true);}finally{busy=false;controls.forEach(([e,disabled])=>e.disabled=disabled);}
   }
   async function importData(e){
     const f=e.target.files[0];e.target.value='';if(!f||busy)return;
-    try{if(f.size>100*1024*1024)throw Error('超过 100 MB 的备份请使用完整「数据」文件夹恢复，避免一次解析全部图片占满内存。');const next=normalize(JSON.parse(await f.text()),true);if(next.artists.some(a=>a.works.some(w=>FolderStore.imageOf(w,'thumb')?.kind==='local')))throw Error('这份 JSON 未包含图片，请直接选择对应数据文件夹。');if(!confirm(`用备份中的 ${next.artists.length} 位画师替换当前 ${data.artists.length} 位？建议先导出当前备份。`))return;reset();await save(next,'已导入备份');ArtistImages.clear();}catch(error){alert('导入失败。\n'+error.message);}
+    try{if(f.size>100*1024*1024)throw Error('超过 100 MB 的备份请使用完整「数据」文件夹恢复，避免一次解析全部图片占满内存。');const next=normalize(JSON.parse(await f.text()),true);if(next.artists.some(a=>a.works.some(w=>FolderStore.imageOf(w,'thumb')?.kind==='local')))throw Error('这份 JSON 里的图片指向本地文件路径，单独导入恢复不了图片；请直接选对应的「数据」文件夹。');if(!confirm(`用备份中的 ${next.artists.length} 位画师替换当前 ${data.artists.length} 位？建议先导出当前备份。`))return;reset();await save(next,'已导入备份');ArtistImages.clear();}catch(error){alert('导入失败。\n'+error.message);}
   }
   const BATCH_CHUNK=25,BATCH_WORKS=3;
   let batchStop=false;const batchFailed=[];
