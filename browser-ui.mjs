@@ -61,12 +61,20 @@ try{
  const out=path.join(root,'.ui-artifacts');await fs.mkdir(out,{recursive:true});
  await fs.writeFile(path.join(out,'performance.json'),JSON.stringify(result.result.value,null,2));
  const evaluate=async expression=>{const result=await send('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});if(result.exceptionDetails)throw Error(result.exceptionDetails.exception?.description||result.exceptionDetails.text);return result.result.value;};
- await evaluate('ArtistDemo.seed(24)');await evaluate('window.scrollTo(0,0)');await sleep(650);
+ await evaluate('ArtistDemo.seed(24).then(({thumbnails})=>ArtistDemo.installPreviewServices(thumbnails))');await evaluate('window.scrollTo(0,0)');await sleep(650);
  const capture=async name=>{const shot=await send('Page.captureScreenshot',{format:'png'});await fs.writeFile(path.join(out,name+'.png'),Buffer.from(shot.data,'base64'));};
  await capture('portrait-dark');
  const fiveImages=()=>JSON.stringify([...document.querySelectorAll('.artist:not(.is-editing) .works')].map(row=>{const works=[...row.querySelectorAll(':scope > .work')],rects=works.map(n=>n.getBoundingClientRect());return {count:works.length,oneLine:Math.max(...rects.map(r=>r.top))-Math.min(...rects.map(r=>r.top))<1,fits:rects.every(r=>r.left>=0&&r.right<=innerWidth),contain:[...row.querySelectorAll('img')].every(img=>getComputedStyle(img).objectFit==='contain')};}));
  const verifyFive=async label=>{const rows=JSON.parse(await evaluate('('+fiveImages.toString()+')()'));assert.ok(rows.length>0,label+' 必须显示卡片');assert.ok(rows.every(row=>row.count===5&&row.oneLine&&row.fits&&row.contain),label+' 五图完整同行：'+JSON.stringify(rows));};
  await verifyFive('1080×1920 竖屏');
+ await evaluate('[...document.querySelector(".artist-actions").children].find(n=>n.textContent==="编辑").click()');await sleep(650);await capture('editor-top');
+ await evaluate('document.querySelector(".artist-expand button").click()');await sleep(650);
+ assert.ok(await evaluate('document.activeElement===document.querySelector(".work-picker .candidate-previews")'),'手动展开的键盘焦点位于作品区域');
+ assert.ok(await evaluate('document.querySelector(".work-picker .picker-status").getBoundingClientRect().top>=document.querySelector(".library-controls").getBoundingClientRect().bottom-1'),'手动展开后排序与分页不被固定栏遮挡');
+ assert.ok(await evaluate('document.querySelector(".work-picker .picker-status").getBoundingClientRect().top<document.querySelector(".library-controls").getBoundingClientRect().bottom+90'),'展开后的作品区紧接固定工具栏');
+ await capture('picker-portrait');
+ await evaluate('[...document.querySelector(".is-editing .artist-actions").children].find(n=>n.textContent==="取消").click()');await sleep(220);await evaluate('window.scrollTo(0,0)');await sleep(450);
+
  await evaluate('document.getElementById("theme-toggle").click()');await sleep(200);await capture('portrait-light');await evaluate('document.getElementById("theme-toggle").click()');
  await evaluate('document.getElementById("settings-open").click()');await sleep(250);await capture('settings');
  await send('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});await send('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
@@ -106,12 +114,12 @@ try{
 async function browserChecks(){
  const $=id=>document.getElementById(id),check=(value,message)=>{if(!value)throw Error(message);},delay=ms=>new Promise(r=>setTimeout(r,ms));
  const until=async fn=>{for(let i=0;i<120;i++){if(await fn())return;await delay(25);}throw Error('等待状态超时：'+JSON.stringify({status:$('storage-status').textContent,query:$('search').value,count:$('count').textContent,rows:$('gallery').children.length}));};
- const {folder,data}=await ArtistDemo.seed(24);window.scrollTo(0,0);await until(()=>document.querySelectorAll('.artist').length>1);
+ const {folder,data,thumbnails}=await ArtistDemo.seed(24);window.scrollTo(0,0);await until(()=>document.querySelectorAll('.artist').length>1);
  const input=(id,value)=>{$(id).value=value;$(id).dispatchEvent(new Event('input',{bubbles:true}));};
  input('search','空野 春日');await until(()=>$('gallery').children.length===1);check($('gallery').firstElementChild.dataset.uid===data.artists[0].uid,'搜索必须同时匹配笔名和备注');
  $('reset').click();await until(()=>$('gallery').children.length===24);
  const category=[...$('categories').children].find(b=>b.dataset.filterKey==='category:场景 / 环境');category.focus();category.click();
- check(document.activeElement.dataset.filterKey==='category:场景 / 环境','分类重绘后必须保留键盘焦点');check($('gallery').children.length===8,'分类筛选必须正确');check($('active-filters').children.length===1,'已选分类应显示可移除条件');
+ await delay(500);check(document.activeElement===document.querySelector('.artist'),'分类切换后聚焦第一张画师卡片');check(document.activeElement.getBoundingClientRect().top<document.querySelector('.library-controls').getBoundingClientRect().bottom+60,'第一张卡片应靠近固定工具栏下方');check($('gallery').children.length===8,'分类筛选必须正确');check($('active-filters').children.length===1,'已选分类应显示可移除条件');
  $('active-filters').firstElementChild.click();check($('gallery').children.length===24,'移除条件恢复完整列表');
  $('library-sort').value='score';$('library-sort').dispatchEvent(new Event('change'));check($('gallery').children[1].dataset.uid===data.artists[5].uid,'评分排序同分时维持原始顺序');
  $('library-sort').value='order';$('library-sort').dispatchEvent(new Event('change'));
@@ -119,7 +127,7 @@ async function browserChecks(){
  $('search').value='mizu_no_oto';$('search').dispatchEvent(new CompositionEvent('compositionend',{bubbles:true}));await until(()=>$('gallery').children.length===4);$('reset').click();
  document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'/',bubbles:true}));check(document.activeElement===$('search'),'斜杠聚焦搜索');
  $('command-open').click();check($('command-dialog').open,'快捷操作应打开');input('command-search','资料库设置');check($('command-results').querySelectorAll('button').length===1,'快捷操作支持搜索');$('command-search').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));check(!$('command-dialog').open&&$('settings').open,'回车执行所选操作');$('settings').close();
- const actions=document.querySelector('.artist-actions');check([...actions.children].map(node=>node.textContent).join('/')==='删除/画师页面/编辑','卡片按钮顺序');const remove=actions.firstElementChild;remove.click();check(remove.classList.contains('is-armed'),'删除第一次点击进入确认态');check($('gallery').children.length===24,'第一次确认不能删除画师');check($('back-top').closest('.status-bar'),'回到顶部固定在状态栏');
+ const actions=document.querySelector('.artist-actions');check([...actions.children].map(node=>node.textContent).join('/')==='删除/画师页面/编辑','卡片按钮顺序');const remove=actions.firstElementChild;remove.click();check(remove.classList.contains('is-armed'),'删除第一次点击进入确认态');await delay(200);check(getComputedStyle(remove).color==='rgb(255, 255, 255)','二次确认删除文字为白色');check($('gallery').children.length===24,'第一次确认不能删除画师');check($('back-top').closest('.status-bar'),'回到顶部固定在状态栏');
  $('quick-open').click();check($('quick-dialog').open&&document.activeElement===$('quick-input'),'识别添加直接聚焦输入');$('quick-dialog').querySelector('[data-close-dialog]').click();
  document.querySelector('.thumb').click();await until(()=>$('viewer').open);check($('viewer-position').textContent==='1 / 5','预览显示完整图片序号');$('viewer-next').click();check($('viewer-position').textContent==='2 / 5','可切到下一张');$('viewer').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true}));check($('viewer-position').textContent==='1 / 5','方向键可切回上一张');$('viewer').close();
 
@@ -149,6 +157,23 @@ async function browserChecks(){
  const ids=[...document.querySelectorAll('[id]')].map(n=>n.id);check(new Set(ids).size===ids.length,'页面 ID 必须唯一');
  const unlabeled=[...document.querySelectorAll('input:not([type=hidden]):not([hidden]),select,textarea')].filter(n=>!n.getAttribute('aria-label')&&!n.getAttribute('aria-labelledby')&&!n.labels?.length);
  check(!unlabeled.length,'可见表单控件必须有名称：'+unlabeled.map(n=>n.id).join(','));
+
+ // 真实分页、跨页选择、编辑按钮、手动与自动展开；全部使用虚构图片。
+ ArtistDemo.installPreviewServices(thumbnails);
+ await until(()=>$('quota-images').textContent==='约 1038 张');check($('quota-percent').textContent==='60%'&&$('quota-points').textContent==='10000 点','顶部额度三项展示');check($('opus-status').closest('.header-actions'),'额度位于顶部操作区');
+ const openEditor=async()=>{[...document.querySelector('.artist-actions').children].find(n=>n.textContent==='编辑').click();await until(()=>document.querySelector('.is-editing'));await delay(500);};
+ const closeEditor=async()=>{[...document.querySelector('.is-editing .artist-actions').children].find(n=>n.textContent==='取消').click();await until(()=>!document.querySelector('.is-editing'));await delay(200);};
+ await openEditor();const editorActions=document.querySelector('.is-editing .artist-actions');check([...editorActions.children].map(n=>n.textContent).join('/')==='删除画师/刷新/取消/保存','编辑按钮顺序');check(editorActions.getBoundingClientRect().top<document.querySelector('.is-editing .edit-grid').getBoundingClientRect().top,'编辑按钮放在表单上方右侧');
+ document.querySelector('.artist-expand button').click();await until(()=>document.querySelectorAll('.work-picker .pick').length===21);await delay(500);
+ const picker=document.querySelector('.work-picker'),pickerGrid=picker.querySelector('.candidate-previews'),page=()=>picker.querySelector('.picker-page').textContent;
+ check(document.activeElement===pickerGrid,'手动展开后键盘焦点进入作品');const rects=[...pickerGrid.querySelectorAll('.pick')].map(n=>n.getBoundingClientRect());check(new Set(rects.map(r=>Math.round(r.top))).size===3&&new Set(rects.map(r=>Math.round(r.left))).size===7,'候选作品三行七列');
+ check(!picker.querySelector('input[type=range]')&&!/全选|全不选|加载更多/.test(picker.textContent),'移除旧预览与加载控件');check(picker.querySelector('.picker-status .picker-order')&&picker.querySelector('.picker-status .picker-pagination'),'排序与分页置于顶部状态栏');
+ let checkbox=picker.querySelector('.pick input');checkbox.click();await until(()=>picker.querySelector('.pick.is-added'));const firstID=picker.querySelector('.pick-id').textContent;
+ const flip=key=>pickerGrid.dispatchEvent(new KeyboardEvent('keydown',{key,bubbles:true}));checkbox.dispatchEvent(new KeyboardEvent('keydown',{key:'d',bubbles:true}));await until(()=>page().startsWith('第 2'));check(picker.querySelector('.pick-id').textContent!==firstID,'翻页替换当前作品');checkbox=picker.querySelector('.pick input');checkbox.click();await until(()=>picker.querySelector('.pick.is-added'));flip('ArrowLeft');await until(()=>page().startsWith('第 1'));check(picker.querySelector('.pick input').checked,'返回上一页保留勾选');flip('ArrowRight');await until(()=>page().startsWith('第 2'));flip('a');await until(()=>page().startsWith('第 1'));check(pickerGrid.children.length===21,'翻页不积累DOM');
+ const select=picker.querySelector('select');select.value='score';select.dispatchEvent(new Event('change'));await until(()=>picker.querySelector('.pick-id').textContent==='#90064');check(page().startsWith('第 1'),'换排序返回第一页');
+ await closeEditor();$('settings-open').click();$('auto-open-works').checked=true;await $('auto-open-works').onchange();$('settings').close();await delay(220);
+ await openEditor();await until(()=>document.querySelector('.work-picker .pick'));check(document.activeElement!==document.querySelector('.candidate-previews'),'自动展开不抢作品区焦点');check(document.querySelector('.editor-head').getBoundingClientRect().top>=0,'自动展开保留编辑头部可见');await closeEditor();
+ $('settings-open').click();$('auto-open-works').checked=false;await $('auto-open-works').onchange();$('settings').close();await delay(220);
  // 编辑中的草稿不因修改筛选而丢失，排序也不销毁编辑表单。
  $('add-artist').click();await until(()=>document.querySelector('.is-editing'));
  const name=document.querySelector('input[placeholder="画师名字（必填）"]');name.value='未保存草稿';name.dispatchEvent(new Event('input',{bubbles:true}));input('search','完全无匹配');await delay(180);check(name===document.querySelector('input[placeholder="画师名字（必填）"]'),'筛选不能销毁正在编辑的表单节点');check(document.querySelector('input[placeholder="画师名字（必填）"]').value==='未保存草稿','筛选变化保留编辑草稿');

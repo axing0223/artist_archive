@@ -31,7 +31,7 @@ class El{
   remove(){const parent=this.parentNode;if(parent)parent.children=parent.children.filter(child=>child!==this);this.parentNode=null;}
   setAttribute(key,value){this[key]=value;}
   removeAttribute(key){delete this[key];}
-  focus(){}select(){}
+  focus(){this.focused=true;}scrollIntoView(options){(this.scrolls ||= []).push(options);}select(){}
   addEventListener(type,fn){(this.listeners??={});(this.listeners[type]??=[]).push(fn);}
   fire(type,event={}){if(typeof event.preventDefault!=='function'){event.defaultPrevented=false;event.preventDefault=()=>{event.defaultPrevented=true;};}for(const fn of this.listeners?.[type]||[])fn(event);return event;}
   querySelectorAll(){return [];}
@@ -179,15 +179,15 @@ test('没有备注时不留下空行',async()=>{
   const card=state.card(artist),works=card.children[1];
   assert.equal(works.children.filter(child=>child.className==='sample-note').length,0);
 });
-test('编辑态的三个操作按钮集中在同一个容器里，顺序为保存、取消、删除',async()=>{
+test('编辑按钮在右上角按删除、刷新、取消、保存排列',async()=>{
   const {elements,state}=await boot();
   elements.get('add-artist').onclick();
   const card=lastRender(state)[0];
   const findClass=(node,cls)=>{if(String(node.className).includes(cls))return node;for(const child of node.children||[]){const hit=findClass(child,cls);if(hit)return hit;}return null;};
   const actions=findClass(card,'artist-actions');
   assert.ok(actions,'编辑态卡片应有操作区');
-  assert.deepEqual(actions.children.map(child=>child.textContent),['保存','取消','刷新','删除画师'],'四个按钮要在同一个容器里依次排列');
-  assert.equal(actions.children[0].className.includes('primary-action'),true,'保存是主操作');
+  assert.deepEqual(actions.children.map(child=>child.textContent),['删除画师','刷新','取消','保存'],'四个按钮要在同一个容器里依次排列');
+  assert.equal(actions.children[3].className.includes('primary-action'),true,'保存是主操作');
 });
 test('删除画师改为按钮二次确认，不再调用系统对话框',async()=>{
   const {elements,state}=await boot();
@@ -542,28 +542,15 @@ test('清除筛选会把分数也一起清掉',async()=>{
   get('reset').onclick();
   assert.equal(get('scores').children[4]['aria-pressed'],'false','清除筛选要把分数一起复位');
 });
-test('展开与收起 Danbooru 读取区后，视图重新对准正在编辑的卡片',async()=>{
-  const {elements,state}=await boot();
-  elements.get('add-artist').onclick();
-  await wait(30);
-  const card=lastRender(state)[0];
-  const input=findByPlaceholder(card,'画师名字（必填）');
-  input.value='tester';input.oninput();
-  state.scrolled.length=0;state.mounted.length=0;
-  findText(card,'展开读取').onclick();
-  await wait(30);
-  assert.equal(state.mounted.length>=1,true,'滚动前要先按真实高度挂载这张卡片，否则占位用的是旧高度');
-  assert.equal(state.scrolled.length>=1,true,'展开后应把视图对准这张卡片');
-  assert.equal(String(state.scrolled[0]).includes(state.mounted[0]),true,'挂载的和滚动对准的必须是同一张卡片');
-  state.scrolled.length=0;
-  await wait(460);
-  assert.equal(state.scrolled.length>=1,true,'平滑滚动结束后要再校验一次，防止目标漂移');
-  state.scrolled.length=0;
-  findText(lastRender(state)[0],'收起').onclick();
-  await wait(30);
-  assert.equal(state.scrolled.length>=1,true,'收起后同样要重新对准，否则卡片变矮会让滚动位置跑掉');
-  assert.equal(String(state.scrolled[0]).includes('0001')||String(state.scrolled[0]).includes('draft-'),true,'对准的是当前编辑画师的占位');
+test('手动展开聚焦候选作品，收起返回编辑卡片',async()=>{
+ const {elements,state}=await boot();elements.get('add-artist').onclick();await wait(30);const card=lastRender(state)[0];
+ const input=findByPlaceholder(card,'画师名字（必填）');input.value='tester';input.oninput();
+ findText(card,'展开读取').onclick();await wait(30);const grid=findByClass(card,'candidate-previews'),host=findByClass(card,'work-picker');
+ assert.equal(grid.focused,true,'键盘焦点到候选作品');assert.equal(host.scrolls.length,1,'视图对准候选区顶部');
+ state.scrolled.length=0;await wait(460);assert.equal(state.scrolled.length,0,'旧编辑器定位不能把手动展开的视图拉回去');
+ findText(card,'收起').onclick();await wait(30);assert.ok(state.scrolled.length>0,'收起返回当前编辑卡片');
 });
+
 test('编辑已有画师时，卡片渲染成编辑态而不是浏览态',async()=>{
   const {elements,state}=await boot();
   elements.get('add-artist').onclick();
@@ -1168,12 +1155,12 @@ test('快捷识别：勾选候选作品后点「添加此画师」，只有勾�
   const row=findByClass(getEl(elements,'quick-results'),'candidate');
   assert.ok(row,'应列出一位候选画师');
   const grid=findByClass(row,'candidate-previews');
-  assert.equal(grid.children.length,2,'候选作品都列出来了');
+  assert.equal(findAllByClass(grid,'pick').length,2,'候选作品都列出来了');
   /* 这一处没有「勾上即加入」：画师本身还不存在，得先攒着勾选，再点「添加此画师」一起落盘。 */
   const label=grid.children[0],box=label.children[0];
   box.checked=true;await box.onchange();
   assert.equal(String(label.className).includes('is-added'),false,'这种用法下不该打「已加入」标记');
-  assert.equal(String(findByClass(row,'candidate-tools').children[2].textContent).includes('已选 1 / 2'),true,'计数说的是「已选」');
+  assert.equal(String(findByClass(row,'picker-count').textContent).includes('已选 1 张'),true,'计数说的是「已选」');
   await findText(row,'添加此画师').onclick();
   assert.equal(state.rows.length,1,'画师加进列表');
   assert.equal(state.rows[0].name,'iuui');
@@ -1249,7 +1236,7 @@ test('顶部的额度按钮：没配 token 时不去打接口，说明去哪儿�
   const {elements}=await boot();
   await wait(10);
   getEl(elements,'opus-status').onclick();
-  assert.match(String(getEl(elements,'opus-status').textContent),/额度/);
+  assert.match(String(getEl(elements,'quota-label').textContent),/NovelAI/);
   assert.match(String(getEl(elements,'gen-account').textContent),/token/,'要把「去填 token」说清楚');
 });
 test('固定格的【生成】按钮：第一次只是点亮，第二次才真的发；没选文件夹时说明原因',async()=>{
@@ -1523,12 +1510,12 @@ test('批量采集：每位画师采完就刷新对应卡片，不用等整批�
   await runBatch(elements,'甲\n乙',true);
   assert.deepEqual(asked,['甲','乙'],'一位一位按名单顺序采');
   const cardOf=(render,name)=>render.find(card=>card.dataset.artist===name);
-  const showsCount=(render,name,text)=>{const card=cardOf(render,name);return !!card&&String(findByClass(card,'work-count').textContent)===text;};
-  const at=state.renders.findIndex(render=>showsCount(render,'甲','站点作品 11 · 截至日期前 5'));
+  const showsCount=(render,name,text)=>{const card=cardOf(render,name);return !!card&&String(findByClass(card,'artist-site-count').textContent)===text;};
+  const at=state.renders.findIndex(render=>showsCount(render,'甲','站点作品 11'));
   assert.ok(at>0,'甲采完就该有一次渲染把他的数量与缩略图补上');
   assert.ok(at<state.renders.length-1,'这次渲染要发生在整批结束之前，而不是最后统一刷新');
-  assert.equal(showsCount(state.renders[at],'乙','站点作品 22 · 截至日期前 7'),false,'那一刻乙还没采到');
-  assert.equal(showsCount(state.renders[state.renders.length-1],'乙','站点作品 22 · 截至日期前 7'),true,'乙采完同样补上');
+  assert.equal(showsCount(state.renders[at],'乙','站点作品 22'),false,'那一刻乙还没采到');
+  assert.equal(showsCount(state.renders[state.renders.length-1],'乙','站点作品 22'),true,'乙采完同样补上');
 });
 test('批量采集：采完自动清空筛选，并把分类切到「待判断」',async()=>{
   const {elements,state,ctx}=await boot();
@@ -1702,8 +1689,8 @@ test('切换「采集作品的排序」之后，视线回到画师作品上',asy
   state.scrolled.length=0;
   orderSelect.value='score';
   await orderSelect.onchange();
-  assert.equal(state.scrolled.some(selector=>String(selector).includes('.works')),true,'换完排序要把视线交回画师作品');
-  assert.equal(state.scrolled.some(selector=>String(selector).includes('.artist-slot')),true,'对准的是当前这张卡片里的作品格');
+  assert.equal(findByClass(card(),'candidate-previews').focused,true,'换排序后聚焦新候选页');
+  assert.ok(findByClass(card(),'work-picker').scrolls.length>=2,'候选区顶部保持可见');
 });
 test('卡片指纹：数据一样就一样，数据变了就不一样（画廊据此决定要不要重画）',async()=>{
   const {elements,state}=await boot();
@@ -1727,7 +1714,7 @@ test('候选作品勾上就直接进作品列表，不用再点按钮，候选�
   assert.equal(findText(card(),'添加所选到作品列表'),null,'那个按钮已经删掉');
   assert.equal(findText(card(),'＋ 上传本地图片'),null,'上传按钮也删掉');
   const grid=findByClass(card(),'candidate-previews');
-  assert.equal(grid.children.length,2,'两位候选都列出来了');
+  assert.equal(findAllByClass(grid,'pick').length,2,'两位候选都列出来了');
   const label=grid.children[0],box=label.children[0];
   box.checked=true;await box.onchange();
   assert.equal(String(label.className).includes('is-added'),true,'勾上就算加入');
@@ -1823,4 +1810,20 @@ test('回归：采集期间切换文件夹不打开选择器或写入另一库',
  const collecting=runBatch(elements,'a');await started.promise;
  await elements.get('choose-folder').onclick();assert.equal(opened,0);assert.match(elements.get('storage-status').textContent,/任务结束/);
  response.resolve();await collecting;
+});
+
+
+test('浏览卡片按实际五格排列顺序切图，站点作品数跟随名字',async()=>{
+ const {state,ctx}=await boot();let opened;ctx.ArtistViewer.open=value=>opened=value;
+ const reference={id:'10',thumb:'data:image/jpeg;base64,/9j/2Q=='},test1={id:'11',kind:'test',testSeq:1,thumb:reference.thumb},test2={id:'12',kind:'test',testSeq:2,thumb:reference.thumb};
+ const card=state.card(bareArtist({works:[test1,test2,reference],counts:{total:456}}));
+ findAllByClass(card,'thumb')[0].onclick();assert.deepEqual([...opened.items].map(work=>work.id),['10','12','11']);assert.equal(opened.work.id,'10');
+ const count=findByClass(card,'artist-site-count');assert.equal(count.textContent,'站点作品 456');assert.equal(findByClass(findByClass(card,'name-row'),'artist-site-count'),count);
+});
+
+test('顶部额度分开显示张数、百分比与点数，重复点击合并请求',async()=>{
+ const {ctx,elements}=await boot();let calls=0,release;const response=new Promise(resolve=>release=resolve),info={tier:3,opusImages:1038,opusPercent:60,anlas:12345};
+ ctx.ArtistImageGen.loadToken=()=>'仅测试';ctx.ArtistImageGen.cachedAccount=()=>info;ctx.ArtistImageGen.account=async()=>{calls++;return response;};
+ const first=getEl(elements,'opus-status').onclick(),second=getEl(elements,'opus-status').onclick();assert.equal(calls,1);release(info);await Promise.all([first,second]);
+ assert.equal(getEl(elements,'quota-images').textContent,'约 1038 张');assert.equal(getEl(elements,'quota-percent').textContent,'60%');assert.equal(getEl(elements,'quota-points').textContent,'12345 点');
 });

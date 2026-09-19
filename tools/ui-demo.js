@@ -10,10 +10,16 @@
   await FolderStore.write(folder,data);window.showDirectoryPicker=async()=>folder;await document.getElementById('choose-folder').onclick();
   return {folder,data,thumbnails};
  }
- window.ArtistDemo={seed};
+ function installPreviewServices(thumbnails){
+  const works=Array.from({length:65},(_,i)=>({id:String(90000+i),thumb:thumbnails[i%thumbnails.length],large:thumbnails[i%thumbnails.length],caption:'演示候选作品 '+(i+1)}));
+  ArtistLookup.posts=async(tag,{limit=21,page=1,order='id_desc'}={})=>{const sorted=order==='score'?[...works].reverse():works;return sorted.slice((page-1)*limit,page*limit);};
+  const quota={tier:3,opusImages:1038,opusPercent:60,anlas:10000};ArtistImageGen.loadToken=()=>'demo-only';ArtistImageGen.cachedAccount=()=>quota;ArtistImageGen.account=async()=>quota;
+  document.getElementById('opus-status').click();
+ }
+ window.ArtistDemo={seed,installPreviewServices};
  if(new URLSearchParams(location.search).get('demo')==='1'){
   // 演示始终使用独立 OPFS。联网、采集和付费生成不会发往真实服务。
   window.fetch=async()=>{throw Error('演示模式不发送网络请求');};ArtistLookup.lookup=async()=>[];ArtistLookup.posts=async()=>[];ArtistLookup.details=async()=>({counts:{}});ArtistImageGen.generate=async()=>{throw Error('演示模式不生成图片');};
-  seed().then(()=>{const node=document.getElementById('storage-status');node.textContent='演示资料 · 画师与图片均为虚构；不连接真实数据文件夹';window.ArtistWorkspace.status(node.textContent,false);}).catch(error=>{document.getElementById('storage-status').textContent='演示加载失败：'+error.message;});
+  seed().then(({thumbnails})=>{installPreviewServices(thumbnails);const node=document.getElementById('storage-status');node.textContent='演示资料 · 画师与图片均为虚构；不连接真实数据文件夹';window.ArtistWorkspace.status(node.textContent,false);}).catch(error=>{document.getElementById('storage-status').textContent='演示加载失败：'+error.message;});
  }
 })();

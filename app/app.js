@@ -175,7 +175,7 @@
     saveTail=operation.catch(()=>{});return operation;
   }
   function reset(){state.category='全部';state.tags.clear();state.scores.clear();state.query='';$('search').value='';}
-  function showImage(a,w){ArtistViewer.open({title:a.name,uid:a.uid,work:w,caption:w.caption,persist:true,items:a.works||(draft?.uid===a.uid?draft.works:null)});}
+  function showImage(a,w){const items=a.works?FolderStore.previewWorks(a,PREVIEW_SLOTS,reservedOf()).filter(Boolean):(draft?.uid===a.uid?draft.works:null);ArtistViewer.open({title:a.name,uid:a.uid,work:w,caption:w.caption,persist:true,items});}
   /* 一格作品的稳定编号：重画之后靠它认出「还是这一格」，好让它滑到新位置而不是跳过去。
      既没有作品编号也没有来源链接的，只能拿它在列表里的位置凑合（这种一格本来也没什么可对的）。 */
   const workKey=(uid,w,slot)=>uid+':'+(w.kind==='test'?`test${w.testSeq||1}`:(w.id||w.url||'i'+slot));
@@ -362,6 +362,7 @@
     article.dataset.artist=a.name;article.setAttribute('aria-label','画师 '+a.name);
     const heading=el('h2'),name=btn(a.name,()=>copyText(a.name,'画师 tag'),'artist-name');name.title='点击复制画师 tag';name.setAttribute('aria-label','复制画师 tag：'+a.name);heading.append(name);
     row.append(el('span','serial',String(seqOf(a)).padStart(4,'0')),heading);if(a.alias)row.append(el('span','alias',a.alias));
+    const count=el('span','artist-site-count','站点作品 '+(a.counts?.total??'未读取'));count.title='截至日期前 '+(a.counts?.beforeTotal??'未读取')+' 张；截至日期：'+(a.counts?.beforeDate||data.cutoffDate)+'；本库收录 '+a.works.length+' 张';row.append(count);
     const meta=el('div','artist-meta');meta.append(el('span',a.category?'primary':'pending-badge',a.category||'待判断'));
     if(a.tags.length){const tags=el('div','secondary');a.tags.forEach(t=>tags.append(el('span','',t)));meta.append(tags);}
     if(Number.isSafeInteger(a.score)&&a.score>=1&&a.score<=5){const score=el('span','score-badge score-'+a.score,String(a.score));score.setAttribute('aria-label','参考评分 '+a.score+' 分');score.title='参考评分 '+a.score+' / 5';article.append(score);}
@@ -374,8 +375,7 @@
     slots.forEach((w,i)=>{const node=w?workFigure(a,w,i):i>=PREVIEW_SLOTS-reserve?generateSlot(a,PREVIEW_SLOTS-i):btn('添加图片',()=>chooseSlotImage(a,i),'work work-empty');
       if(!w&&i<PREVIEW_SLOTS-reserve){node.setAttribute('aria-label','为 '+a.name+' 的第 '+(i+1)+' 格添加图片');node.title='选择图片或拖入此格';}attachDrop(node,a,i);works.append(node);
     });
-    const footer=el('div','artist-footer'),count=el('span','work-count','站点作品 '+(a.counts?.total??'未读取')+' · 截至日期前 '+(a.counts?.beforeTotal??'未读取'));
-    count.title='本库收录 '+a.works.length+' 张图片；截至日期：'+(a.counts?.beforeDate||data.cutoffDate)+(a.counts?.beforeDate&&a.counts.beforeDate!==data.cutoffDate?'（设置已变更，请刷新资料）':'');footer.append(count);
+    const footer=el('div','artist-footer');
     if(a.description||a.note||a.basis){const notes=el('details','artist-notes');notes.append(el('summary','','画风与备注'));if(a.description)notes.append(el('p','description',a.description));if(a.note)notes.append(el('p','sample-note',a.note));if(a.basis)notes.append(el('p','basis',a.basis));footer.append(notes);}
     article.append(info,works,footer);return article;
   }
@@ -400,7 +400,7 @@
     /* 编辑态明确区分本库已收录图片与站点作品总数。 */
     const countText=()=>'本库图片 '+draft.works.length+' · 站点作品 '+(draft.counts?.total??'未读取');
     article.setAttribute('aria-label','编辑画师 '+(draft.name||'新画师'));
-    const numbers=el('div','artist-numbers'),workCount=el('span','work-count',countText());numbers.append(el('span','serial',String(seqOf(draft)).padStart(4,'0')),workCount);info.append(numbers);
+    const editorHead=el('div','editor-head'),numbers=el('div','artist-numbers'),workCount=el('span','work-count',countText());numbers.append(el('span','serial',String(seqOf(draft)).padStart(4,'0')),workCount);editorHead.append(numbers);info.append(editorHead);
     const field=(label,node)=>{const wrap=el('label','edit-field');wrap.append(el('span','edit-label',label),node);return wrap;};
     const fieldBox=(label,node)=>{const wrap=el('div','edit-field edit-field-wide');wrap.append(el('span','edit-label',label),node);return wrap;};
     const nameInput=el('input');nameInput.value=draft.name;nameInput.required=true;nameInput.maxLength=160;nameInput.placeholder='画师名字（必填）';nameInput.oninput=()=>{
@@ -477,8 +477,7 @@
     const noteInput=el('textarea');noteInput.rows=2;noteInput.maxLength=5000;noteInput.value=draft.note||'';noteInput.placeholder='备注';noteInput.oninput=()=>draft.note=noteInput.value;
     const grid=el('div','edit-grid');grid.append(field('画师名字',nameInput),field('主分类',categorySelect),field('画师页面链接',urlInput),scoreField,fieldBox('标签',tagEditor),aliasField);
     editorError=el('p','error');editorError.setAttribute('role','alert');info.append(grid,field('画风描述',descInput),field('备注',noteInput),editorError);
-    const actions=el('div','artist-actions');actions.append(btn('保存',saveDraft,'action primary-action'),btn('取消',cancelEdit,'action'),btn('刷新',refreshCurrentArtist,'action'));
-    const remove=removeButton();if(!editingId)remove.hidden=true;actions.append(remove);info.append(actions);
+    const actions=el('div','artist-actions');const remove=removeButton();remove.classList.add('edit-button');if(!editingId)remove.hidden=true;actions.append(remove,btn('刷新',refreshCurrentArtist,'edit-button'),btn('取消',cancelEdit,'edit-button'),btn('保存',saveDraft,'edit-button primary-action'));editorHead.append(actions);
     const works=el('div','works');
     /* 作品格单独可重画：从 Danbooru 勾一张就补一张，不动整张卡片——
        重画整张会把下面正在挑作品的候选列表一起冲掉。 */
@@ -520,7 +519,7 @@
     if(signature!==filterSignature){
       filterSignature=signature;
       $('categories').replaceChildren(...['全部',...data.categories,'待判断'].map(c=>{
-        const b=btn(c,()=>{state.category=c;render();},c===state.category?'active':'');b.dataset.filterKey='category:'+c;b.setAttribute('aria-pressed',String(c===state.category));b.append(el('span','n',counts.get(c)||0));return b;
+        const b=btn(c,()=>{state.category=c;render();focusFirstArtist();},c===state.category?'active':'');b.dataset.filterKey='category:'+c;b.setAttribute('aria-pressed',String(c===state.category));b.append(el('span','n',counts.get(c)||0));return b;
       }));
       $('tags').replaceChildren(...data.tags.map(t=>{const b=btn(t,()=>{state.tags.has(t)?state.tags.delete(t):state.tags.add(t);render();},state.tags.has(t)?'active':'');b.dataset.filterKey='tag:'+t;b.setAttribute('aria-pressed',String(state.tags.has(t)));return b;}));
       const toggleScore=value=>{state.scores.has(value)?state.scores.delete(value):state.scores.add(value);render();};
@@ -545,7 +544,15 @@
     window.ArtistWorkspace?.update({connected:!!folder,total:summary.total,rows:rows.length,category:state.category,editing:!!draft,tasks,filterCount:chips.length});
     restoreFocus?.();
   }
-  let editorPicker=null,editorHost=null,editorError=null,editorToggle=null,editorExpand=null,paintEditorWorks=null;
+  let editorPicker=null,editorHost=null,editorError=null,editorToggle=null,editorExpand=null,paintEditorWorks=null,editorFocusVersion=0;
+  function focusFirstArtist(){
+    editorFocusVersion++;requestAnimationFrame(()=>{
+      const first=$('gallery').firstElementChild;if(!first){$('empty').tabIndex=-1;$('empty').focus?.({preventScroll:true});return;}
+      ArtistGallery.mount(first.dataset.uid);const card=first.querySelector('.artist');if(!card)return;
+      card.tabIndex=-1;card.style.setProperty('scroll-margin-top',(($('categories').closest?.('.library-controls')?.offsetHeight||120)+(document.querySelector('.app-header')?.offsetHeight||66)+14)+'px');
+      card.focus({preventScroll:true});card.scrollIntoView({block:'start',behavior:reducedMotion()?'auto':'smooth'});
+    });
+  }
   function setEditorError(message){if(editorError)editorError.textContent=message;}
   /* 收起要把容器本身从页面移除：dispose() 已经清空了它的内容，只清内容会留下一个空壳。 */
   function closeWorkPicker(){if(editorPicker){editorPicker.dispose();editorPicker=null;}if(editorHost){editorHost.remove?.();editorHost=null;}if(editorToggle)editorToggle.textContent='展开读取';}
@@ -559,8 +566,8 @@
   /* 勾选即加入：候选列表里勾一张，这里就把它的预览图存进草稿的作品列表，并就地补上那一格。
      全程不重画整张卡片，所以下面的候选列表不会被打断。 */
   async function addPickedWork(work){
-    const [saved]=await cacheWorks(draft.uid,[work]);
-    const settle=rememberWorkSlots();
+    const target=draft;if(!target)throw Error('编辑已关闭');const [saved]=await cacheWorks(target.uid,[work]);
+    if(draft!==target)throw Error('编辑已切换，未加入旧作品');const settle=rememberWorkSlots();
     draft.works.push(saved);paintEditorWorks();markEditorPainted();settle();
     return saved;
   }
@@ -571,7 +578,7 @@
     draft.works.splice(index,1);paintEditorWorks();markEditorPainted();settle();
     return true;
   }
-  function togglePicker(expand){
+  function togglePicker(expand,manual=true){
     /* 收起之后卡片会变矮，视图要重新对准这张卡片，否则滚动位置会跑掉。 */
     if(editorPicker){closeWorkPicker();focusEditingCard();return;}
     const tag=(draft.name||'').trim();
@@ -580,23 +587,23 @@
     editorHost=el('div','work-picker');expand.append(editorHost);
     if(editorToggle)editorToggle.textContent='收起';
     const exclude=new Set(draft.works.map(w=>w.id).filter(Boolean));
-    editorPicker=WorkPicker.mount(editorHost,{uid:draft.uid,tag,exclude,zoom:prefs,order:data.workOrder,orderOptions:WORK_ORDER_OPTIONS,
-      onPreview:work=>previewWork(draft.name,work,draft.uid),onAdd:addPickedWork,onRemove:removePickedWork,onOrderChanged:focusEditorWorks});
-    focusEditingCard();
+    editorPicker=WorkPicker.mount(editorHost,{uid:draft.uid,tag,exclude,order:data.workOrder,orderOptions:WORK_ORDER_OPTIONS,
+      onPreview:work=>previewWork(draft.name,work,draft.uid),onAdd:addPickedWork,onRemove:removePickedWork});
+    if(manual){editorFocusVersion++;editorPicker.focus();}
   }
   function focusEditingCard(){
     if(!draft)return;
-    const uid=editingId||draft.uid,find=()=>document.querySelector('.artist-slot[data-uid="'+uid+'"]');
+    const uid=editingId||draft.uid,focusVersion=++editorFocusVersion,find=()=>document.querySelector('.artist-slot[data-uid="'+uid+'"]');
     requestAnimationFrame(()=>{
-      ArtistGallery.mount(uid);
+      if(focusVersion!==editorFocusVersion)return;ArtistGallery.mount(uid);
       const slot=find();if(!slot)return;
-      slot.scrollIntoView({block:'center',behavior:reducedMotion()?'auto':'smooth'});
+      slot.scrollIntoView({block:'start',behavior:reducedMotion()?'auto':'smooth'});
       /* 平滑滚动期间上下方的卡片会按需挂载与释放，文档高度一直在变，目标位置会跟着漂。
          等滚动结束再校验一次：已经对齐就不动它，偏了才瞬时补齐，不叠第二层动画。 */
       setTimeout(()=>{
-        const now=find();if(!now)return;
-        const rect=now.getBoundingClientRect(),drift=rect.top+rect.height/2-window.innerHeight/2;
-        if(Math.abs(drift)>8)now.scrollIntoView({block:'center',behavior:'auto'});
+        if(focusVersion!==editorFocusVersion)return;const now=find();if(!now)return;
+        const rect=now.getBoundingClientRect(),drift=rect.top-200;
+        if(Math.abs(drift)>8)now.scrollIntoView({block:'start',behavior:'auto'});
       },420);
     });
   }
@@ -621,13 +628,13 @@
   function autoOpenPicker(){
     if(!data?.autoOpenWorks||!draft||editorPicker||!editorExpand)return;
     if(!(draft.name||'').trim())return;
-    togglePicker(editorExpand);
+    togglePicker(editorExpand,false);
   }
   function cancelEdit(){
     if(busy||uploading)return;
     morphAway(editingId,()=>{closeEditor();render();});
   }
-  function closeEditor(){if(draft)ArtistGallery.pin(editingId||draft.uid,false);ArtistImages.dispose('editor');closeWorkPicker();editingId=null;draft=null;editorError=null;editorToggle=null;editorExpand=null;paintEditorWorks=null;}
+  function closeEditor(){editorFocusVersion++;if(draft)ArtistGallery.pin(editingId||draft.uid,false);ArtistImages.dispose('editor');closeWorkPicker();editingId=null;draft=null;editorError=null;editorToggle=null;editorExpand=null;paintEditorWorks=null;}
   /* 从候选里挑出唯一可信的那一位：名字完全一致优先，只有一位候选时也接受。
      其余情况返回 null —— 宁可没有编号，也不写错。 */
   const pickCandidate=(found,name)=>{
@@ -1232,22 +1239,28 @@
   /* 顶部与对话框里都显示额度。Opus 的张数是按站点客户端的算式（17.3 × 百分比）估出来的，
      所以文案里写「约」，别当成精确值。 */
   function showAccount(message,error=false){
-    const node=$('opus-status'),line=$('gen-account');
+    const node=$('opus-status'),line=$('gen-account'),info=ArtistImageGen.cachedAccount();
     node.classList.toggle('error',error);line.classList.toggle('error',error);
-    if(message){node.textContent='额度：…';line.textContent=message;return;}
-    const info=ArtistImageGen.cachedAccount();
-    if(!info){node.textContent='额度：未查询';line.textContent='点右边「刷新额度」读取 Opus 剩余张数与 Anlas 点数。';return;}
-    const images=info.opusImages==null?'未知':('约 '+info.opusImages+' 张');
-    const parts=[`套餐 ${tierName(info.tier)}`,`免费额度剩 ${images}${info.opusPercent==null?'':`（${info.opusPercent}%）`}`,`Anlas 点数 ${info.anlas}`,info.refillPercent?`每天回复约 ${info.refillPercent}%（≈ ${info.refillImages} 张）`:''].filter(Boolean);
-    node.textContent='额度：'+images+(info.opusPercent==null?'':` ${info.opusPercent}%`)+' · '+info.anlas+' 点';
-    node.title=parts.join('｜')+'（张数是按站点算式估算的，仅供参考）';
-    line.textContent=parts.join('｜')+'。张数是按站点算式 17.3 × 百分比 估算的，仅供参考。';
+    $('quota-images').textContent=info?.opusImages==null?'约 — 张':'约 '+info.opusImages+' 张';
+    $('quota-percent').textContent=info?.opusPercent==null?'—%':info.opusPercent+'%';
+    $('quota-points').textContent=info?.anlas==null?'— 点':info.anlas+' 点';
+    $('quota-label').textContent=error?'NovelAI · 刷新失败':message?.includes('正在')?'NovelAI · 刷新中':!ArtistImageGen.loadToken()?'NovelAI · 未配置':'NovelAI 额度';
+    if(message){line.textContent=message;node.title=message;node.setAttribute('aria-label',message+'，点击刷新 NovelAI 额度');return;}
+    if(!info){line.textContent='点「刷新额度」读取剩余张数与 Anlas 点数。';node.title='点击刷新 NovelAI 额度';return;}
+    const parts=['套餐 '+tierName(info.tier),'免费额度剩 '+$('quota-images').textContent+'（'+$('quota-percent').textContent+'）','Anlas 点数 '+info.anlas];
+    node.title=parts.join('｜')+'（张数为估算值；点击刷新）';node.setAttribute('aria-label',node.title);
+    line.textContent=parts.join('｜')+'。张数按站点算式 17.3 × 百分比估算，仅供参考。';
   }
-  async function refreshAccount(force){
-    if(!ArtistImageGen.loadToken()){showAccount('还没有填写 token，填好并刷新后才能生成。');return null;}
-    showAccount('正在读取 Opus 额度…');
-    try{const info=await ArtistImageGen.account({force});showAccount('');return info;}
-    catch(error){showAccount('读取额度失败：'+error.message,true);return null;}
+  let accountPending=null;
+  function refreshAccount(force){
+    if(accountPending)return accountPending;
+    if(!ArtistImageGen.loadToken()){showAccount('还没有填写 token，请在生图参数中填写后刷新。');return Promise.resolve(null);}
+    showAccount('正在读取 NovelAI 额度…');$('opus-status').setAttribute('aria-busy','true');
+    accountPending=(async()=>{
+      try{const info=await ArtistImageGen.account({force});showAccount('');return info;}
+      catch(error){showAccount('读取额度失败：'+error.message,true);return null;}
+      finally{accountPending=null;$('opus-status').setAttribute('aria-busy','false');}
+    })();return accountPending;
   }
   /* ---------- 批量生成测试风格图 ----------
      让用户自己划一段画师序号、选几号测试风格，展开成一条条生成需求塞进同一条队列。
