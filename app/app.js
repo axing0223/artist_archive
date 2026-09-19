@@ -16,7 +16,7 @@
   const text=(v,max=5000)=>typeof v==='string'?v.slice(0,max):'';
   const url=v=>{try{const u=new URL(v);return /^https?:$/.test(u.protocol)?u.href:'';}catch{return '';}};
   const link=(label,href,cls)=>{const a=el('a',cls,label);a.href=url(href);a.target='_blank';a.rel='noopener noreferrer';return a;};
-  const imageValue=v=>typeof v==='string'&&(/^data:image\/(jpeg|png|webp|gif|avif);base64,/.test(v)||/^(?:缩略图|大图)\/[a-f0-9]{24}\.(?:jpeg|png|webp|gif|avif)$/.test(v))?v:null;
+  const imageValue=v=>typeof v==='string'&&(/^data:image\/(jpeg|png|webp|gif|avif);base64,/.test(v)||/^(?:缩略图|大图)\/(?:[a-f0-9]{24}|[^\u0000-\u001f\\/:*?"<>|][^\u0000-\u001f\\/:*?"<>|]{0,99}\.(?:jpeg|png|webp|gif|avif))$/.test(v))?v:null;
   const httpsValue=v=>typeof v==='string'&&v.startsWith('https://')?v:null;
   const seqOf=a=>ArtistId.parse(a.uid)?.seq??a.order;
   /* 卡片固定 5 格。开了「固定测试风格图」后最右 2 格归测试风格 1、2，作品图不能占用。 */
@@ -79,29 +79,60 @@
   }
   function reset(){state.category='全部';state.tags.clear();state.scores.clear();state.query='';$('search').value='';}
   function showImage(a,w){ArtistViewer.open({title:a.name,uid:a.uid,work:w,caption:w.caption,persist:true});}
-  /* 空着的固定格：一个「生成」按钮，外加它对应的测试风格序号。 */
+  /* 空着的固定格：一个「生成」按钮，外加它对应的测试风格序号。
+     按钮自己承担二次确认（第一次点亮、第二次才真发），不再弹系统对话框。 */
   function generateSlot(a,seq){
-    const box=el('div','work work-generate'),button=btn('生成',()=>generateTest(a,seq),'generate-button');
-    button.title=`用 NovelAI 生成「测试风格 ${seq}」并回填到这一格（每次生成消耗 Anlas）`;
-    box.append(button,el('span','generate-seq','测试风格 '+seq));
+    const box=el('div','work work-generate'),label=el('span','generate-seq','测试风格 '+seq),button=btn('生成',()=>armGenerate(a,seq,{box,button,label}),'generate-button');
+    button.title=`用 NovelAI 生成「测试风格 ${seq}」并回填到这一格`;
+    box.append(button,label);
     return box;
   }
-  async function generateTest(a,seq){
+  let armedSlot=null,armedTimer=null;
+  function disarmSlot(){
+    clearTimeout(armedTimer);armedTimer=null;
+    if(!armedSlot)return;
+    const {box,button,label,text}=armedSlot;
+    button.textContent='生成';button.classList.remove('is-armed');box.classList.remove('is-armed');
+    label.textContent=text;armedSlot=null;
+  }
+  function armGenerate(a,seq,slot){
     if(busy||generating)return;
-    if(!folder){status('请先选择「数据」文件夹，生成出来的图片要有地方保存。',true);return;}
-    if(!confirm(`用 NovelAI 为「${a.name}」生成测试风格 ${seq}？\n\n每次生成都会消耗 Anlas，参数与提示词在「设置 → 生图参数」里。`))return;
+    if(armedSlot&&armedSlot.button===slot.button){disarmSlot();generateTest(a,seq,slot);return;}
+    disarmSlot();
+    armedSlot={...slot,text:slot.label.textContent};
+    slot.button.textContent='再点一次开始';slot.button.classList.add('is-armed');slot.box.classList.add('is-armed');
+    slot.label.textContent='会消耗额度或点数';
+    armedTimer=setTimeout(disarmSlot,5000);
+  }
+  /* 生成期间的过渡动画：格子里换成转动的环与一行进度文字，按钮置灰。 */
+  const progressOf=box=>[...box.children].find(child=>String(child.className).includes('gen-progress'));
+  function generatingMark(box,text){
+    box.classList.add('is-generating');
+    box.replaceChildren(el('span','gen-spinner'),el('span','gen-progress',text));
+  }
+  async function generateTest(a,seq,slot){
+    if(busy||generating)return;
+    if(!folder){disarmSlot();status('请先选择「数据」文件夹，生成出来的图片要有地方保存。',true);return;}
+    const box=slot?.box,previous=box?[...box.children]:null;
+    if(box)generatingMark(box,'正在请求 NovelAI…');
     generating=true;status(`正在向 NovelAI 请求「${a.name}」的测试风格 ${seq}…`);
     try{
-      const {blob,prompt}=await ArtistImageGen.generate(a,seq);
-      status('已返回图片，正在保存…');
+      const before=ArtistImageGen.cachedAccount();
+      const {blob,prompt,free,width,height,steps}=await ArtistImageGen.generate(a,seq);
+      const progress=box&&progressOf(box);
+      if(progress)progress.textContent='正在保存到画师目录…';
       const original=await readImage(blob),next=clone(data),target=next.artists.find(item=>item.uid===a.uid);
       if(!target)throw Error('这位画师已经不在库里了，图片没有保存。');
       const testSeq=FolderStore.nextTestSeq(target.works,seq);
       /* 生成时用了什么提示词一并记下来：以后要复现或对比，不用去猜。 */
       target.works.push({id:'',url:'',caption:prompt,kind:'test',testSeq,thumb:await thumbnail(original),large:original,thumbUrl:null,largeUrl:null});
-      await save(next,`已为「${a.name}」生成测试风格 ${testSeq}`);
-    }catch(error){status('生成失败：'+error.message,true);}
-    finally{generating=false;}
+      await save(next,`已为「${a.name}」生成测试风格 ${testSeq}（${width} × ${height} · ${steps} 步${free?' · 未用点数':''}）`);
+      const after=await refreshAccount(true);
+      if(after&&before&&!free&&after.anlas<before.anlas)status(`已生成测试风格 ${testSeq}；这次消耗了 ${before.anlas-after.anlas} 点 Anlas，剩余 ${after.anlas} 点。`);
+    }catch(error){
+      status('生成失败：'+error.message,true);
+      if(box){box.classList.remove('is-generating');box.replaceChildren(...previous);}
+    }finally{generating=false;disarmSlot();}
   }
   function artistCard(a){
     const article=el('article','artist'),info=el('div','artist-info'),top=el('div','artist-top');article.dataset.artist=a.name;
@@ -711,15 +742,49 @@
   }
   /* ---- 生图参数：只存在本机浏览器里，绝不写进画师库数据文件，导出备份也就不会带 token ---- */
   const GEN_LISTS=[['gen-model',()=>ArtistNovelAI.MODELS],['gen-size',()=>ArtistNovelAI.SIZES],['gen-sampler',()=>ArtistNovelAI.SAMPLERS],['gen-uc',()=>ArtistNovelAI.UC_PRESETS]];
-  const GEN_FIELDS=[['gen-model','model'],['gen-size','size'],['gen-width','width'],['gen-height','height'],['gen-steps','steps'],['gen-scale','scale'],['gen-sampler','sampler'],['gen-seed','seed'],['gen-uc','ucPreset'],['gen-negative','negativePrompt'],['gen-prompt1','prompt1'],['gen-prompt2','prompt2']];
-  function fillGenSettings(){const settings=ArtistImageGen.load();for(const [id,key] of GEN_FIELDS)$(id).value=settings[key]==null?'':String(settings[key]);$('gen-token').value=ArtistImageGen.loadToken();}
+  const GEN_FIELDS=[['gen-model','model'],['gen-size','size'],['gen-width','width'],['gen-height','height'],['gen-steps','steps'],['gen-scale','scale'],['gen-cfg-rescale','cfgRescale'],['gen-sampler','sampler'],['gen-seed','seed'],['gen-uc','ucPreset'],['gen-negative','negativePrompt'],['gen-prompt1','prompt1'],['gen-prompt2','prompt2']];
+  const GEN_SWITCHES=[['gen-transparent','transparentBg'],['gen-anlas','useAnlas']];
+  function fillGenSettings(){
+    const settings=ArtistImageGen.load();
+    for(const [id,key] of GEN_FIELDS)$(id).value=settings[key]==null?'':String(settings[key]);
+    for(const [id,key] of GEN_SWITCHES)$(id).checked=settings[key]===true;
+    $('gen-token').value=ArtistImageGen.loadToken();
+  }
   /* 输入框里是字符串、可能是空、可能超范围：统一交给 sanitize 收口，坏值回落到默认。 */
-  function readGenSettings(){const raw={};for(const [id,key] of GEN_FIELDS)raw[key]=$(id).value;return ArtistImageGen.save(raw);}
+  function readGenSettings(){const raw={};for(const [id,key] of GEN_FIELDS)raw[key]=$(id).value;for(const [id,key] of GEN_SWITCHES)raw[key]=$(id).checked;return ArtistImageGen.save(raw);}
   function bindGenSettings(){
     for(const [id,list] of GEN_LISTS)$(id).replaceChildren(...list().map(item=>new Option(item.label,item.value)));
     for(const [id] of GEN_FIELDS){const node=$(id);node.onchange=readGenSettings;node.oninput=readGenSettings;}
-    $('gen-token').oninput=()=>ArtistImageGen.saveToken($('gen-token').value);
+    for(const [id] of GEN_SWITCHES)$(id).onchange=readGenSettings;
+    $('gen-token').oninput=()=>{ArtistImageGen.saveToken($('gen-token').value);showAccount('token 已存到本机，点「刷新额度」重新读取。');};
     $('gen-token-toggle').onclick=()=>{const box=$('gen-token'),hidden=box.type==='password';box.type=hidden?'text':'password';$('gen-token-toggle').textContent=hidden?'隐藏':'显示';};
+  }
+  const tierName=tier=>tier==='3'||tier===3?'Opus':tier==='2'||tier===2?'Scroll':tier==='1'||tier===1?'Tablet':tier==='0'||tier===0?'Paper':tier==null?'未知套餐':String(tier);
+  /* 顶部与对话框里都显示额度。Opus 的张数是按站点客户端的算式（17.3 × 百分比）估出来的，
+     所以文案里写「约」，别当成精确值。 */
+  function showAccount(message,error=false){
+    const node=$('opus-status'),line=$('gen-account');
+    node.classList.toggle('error',error);line.classList.toggle('error',error);
+    if(message){node.textContent='额度：…';line.textContent=message;return;}
+    const info=ArtistImageGen.cachedAccount();
+    if(!info){node.textContent='额度：未查询';line.textContent='点右边「刷新额度」读取 Opus 剩余张数与 Anlas 点数。';return;}
+    const images=info.opusImages==null?'未知':('约 '+info.opusImages+' 张');
+    const parts=[`套餐 ${tierName(info.tier)}`,`免费额度剩 ${images}${info.opusPercent==null?'':`（${info.opusPercent}%）`}`,`Anlas 点数 ${info.anlas}`,info.refillPercent?`每天回复约 ${info.refillPercent}%（≈ ${info.refillImages} 张）`:''].filter(Boolean);
+    node.textContent='额度：'+images+(info.opusPercent==null?'':` ${info.opusPercent}%`)+' · '+info.anlas+' 点';
+    node.title=parts.join('｜')+'（张数是按站点算式估算的，仅供参考）';
+    line.textContent=parts.join('｜')+'。张数是按站点算式 17.3 × 百分比 估算的，仅供参考。';
+  }
+  async function refreshAccount(force){
+    if(!ArtistImageGen.loadToken()){showAccount('还没有填写 token，填好并刷新后才能生成。');return null;}
+    showAccount('正在读取 Opus 额度…');
+    try{const info=await ArtistImageGen.account({force});showAccount('');return info;}
+    catch(error){showAccount('读取额度失败：'+error.message,true);return null;}
+  }
+  /* 顶部按钮上的额度：只在已经配好 token 与扩展时自动查一次，其余交给用户点。 */
+  function autoAccount(){
+    if(!ArtistImageGen.loadToken()){showAccount();return;}
+    if(!ArtistExtension.canAccount){showAccount();return;}
+    refreshAccount(false);
   }
   async function init(){
     applyCardSize();
@@ -734,7 +799,10 @@
     $('test-remove-all').onclick=()=>{for(const box of $('test-remove-list').querySelectorAll('input[type=checkbox]'))box.checked=true;};
     $('test-remove-none').onclick=()=>{for(const box of $('test-remove-list').querySelectorAll('input[type=checkbox]'))box.checked=false;};
     $('test-remove-run').onclick=()=>ArtistTestImages.runRemove();
-    $('settings-open').onclick=()=>{$('history-date').value=data.cutoffDate;$('save-large').checked=data.saveLargeImages===true;$('fixed-test').checked=data.fixedTestSlots===true;$('work-order').value=data.workOrder;$('card-size').value=String(prefs.cardSize);$('card-size-value').textContent=prefs.cardSize;fillGenSettings();updateGenStatus();$('settings').showModal();};$('close-settings').onclick=()=>$('settings').close();
+    $('settings-open').onclick=()=>{$('history-date').value=data.cutoffDate;$('save-large').checked=data.saveLargeImages===true;$('fixed-test').checked=data.fixedTestSlots===true;$('work-order').value=data.workOrder;$('card-size').value=String(prefs.cardSize);$('card-size-value').textContent=prefs.cardSize;$('settings').showModal();};$('close-settings').onclick=()=>$('settings').close();
+    $('gen-settings-open').onclick=()=>{fillGenSettings();showAccount();updateGenStatus();$('gen-settings').showModal();if(ArtistImageGen.loadToken()&&!ArtistImageGen.cachedAccount())refreshAccount(false);};$('close-gen-settings').onclick=()=>$('gen-settings').close();
+    $('opus-status').onclick=()=>refreshAccount(true);
+    $('gen-account-refresh').onclick=()=>refreshAccount(true);
     $('card-size').oninput=()=>{const value=Number($('card-size').value);$('card-size-value').textContent=value;prefs.setCardSize(value);};
     $('save-large').onchange=async()=>{const next=clone(data);next.saveLargeImages=$('save-large').checked;await save(next,next.saveLargeImages?'已开启「保存大图」：预览作品时会保存原图':'已关闭「保存大图」：预览作品时不再保存原图');};
     $('fixed-test').onchange=async()=>{const next=clone(data);next.fixedTestSlots=$('fixed-test').checked;await save(next,next.fixedTestSlots?'已开启「固定测试风格图」：每张卡片右侧 2 格留给测试风格 1、2':'已关闭「固定测试风格图」：测试风格图不再占固定格子');};
@@ -756,7 +824,7 @@
     $('viewer').addEventListener('close',()=>{ArtistImages.dispose('viewer');ArtistViewer.dispose();});$('save-original').onclick=()=>ArtistViewer.saveOriginal();
     document.querySelectorAll('dialog').forEach(dialog=>dialog.addEventListener('click',event=>{if(event.target===dialog)dialog.close();}));
     $('extension-status').onclick=checkExtension;
-    window.addEventListener('beforeunload',e=>{if(volatile||busy){e.preventDefault();e.returnValue='';}});render();document.querySelectorAll('button,input,textarea,select').forEach(b=>b.disabled=true);$('choose-folder').disabled=false;$('extension-status').disabled=false;$('choose-folder').onclick=connectFolder;checkExtension();
+    window.addEventListener('beforeunload',e=>{if(volatile||busy){e.preventDefault();e.returnValue='';}});render();document.querySelectorAll('button,input,textarea,select').forEach(b=>b.disabled=true);$('choose-folder').disabled=false;$('extension-status').disabled=false;$('choose-folder').onclick=connectFolder;checkExtension().then(autoAccount);
   }
   init();
 })();

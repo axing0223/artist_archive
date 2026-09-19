@@ -1,4 +1,4 @@
-import {fetchImage,resolvePost,fetchApi,imageUrl,generateImage} from './probe.mjs';
+import {fetchImage,resolvePost,fetchApi,imageUrl,generateImage,fetchSubscription} from './probe.mjs';
 import {allowedSender} from './bridge-policy.mjs';
 chrome.action.onClicked.addListener(()=>chrome.tabs.create({url:chrome.runtime.getURL('test.html')}));
 const CHUNK=4*1024*1024,MAX_BYTES=50*1024*1024,KEEP=120000,GENERATE_URL='https://image.novelai.net/ai/generate-image';
@@ -36,6 +36,11 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
   }
   if(message.type==='api'){
     fetchApi(message.url).then(result=>respond({ok:true,status:result.status,json:result.json}),error=>respond({ok:false,error:error.name==='TimeoutError'?'接口请求超时':error.message}));
+    return true;
+  }
+  if(message.type==='subscription'){
+    /* 只读查询：返回体很小，不用分块。 */
+    fetchSubscription(message.url,{token:message.token}).then(json=>respond({ok:true,json}),error=>respond({ok:false,error:error.name==='TimeoutError'?'额度查询超时':error.message}));
     return true;
   }
   if(message.type==='generate'){

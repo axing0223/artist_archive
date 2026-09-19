@@ -29,6 +29,25 @@ export function bearerToken(value){
   if(!/^[\x21-\x7e]{8,300}$/.test(token))throw Error('NovelAI token 格式无效：应当是 pst- 开头的一串字符，不能带空格或换行。');
   return token;
 }
+const SUBSCRIPTION_HOSTS=new Set(['image.novelai.net','api.novelai.net']);
+/* 订阅/额度查询也走白名单：站点客户端用的是 /user/subscription，两个域名都能答。 */
+export function subscriptionUrl(value){
+  const u=new URL(String(value));
+  if(u.protocol!=='https:'||!SUBSCRIPTION_HOSTS.has(u.hostname)||u.port||u.username||u.password)throw Error('额度地址仅支持 https://image.novelai.net/ 或 https://api.novelai.net/，不能含账号、密码或自定义端口。');
+  if(u.pathname!=='/user/subscription')throw Error('额度地址只允许 /user/subscription。');
+  u.hash='';u.search='';return u.href;
+}
+/* 只读订阅信息：用来显示套餐、Anlas 余额与 Opus 额度。返回原样 JSON，由网页解释。 */
+export async function fetchSubscription(value,{token,fetcher=fetch,signal=AbortSignal.timeout(20000)}={}){
+  const url=subscriptionUrl(value),authorization='Bearer '+bearerToken(token);
+  const response=await fetcher(url,{method:'GET',credentials:'omit',signal,cache:'no-store',redirect:'error',headers:{accept:'application/json',authorization}});
+  const declared=Number(response.headers.get('content-length'));
+  if(declared>2*1024*1024){await response.body?.cancel();throw Error('订阅信息超过大小限制。');}
+  const text=await response.text();
+  if(response.status===401||response.status===403)throw Error('token 被拒绝，请重新生成 Persistent API Token。');
+  if(!response.ok)throw Error('读取订阅信息失败：HTTP '+response.status+(text?'（'+text.slice(0,200)+'）':''));
+  try{return JSON.parse(text);}catch{throw Error('订阅接口没有返回 JSON。');}
+}
 /* 带登录态取接口数据：图片地址字段只对"可见用户"返回，匿名请求拿不到 */
 export async function fetchApi(value,{fetcher=fetch,signal=AbortSignal.timeout(20000)}={}){
   const response=await fetcher(apiUrl(value),{credentials:'include',signal,cache:'no-store',redirect:'error'});

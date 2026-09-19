@@ -35,7 +35,7 @@ test('V5 请求体：params_version 4、ucPresetId 是字符串、没有 quality
   assert.equal(body.parameters.width,832);assert.equal(body.parameters.height,1216);
   assert.equal(body.parameters.seed,7);
   assert.equal(body.parameters.image_format,'png');
-  assert.equal(body.parameters.straight_alpha,true);
+  assert.equal('straight_alpha' in body.parameters,false,'没开透明背景就不发 alpha 相关字段（见 transparent BG 那条）');
   assert.equal(body.parameters.v4_prompt.caption.base_caption,body.input,'v4_prompt 的 base_caption 要和 input 一致');
   assert.equal(body.parameters.v4_negative_prompt.caption.base_caption,body.parameters.negative_prompt,'v4_negative_prompt 要和 negative_prompt 一致');
   assert.deepEqual(body.parameters.v4_prompt.caption.char_captions,[]);
@@ -89,6 +89,46 @@ test('非法设置一律回落到安全默认，不把坏值发出去',()=>{
   assert.equal(body.parameters.height,64,'过小要被钳到下限 64');
 });
 
+test('Prompt Guidance Rescale 是 cfg_rescale，默认 0，越界回落',()=>{
+  assert.equal(ai.buildBody({},'x').parameters.cfg_rescale,0,'默认 0');
+  assert.equal(ai.buildBody({cfgRescale:0.35},'x').parameters.cfg_rescale,0.35);
+  assert.equal(ai.buildBody({cfgRescale:0},'x').parameters.cfg_rescale,0);
+  assert.equal(ai.buildBody({cfgRescale:9},'x').parameters.cfg_rescale,0,'超过 1 的坏值不照发');
+  assert.equal(ai.buildBody({cfgRescale:'abc'},'x').parameters.cfg_rescale,0);
+});
+test('transparent BG：V5 按站点客户端发三个字段，其他模型一个都不发',()=>{
+  const v5=ai.buildBody({model:'nai-diffusion-5-full',transparentBg:true},'x').parameters;
+  assert.equal(v5.tag_hint_transparent_background,true);
+  assert.equal(v5.straight_alpha,true);
+  assert.equal(v5.image_format,'png');
+  const off=ai.buildBody({model:'nai-diffusion-5-full'},'x').parameters;
+  assert.equal('tag_hint_transparent_background' in off,false,'没开就不发这个提示');
+  assert.equal('straight_alpha' in off,false);
+  assert.equal(off.image_format,'png','V5 一律要 PNG');
+  for(const model of ['nai-diffusion-4-5-full','nai-diffusion-4-full','nai-diffusion-3']){
+    const other=ai.buildBody({model,transparentBg:true},'x').parameters;
+    assert.equal('tag_hint_transparent_background' in other,false,model+' 不支持原生透明，不该发这个字段');
+    assert.equal('straight_alpha' in other,false,model);
+  }
+});
+test('免费额度：fitPixels 等比缩进 1M 像素，永远不超预算也不低于 64',()=>{
+  assert.deepEqual(ai.fitPixels(832,1216,ai.FREE_PIXELS),{width:832,height:1216},'默认竖图本来就在免费范围内，原样保留');
+  assert.deepEqual(ai.fitPixels(1024,1024,ai.FREE_PIXELS),{width:1024,height:1024},'正好 1M 也算免费');
+  const wide=ai.fitPixels(1024,1536,ai.FREE_PIXELS);
+  assert.ok(wide.width*wide.height<=ai.FREE_PIXELS,'大竖图要被压回预算内');
+  assert.deepEqual(wide,{width:832,height:1216},'比例基本不变');
+  const wallpaper=ai.fitPixels(1088,1920,ai.FREE_PIXELS);
+  assert.ok(wallpaper.width*wallpaper.height<=ai.FREE_PIXELS);
+  assert.ok(Math.abs(wallpaper.width/wallpaper.height-1088/1920)<0.05,'壁纸比例也要留住');
+  for(const [w,h] of [[2048,2048],[64,2048],[1536,2048]]){
+    const fit=ai.fitPixels(w,h,ai.FREE_PIXELS);
+    assert.ok(fit.width*fit.height<=ai.FREE_PIXELS,`${w}×${h} 压不进预算`);
+    assert.equal(fit.width%64,0);assert.equal(fit.height%64,0);
+    assert.ok(fit.width>=64&&fit.height>=64);
+  }
+  assert.deepEqual(ai.fitPixels(10,10,ai.FREE_PIXELS),{width:64,height:64},'过小的尺寸抬到下限');
+  assert.equal(ai.FREE_STEPS,28,'站点把 28 步以内算作免费');
+});
 test('宽高对齐到 64 的倍数',()=>{
   assert.equal(ai.nearest64(100),128);
   assert.equal(ai.nearest64(1),64);

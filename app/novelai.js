@@ -6,6 +6,9 @@
   const ENDPOINT='https://image.novelai.net/ai/generate-image';
   /* 站点对总像素的限制：1536 × 2048。单边 2048 只是硬上限，超预算要在发请求前拦住。 */
   const MAX_PIXELS=1536*2048;
+  /* Opus 的免费额度范围：总像素不超过 1M、步数不超过 28。超出这两条就要花 Anlas（点数），
+     站点客户端的「Limit to free generation」用的也是这两个数。 */
+  const FREE_PIXELS=1024*1024,FREE_STEPS=28;
   const MODELS=[
     {value:'nai-diffusion-5-full',label:'V5 Full'},
     {value:'nai-diffusion-5-curated',label:'V5 Curated'},
@@ -57,6 +60,14 @@
   /* 单边硬上限是 2048；总像素上限 1536×2048 由调用方在发请求前把关。 */
   const clamp=(n,min,max)=>{const v=Number(n);return Number.isFinite(v)?Math.min(max,Math.max(min,v)):min;};
   const sizeOf=value=>SIZES.find(s=>s.value===value)||SIZES[0];
+  /* 把宽高压进免费额度：等比缩到 maxPixels 之内，再向 64 对齐并保证不超预算。
+     对齐只会向下取，所以缩完永远不会反弹回预算之上。 */
+  function fitPixels(width,height,maxPixels){
+    const w=Math.max(64,Number(width)||64),h=Math.max(64,Number(height)||64);
+    if(w*h<=maxPixels)return {width:w,height:h};
+    const scale=Math.sqrt(maxPixels/(w*h));
+    return {width:Math.max(64,Math.floor(w*scale/64)*64),height:Math.max(64,Math.floor(h*scale/64)*64)};
+  }
   const ucTagsOf=(model,preset)=>preset==='heavy'?UC_HEAVY[familyOf(model)]:'';
   const qualityTagsOf=model=>QUALITY_TAGS[familyOf(model)];
 
@@ -75,9 +86,11 @@
     const finalUc=ucTagsOf(model,preset)+String(settings.negativePrompt??'');
     const steps=Number.isSafeInteger(settings.steps)&&settings.steps>0?settings.steps:28;
     const scale=Number.isFinite(settings.scale)&&settings.scale>=0?settings.scale:5;
+    /* Prompt Guidance Rescale（站点 UI 就叫这个名字）：0–1，越大越压高引导带来的过曝。 */
+    const cfgRescale=Number.isFinite(settings.cfgRescale)&&settings.cfgRescale>=0&&settings.cfgRescale<=1?settings.cfgRescale:0;
     const seed=Number.isSafeInteger(settings.seed)&&settings.seed>=0?settings.seed:Math.floor(Math.random()*4294967295);
     const parameters={
-      cfg_rescale:0,controlnet_strength:1,dynamic_thresholding:false,skip_cfg_above_sigma:null,
+      cfg_rescale:cfgRescale,controlnet_strength:1,dynamic_thresholding:false,skip_cfg_above_sigma:null,
       legacy:false,legacy_uc:false,legacy_v3_extend:false,n_samples:1,
       negative_prompt:finalUc,params_version:3,noise_schedule:'native',qualityToggle:false,
       sampler,scale,seed,steps,
@@ -96,9 +109,12 @@
       parameters.qualityPresetId='standard';
       parameters.tag_hint_qt=1;parameters.tag_hint_uc_preset=2;
       parameters.normalize_reference_strength_multiple=true;
-      parameters.straight_alpha=true;parameters.image_format='png';
+      parameters.image_format='png';
       parameters.inpaintImg2ImgStrength=1;parameters.add_original_image=true;
       delete parameters.sm;delete parameters.sm_dyn;delete parameters.qualityToggle;delete parameters.skip_cfg_above_sigma;
+      /* 透明背景是 V5 独有的原生 Alpha 输出，站点客户端就是这么发的三个字段。
+         别的模型不发：buildBody 不认识就当作没开，由调用方在发请求前把话说明白。 */
+      if(settings.transparentBg===true){parameters.tag_hint_transparent_background=true;parameters.straight_alpha=true;parameters.image_format='png';}
     }
     return body;
   }
@@ -127,6 +143,6 @@
     throw Error('压缩包里没有图片');
   }
 
-  const api={fillTemplate,buildBody,firstImageFromZip,ENDPOINT,MODELS,SIZES,SAMPLERS,UC_PRESETS,QUALITY_TAGS,UC_HEAVY,isV5,isV4x,familyOf,nearest64,MAX_PIXELS};
+  const api={fillTemplate,buildBody,firstImageFromZip,fitPixels,ENDPOINT,MODELS,SIZES,SAMPLERS,UC_PRESETS,QUALITY_TAGS,UC_HEAVY,isV5,isV4x,familyOf,nearest64,MAX_PIXELS,FREE_PIXELS,FREE_STEPS};
   root.ArtistNovelAI=api;if(typeof module!=='undefined')module.exports=api;
 })(globalThis);

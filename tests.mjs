@@ -35,6 +35,50 @@ test('缩略图与原图分别落进 缩略图/ 大图/，imageOf 本地优先�
  await assert.rejects(()=>store.saveImage(dir,'0001-a-1','large',new Blob([Uint8Array.from([1])],{type:'image/tiff'})),/不支持/);
  await assert.rejects(()=>store.saveImage(dir,'../evil','thumb',new Blob([Uint8Array.from([1])],{type:'image/jpeg'})),/标识/);
 });
+test('测试风格图按「画师tag-测试风格N」落盘，缩略图与大图各自带扩展名',async()=>{
+ const dir=new Directory();await store.write(dir,store.empty());
+ const data=store.empty();
+ data.artists.push({uid:'0001-modare-105704',order:1,name:'modare',category:null,score:null,aliases:[],alias:null,tags:[],danbooruId:105704,counts:{},artistUrl:'',description:'',note:'',basis:'',status:'',
+  works:[{id:'',url:'',caption:'',kind:'test',testSeq:1,thumb:jpeg,large:png,thumbUrl:null,largeUrl:null},{id:'7',url:'https://danbooru.donmai.us/posts/7',caption:'',thumb:jpeg,large:null,thumbUrl:null,largeUrl:null}]});
+ const saved=await store.write(dir,data);
+ const [generated,work]=saved.artists[0].works;
+ assert.equal(generated.large,'大图/modare-测试风格1.png','原图用画师 tag 与测试风格序号命名');
+ assert.equal(generated.thumb,'缩略图/modare-测试风格1.jpeg','缩略图同名、换自己的扩展名，不把 JPG 写成 .png');
+ assert.match(work.thumb,/^缩略图\/[a-f0-9]{24}\.jpeg$/,'普通作品图照旧按内容哈希命名');
+ assert.deepEqual(await bytesOf(await store.readImage(dir,'0001-modare-105704',generated.large)),Uint8Array.from(Buffer.from(png.split(',')[1],'base64')),'大图读回来还是原来那张 PNG');
+ assert.equal(store.validWork(generated),true,'新名字要能通过数据校验');
+});
+test('画师名里的非法字符会被换掉，过长的名字截断，非法序号按 1 处理',()=>{
+ assert.equal(store.testImageName('modare',1),'modare-测试风格1');
+ assert.equal(store.testImageName('a/b:c*?"<>|d',2),'a_b_c______d-测试风格2','八个非法字符各换成一个下划线');
+ assert.equal(store.testImageName('   ',3),'画师-测试风格3','名字全是空白时给一个能用的兜底');
+ assert.equal(store.testImageName('x'.repeat(200),1),'x'.repeat(80)+'-测试风格1','过长的画师名要截断');
+ assert.equal(store.testImageName('a',0),'a-测试风格1','非法序号按 1 处理');
+});
+test('清理只删自己写出来的图片名，用户放进目录里的其它文件不动',async()=>{
+ const dir=new Directory();await store.write(dir,store.empty());
+ const data=store.empty();
+ data.artists.push({uid:'0001-a-1',order:1,name:'a',category:null,score:null,aliases:[],alias:null,tags:[],danbooruId:null,counts:{},artistUrl:'',description:'',note:'',basis:'',status:'',
+  works:[{id:'',url:'',caption:'',kind:'test',testSeq:1,thumb:jpeg,large:png,thumbUrl:null,largeUrl:null}]});
+ const first=await store.write(dir,data);
+ const folder=await (await dir.getDirectoryHandle('画师')).getDirectoryHandle('0001-a-1');
+ const large=await folder.getDirectoryHandle('大图');
+ await put(large,'a-测试风格9.png',Uint8Array.from([1,2,3]));
+ await put(large,'我的笔记.png',Uint8Array.from([9,9,9]));
+ await put(large,'aa-测试风格1.png',Uint8Array.from([8,8,8]));
+ data.artists[0].works[0].caption='改一下，让这次真的写盘';
+ const second=await store.write(dir,data);
+ assert.equal(second.artists[0].works[0].large,first.artists[0].works[0].large,'重写后仍然指向同一张图');
+ assert.deepEqual([...large.items.keys()].sort(),['a-测试风格1.png','我的笔记.png'],'过期的测试图被清掉，用户自己的文件留下');
+});
+test('同一批里出现重名时往后加序号，不互相覆盖',async()=>{
+ const dir=new Directory();await store.write(dir,store.empty());
+ const data=store.empty();
+ const work=seq=>({id:'',url:'',caption:'',kind:'test',testSeq:seq,thumb:jpeg,large:png,thumbUrl:null,largeUrl:null});
+ data.artists.push({uid:'0001-a-1',order:1,name:'a',category:null,score:null,aliases:[],alias:null,tags:[],danbooruId:null,counts:{},artistUrl:'',description:'',note:'',basis:'',status:'',works:[work(1),work(1)]});
+ const saved=await store.write(dir,data);
+ assert.deepEqual(saved.artists[0].works.map(w=>w.large),['大图/a-测试风格1.png','大图/a-测试风格1-2.png']);
+});
 test('索引里有、盘上没有的画师目录只跳过并记警告，不让整个库打不开',async()=>{
  const dir=new Directory(),artists=new Directory('画师');
  dir.items.set('画师',artists);

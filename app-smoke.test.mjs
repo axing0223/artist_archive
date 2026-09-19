@@ -45,7 +45,7 @@ FileUrl.createObjectURL=()=>'blob:x';FileUrl.revokeObjectURL=()=>{};
     fetch:async()=>{throw Error('测试中不应联网');},
     URL:FileUrl,Blob,structuredClone,setTimeout,clearTimeout,requestAnimationFrame:fn=>fn(),
     ArtistImages:{bind(){},dispose(){},setFolder(){},clear(){},dataUrl:async()=>'data:image/jpeg;base64,/9j/2Q==',fetch:async()=>new Blob([])},
-    ArtistExtension:{connected:false,canGenerate:false,version:'',generate:async()=>{throw Error('未连接');},check:async()=>{throw Error('测试中未连接扩展');},image:async()=>{throw Error('未连接');},resolve:async()=>{throw Error('未连接');}},
+    ArtistExtension:{connected:false,canGenerate:false,canAccount:false,version:'',generate:async()=>{throw Error('未连接');},subscription:async()=>{throw Error('未连接');},check:async()=>{throw Error('测试中未连接扩展');},image:async()=>{throw Error('未连接');},resolve:async()=>{throw Error('未连接');}},
     ArtistGallery:{render(container,rows,card){state.card=card;state.rows=rows;state.renders.push(rows.map(row=>card(row)));},clear(){},pin(){},visible:()=>[],mount(uid){state.mounted.push(uid);return true;}},
     ArtistLookup:{plan(){throw Error('测试中不查询');},lookup:async()=>[],posts:async()=>[],details:async()=>({counts:{total:null,beforeTotal:null}})},
   };
@@ -726,33 +726,82 @@ test('固定测试风格图：已有的测试图回自己的固定格，只剩�
   assert.equal(findByClass(children[3],'generate-seq').textContent,'测试风格 2');
   assert.equal(String(children[4].className).includes('is-test'),true,'序号 1 的测试图占最右格');
 });
-test('固定格的「生成」按钮：没选数据文件夹时不发请求，先把话说清楚',async()=>{
-  const {elements,state,ctx}=await boot();
-  let requested=0;
-  ctx.ArtistImageGen={...ctx.ArtistImageGen,generate:async()=>{requested++;throw Error('不该走到这里');}};
-  const toggle=getEl(elements,'fixed-test');toggle.checked=true;await toggle.onchange();
-  const box=findByClass(state.card(bareArtist({works:thumbWorks(1)})),'work-generate');
-  assert.equal(findByClass(box,'generate-button').textContent,'生成');
-  await findByClass(box,'generate-button').onclick();
-  assert.equal(requested,0,'没有数据文件夹时不该真的去生成');
-  assert.match(String(getEl(elements,'storage-status').textContent),/数据.*文件夹/);
+test('生图参数独立成一个对话框，入口在顶部「设置」右边',async()=>{
+  const html=await fs.readFile('app/index.html','utf8');
+  assert.match(html,/id="settings-open"[^>]*>设置<\/button><button id="gen-settings-open"/,'「生图参数」要排在「设置」右边');
+  assert.match(html,/id="gen-settings" class="small-dialog wide-dialog"/);
+  const settingsBlock=html.slice(html.indexOf('id="settings"'),html.indexOf('id="gen-settings"'));
+  for(const id of ['gen-token','gen-model','gen-size','gen-steps','gen-negative','gen-prompt1','gen-prompt2','gen-cfg-rescale','gen-transparent','gen-anlas','gen-account'])
+    assert.equal(settingsBlock.includes('id="'+id+'"'),false,id+' 不该再留在「设置」里');
+  assert.equal(html.slice(html.indexOf('id="gen-settings"')).includes('id="fixed-test"'),false,'固定测试风格图是显示开关，留在「设置」里');
+  assert.match(html,/id="fixed-test"/);
 });
-test('生图参数存在本机：设置里读得到也写回去，token 不混进参数',async()=>{
+test('生图参数：顶部按钮打开新对话框并回填，改了就存回本机',async()=>{
   const {elements,ctx}=await boot();
-  ctx.localStorage.setItem('artist-library.image-gen',JSON.stringify({steps:31,model:'nai-diffusion-3',width:960}));
-  getEl(elements,'settings-open').onclick();
-  assert.equal(getEl(elements,'gen-steps').value,'31','存过的步数要回填');
+  ctx.localStorage.setItem('artist-library.image-gen',JSON.stringify({steps:31,model:'nai-diffusion-3',width:960,cfgRescale:0.25,transparentBg:true,useAnlas:true}));
+  const opened=[];
+  getEl(elements,'gen-settings').showModal=()=>opened.push('gen');
+  getEl(elements,'gen-settings-open').onclick();
+  assert.deepEqual(opened,['gen'],'点顶部按钮要弹出「生图参数」');
+  assert.equal(getEl(elements,'gen-steps').value,'31');
   assert.equal(getEl(elements,'gen-model').value,'nai-diffusion-3');
-  assert.equal(getEl(elements,'gen-width').value,'960','用户自己填的宽高要回填');
-  assert.equal(getEl(elements,'gen-height').value,'','没填过的留空，交给档位决定');
-  const steps=getEl(elements,'gen-steps');steps.value='44';steps.oninput();
-  const saved=JSON.parse(ctx.localStorage.getItem('artist-library.image-gen'));
-  assert.equal(saved.steps,44,'改了就存回本机');
+  assert.equal(getEl(elements,'gen-cfg-rescale').value,'0.25');
+  assert.equal(getEl(elements,'gen-transparent').checked,true);
+  assert.equal(getEl(elements,'gen-anlas').checked,true);
+  const rescale=getEl(elements,'gen-cfg-rescale');rescale.value='0.6';rescale.oninput();
+  assert.equal(JSON.parse(ctx.localStorage.getItem('artist-library.image-gen')).cfgRescale,0.6);
+  const transparent=getEl(elements,'gen-transparent');transparent.checked=false;transparent.onchange();
+  assert.equal(JSON.parse(ctx.localStorage.getItem('artist-library.image-gen')).transparentBg,false,'开关也要存回去');
+  const anlas=getEl(elements,'gen-anlas');anlas.checked=true;anlas.onchange();
+  assert.equal(JSON.parse(ctx.localStorage.getItem('artist-library.image-gen')).useAnlas,true);
+  const prompt=getEl(elements,'gen-prompt1');prompt.value='artist:{tag}, 1girl';prompt.oninput();
+  assert.equal(JSON.parse(ctx.localStorage.getItem('artist-library.image-gen')).prompt1,'artist:{tag}, 1girl');
   const width=getEl(elements,'gen-width');width.value='99999';width.onchange();
   assert.equal(JSON.parse(ctx.localStorage.getItem('artist-library.image-gen')).width,null,'超出上限的宽高不留在设置里');
+  assert.equal(getEl(elements,'gen-height').value,'','没填过的留空，交给档位决定');
   const token=getEl(elements,'gen-token');token.value='pst-abcdefghijklmnop';token.oninput();
   assert.equal(ctx.localStorage.getItem('artist-library.novelai-token'),'pst-abcdefghijklmnop');
   assert.equal(ctx.localStorage.getItem('artist-library.image-gen').includes('pst-'),false,'token 不能和生图参数写在一起');
+});
+test('顶部的额度按钮：没配 token 时不去打接口，说明去哪儿填',async()=>{
+  const {elements}=await boot();
+  await wait(10);
+  getEl(elements,'opus-status').onclick();
+  assert.match(String(getEl(elements,'opus-status').textContent),/额度/);
+  assert.match(String(getEl(elements,'gen-account').textContent),/token/,'要把「去填 token」说清楚');
+});
+test('固定格的【生成】按钮：第一次只是点亮，第二次才真的发；没选文件夹时说明原因',async()=>{
+  const {elements,state,ctx}=await boot();
+  const toggle=getEl(elements,'fixed-test');toggle.checked=true;await toggle.onchange();
+  let asked=0;
+  const realGenerate=ctx.ArtistImageGen.generate;
+  ctx.ArtistImageGen.generate=async()=>{asked++;throw Error('不该走到这里');};
+  const box=findByClass(state.card(bareArtist({works:thumbWorks(1)})),'work-generate');
+  const button=findByClass(box,'generate-button'),label=findByClass(box,'generate-seq'),seqText=label.textContent;
+  assert.match(seqText,/^测试风格 \d$/);
+  assert.equal(button.textContent,'生成');
+  button.onclick();
+  assert.equal(button.textContent,'再点一次开始','第一次点击只进入确认态，不弹窗');
+  assert.equal(String(box.className).includes('is-armed'),true,'格子上要有醒目的确认样式');
+  assert.equal(label.textContent,'会消耗额度或点数','确认态要把代价写出来');
+  assert.equal(asked,0,'确认前不能发请求');
+  await button.onclick();
+  assert.equal(asked,0,'没有数据文件夹时不该真的去生成');
+  assert.match(String(getEl(elements,'storage-status').textContent),/数据.*文件夹/);
+  assert.equal(button.textContent,'生成','拒绝之后按钮要复位');
+  assert.equal(label.textContent,seqText,'序号文字也要复原');
+  ctx.ArtistImageGen.generate=realGenerate;
+});
+test('生成中的过渡动画有旋转环与进度文字，样式表里也有动画定义',async()=>{
+  const css=await fs.readFile('app/style.css','utf8');
+  assert.match(css,/\.gen-spinner\{[^}]*animation:gen-spin/);
+  assert.match(css,/@keyframes gen-spin\{/);
+  assert.match(css,/\.gen-progress\{/);
+  assert.match(css,/prefers-reduced-motion/,'动画要照顾系统里的「减少动态效果」设置');
+  const app=await fs.readFile('app/app.js','utf8');
+  assert.match(app,/generatingMark\(/);
+  assert.match(app,/gen-spinner/);
+  assert.match(app,/gen-progress/);
 });
 test('生图参数的下拉框来自 NovelAI 模块，模板与尺寸不会写死两遍',async()=>{
   const {elements,ctx}=await boot();
@@ -761,7 +810,7 @@ test('生图参数的下拉框来自 NovelAI 模块，模板与尺寸不会写�
   assert.equal(values('gen-size'),ctx.ArtistNovelAI.SIZES.map(s=>s.value).join(','));
   assert.equal(values('gen-sampler'),ctx.ArtistNovelAI.SAMPLERS.map(s=>s.value).join(','));
   assert.equal(values('gen-uc'),ctx.ArtistNovelAI.UC_PRESETS.map(p=>p.value).join(','));
-  getEl(elements,'settings-open').onclick();
+  getEl(elements,'gen-settings-open').onclick();
   assert.equal(getEl(elements,'gen-model').value,'nai-diffusion-5-full','默认 V5 Full');
   assert.equal(getEl(elements,'gen-size').value,'832x1216','默认竖图');
   assert.match(getEl(elements,'gen-prompt1').value,/\{tag\}/,'两个模板都要带 {tag} 变量');

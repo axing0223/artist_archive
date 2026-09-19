@@ -3,8 +3,13 @@
   const ArtistId=root.ArtistId||(typeof module!=='undefined'?require('./artist-id.js'):null);
   const IMAGE_KINDS=['thumb','large'],SIZES=['thumb','preview','large'],FOLDER_OF={thumb:'缩略图',large:'大图'},LEGACY_FOLDER='预览图',MAX_IMAGE_BYTES=50*1024*1024;
   const TYPES={jpeg:'image/jpeg',png:'image/png',webp:'image/webp',gif:'image/gif',avif:'image/avif'};
-  const imageNamePattern=/^[a-f0-9]{24}\.(jpeg|png|webp|gif|avif)$/;
-  const imagePathPattern=/^(?:缩略图|大图)\/[a-f0-9]{24}\.(?:jpeg|png|webp|gif|avif)$/;
+  /* 图片文件名两种都认：老图片是内容哈希（24 位十六进制），新的测试风格图叫「画师tag-测试风格N.png」。
+     ownedNamePattern 只匹配我们自己写出来的这两种名字，清理与迁移都按它来，
+     用户自己丢进「缩略图 / 大图」的其它文件不动。 */
+  const NAME_CHARS='[^\\u0000-\\u001f\\\\/:*?"<>|][^\\u0000-\\u001f\\\\/:*?"<>|]{0,99}',EXT='(?:jpeg|png|webp|gif|avif)';
+  const imageNamePattern=new RegExp('^(?:[a-f0-9]{24}|'+NAME_CHARS+'\\.'+EXT+')$');
+  const ownedNamePattern=new RegExp('^(?:[a-f0-9]{24}|'+NAME_CHARS+'-测试风格\\d{1,3})\\.'+EXT+'$');
+  const imagePathPattern=new RegExp('^(?:缩略图|大图)\\/(?:[a-f0-9]{24}|'+NAME_CHARS+'\\.'+EXT+')$');
   const inlinePattern=/^data:image\/(jpeg|png|webp|gif|avif);base64,([a-zA-Z0-9+/=\s]+)$/;
   const remotePattern=/^https:\/\/\S+$/;
   const snapshots=new WeakMap(),legacy=new WeakMap(),warnings=[];
@@ -82,14 +87,15 @@
     const stored=(legacy.get(dir)||new Map()).get(uid)||uid;
     return artists.getDirectoryHandle(stored,{create});
   }
-  async function saveImage(dir,uid,kind,blob){
+  async function saveImage(dir,uid,kind,blob,preferredName){
     if(!IMAGE_KINDS.includes(kind))throw Error('图片类型错误：'+kind);
     if(!ArtistId.valid(uid))throw Error('画师标识格式错误');
     if(!blob||typeof blob.arrayBuffer!=='function'||!blob.size)throw Error('图片内容为空');
     if(blob.size>MAX_IMAGE_BYTES)throw Error('图片超过 '+(MAX_IMAGE_BYTES/1024/1024)+' MB');
     const extension=extensionOf(blob.type);
     if(!extension)throw Error('不支持的图片格式：'+(blob.type||'未知'));
-    const bytes=new Uint8Array(await blob.arrayBuffer()),name=(await hashOf(bytes))+'.'+extension;
+    const bytes=new Uint8Array(await blob.arrayBuffer());
+    const name=preferredName?preferredName+'.'+extension:(await hashOf(bytes))+'.'+extension;
     const folder=await artistFolder(dir,uid,true),images=await folder.getDirectoryHandle(FOLDER_OF[kind],{create:true});
     await put(images,name,bytes);
     return FOLDER_OF[kind]+'/'+name;
@@ -132,11 +138,18 @@
   async function copyImages(source,target){
     let entries;try{entries=source;}catch{return;}
     for await(const entry of entries.values()){
-      if(entry.kind!=='file'||!imageNamePattern.test(entry.name))continue;
+      if(entry.kind!=='file'||!ownedNamePattern.test(entry.name))continue;
       const file=await entry.getFile();
       if(file.size>MAX_IMAGE_BYTES)continue;
       await put(target,entry.name,new Uint8Array(await file.arrayBuffer()));
     }
+  }
+  /* 测试风格图按「画师tag-测试风格N」命名，方便在资源管理器里直接认出来是哪位画师的哪一格。
+     同一批里重名时往后加序号，绝不让后一张悄悄盖掉前一张。 */
+  function testImageName(artistName,testSeq){
+    const seq=Number.isSafeInteger(testSeq)&&testSeq>0?testSeq:1;
+    const tag=String(artistName||'').replace(/[\u0000-\u001f\\/:*?"<>|]/g,'_').trim().slice(0,80)||'画师';
+    return tag+'-测试风格'+seq;
   }
   async function exportTo(dir,data,stream,progress=()=>{}){
     const {artists,...header}=data;await stream.write(JSON.stringify(header).slice(0,-1)+',"artists":[');
@@ -156,9 +169,9 @@
       const stamp=signature(a);
       if(!moved.has(a.uid)&&before.get(a.uid)===stamp){records.set(a.uid,stamp);result.artists.push(a);continue;}
       const oldUid=moved.get(a.uid);if(oldUid)mapped.delete(a.uid);
-      const folder=await artists.getDirectoryHandle(a.uid,{create:true}),copy=structuredClone(a),used={};
+      const folder=await artists.getDirectoryHandle(a.uid,{create:true}),copy=structuredClone(a),used={},taken={};
       for(const kind of IMAGE_KINDS){
-        const images=await folder.getDirectoryHandle(FOLDER_OF[kind],{create:true});used[kind]=new Set();
+        const images=await folder.getDirectoryHandle(FOLDER_OF[kind],{create:true});used[kind]=new Set();taken[kind]=new Set();
         /* uid 变了（改名或补编号）时要把旧目录的图片搬过来，否则稍后旧目录会被删掉，
            图片就没了。缩略图可能还在旧版的「预览图」目录里，所以两处都找。 */
         if(oldUid){
@@ -168,13 +181,22 @@
         }
       }
       for(const w of copy.works){
-        for(const kind of IMAGE_KINDS)if(typeof w[kind]==='string'&&w[kind].startsWith('data:'))w[kind]=await saveImage(dir,a.uid,kind,blobOf(w[kind]));
+        for(const kind of IMAGE_KINDS)if(typeof w[kind]==='string'&&w[kind].startsWith('data:')){
+          /* 测试风格图用人读得懂的名字落盘，缩略图与大图各自带自己的扩展名。 */
+          let base=null;
+          if(w.kind==='test'){
+            const wanted=testImageName(a.name,w.testSeq);
+            base=wanted;let n=2;while(taken[kind].has(base))base=wanted+'-'+n++;
+            taken[kind].add(base);
+          }
+          w[kind]=await saveImage(dir,a.uid,kind,blobOf(w[kind]),base);
+        }
         for(const kind of IMAGE_KINDS)if(typeof w[kind]==='string')used[kind].add(w[kind].split('/').pop());
       }
       await put(folder,'信息.json',JSON.stringify(copy,null,2));records.set(a.uid,signature(copy));result.artists.push(copy);cleanup.push({folder,used});
     }
     await put(dir,'画师库.json',JSON.stringify({...data,artists:[...ids]},null,2));snapshots.set(dir,records);legacy.set(dir,new Map());
-    for(const {folder,used} of cleanup)for(const kind of IMAGE_KINDS)try{const images=await folder.getDirectoryHandle(FOLDER_OF[kind]);for await(const entry of images.values())if(entry.kind==='file'&&imageNamePattern.test(entry.name)&&!used[kind].has(entry.name))await images.removeEntry(entry.name);}catch(error){warn('旧图片清理失败（'+error.message+'）');}
+    for(const {folder,used} of cleanup)for(const kind of IMAGE_KINDS)try{const images=await folder.getDirectoryHandle(FOLDER_OF[kind]);for await(const entry of images.values())if(entry.kind==='file'&&ownedNamePattern.test(entry.name)&&!used[kind].has(entry.name))await images.removeEntry(entry.name);}catch(error){warn('旧图片清理失败（'+error.message+'）');}
     /* 下面两段会删到同一批目录：登记过改名的旧目录，往往就是上一次索引里有、这次没有的那个。
        第一段删掉之后第二段再删只会报「找不到」，可那正说明目的已经达到，不该当成失败。
        真正需要报出来的是权限、占用这类错误。 */
@@ -183,6 +205,6 @@
     for(const oldUid of moved.values())if(ArtistId.valid(oldUid)&&!ids.has(oldUid)&&!removed.has(oldUid))try{await artists.removeEntry(oldUid,{recursive:true});removed.add(oldUid);}catch(error){if(error.name!=='NotFoundError')warn('旧目录 '+oldUid+' 删除失败（'+error.message+'）');}
     return result;
   }
-  root.FolderStore={read,write,readImage,saveImage,imageOf,previewWorks,nextTestSeq,validWork,exportTo,remember,rename,empty,takeWarnings,IMAGE_KINDS,SIZES,FOLDER_OF,MAX_IMAGE_BYTES};
+  root.FolderStore={read,write,readImage,saveImage,imageOf,previewWorks,nextTestSeq,testImageName,validWork,exportTo,remember,rename,empty,takeWarnings,IMAGE_KINDS,SIZES,FOLDER_OF,MAX_IMAGE_BYTES};
   if(typeof module!=='undefined')module.exports=root.FolderStore;
 })(globalThis);

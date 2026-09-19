@@ -31,14 +31,29 @@
 .work.is-test{position:relative}.work.is-test::after{content:'测试风格';position:absolute;top:0;left:0;z-index:1;background:#e08b1f;color:#fff;font-size:11px;line-height:1;padding:4px 7px;border-radius:7px 0 7px 0}
 .test-preview{display:flex;flex-direction:column;gap:6px}.work-empty{border:1px dashed #e3e7ef;border-radius:7px;height:var(--card-size,220px);background:#fafbfd}
 .work-generate{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;border:1px dashed #c9d4f5;border-radius:7px;height:var(--card-size,220px);background:#f7f9ff}
-.generate-button{padding:7px 18px;border:1px solid #b9c6ee;border-radius:8px;background:#fff;color:#375af5;font-size:13px;cursor:pointer}
+.work-generate.is-armed{border-color:#e08b1f;background:#fff8ec}
+.generate-button{padding:7px 18px;border:1px solid #b9c6ee;border-radius:8px;background:#fff;color:#375af5;font-size:13px;cursor:pointer;transition:background-color .18s ease,border-color .18s ease,color .18s ease}
 .generate-button:hover{background:#eef2ff;border-color:#8fa4e6}
+.generate-button.is-armed,.generate-button.is-armed:hover{background:#e08b1f;border-color:#e08b1f;color:#fff;animation:arm-pulse 1.1s ease-in-out infinite}
 .generate-seq{font-size:12px;color:#788496}
-.setting-row textarea{width:100%;min-width:0;max-width:420px;flex:1 1 260px;font-size:13px}
-.setting-row .field-help.error,.setting-row p.error{color:#b4453c}
+.work-generate.is-armed .generate-seq{color:#a2660f}
+/* 生成中的过渡动画：转动的环 + 一行进度文字 */
+.work-generate.is-generating{border-style:solid;border-color:#c9d4f5;background:#f2f6ff}
+.gen-spinner{width:34px;height:34px;border-radius:50%;border:3px solid #d8e0f5;border-top-color:#375af5;animation:gen-spin .9s linear infinite}
+.gen-progress{font-size:12px;color:#5a6a8a;text-align:center;padding:0 10px;line-height:1.5}
+.work-generate.is-generating .gen-progress{animation:gen-fade 1.6s ease-in-out infinite}
+@keyframes gen-spin{to{transform:rotate(360deg)}}
+@keyframes gen-fade{0%,100%{opacity:.55}50%{opacity:1}}
+@keyframes arm-pulse{0%,100%{box-shadow:0 0 0 0 #e08b1f55}50%{box-shadow:0 0 0 6px #e08b1f00}}
+@media(prefers-reduced-motion:reduce){.gen-spinner{animation-duration:2.4s}.generate-button.is-armed{animation:none}.work-generate.is-generating .gen-progress{animation:none}}
+.setting-row textarea{width:100%;min-width:0;max-width:520px;flex:1 1 300px;font-size:13px;line-height:1.6;min-height:150px;resize:vertical}
+.setting-row .field-help.error,.setting-row p.error{color:#b4453c;font-weight:600}
 .size-pair{display:flex;align-items:center;gap:8px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;max-width:440px}
 .size-pair select{min-width:170px}
 .size-pair input[type=number]{width:104px}
+.wide-dialog{width:min(920px,94vw)}
+.wide-dialog .form-body{max-height:78vh;overflow-y:auto}
+button.error,.action.error{border-color:#e6b2ae;color:#b4453c}
 .artist.is-editing{grid-template-columns:1fr;background:#fbfcff;border-color:#c9d4f5}
 .artist.is-editing .artist-info{align-self:stretch}
 .edit-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;width:100%}
@@ -159,7 +174,7 @@ dialog[open]::backdrop{opacity:1}
   
 </head>
 <body>
-  <header class="top"><a class="brand" href="#"><span class="brand-mark">画</span> 画师分类</a><div class="header-actions"><button id="extension-status" class="action">检测图片助手…</button><button id="choose-folder" class="action" title="选择或切换数据文件夹">数据库文件夹</button><button id="settings-open" class="action" title="设置">设置</button></div></header>
+  <header class="top"><a class="brand" href="#"><span class="brand-mark">画</span> 画师分类</a><div class="header-actions"><button id="extension-status" class="action">检测图片助手…</button><button id="opus-status" class="action" title="NovelAI 剩余额度">额度：未查询</button><button id="choose-folder" class="action" title="选择或切换数据文件夹">数据库文件夹</button><button id="settings-open" class="action" title="设置">设置</button><button id="gen-settings-open" class="action" title="NovelAI 生图参数">生图参数</button></div></header>
   <main>
     <div class="heading"><div><p class="eyebrow">ARTIST INDEX</p><h1>从作品，找到画风。</h1><p class="intro" id="library-summary">正在打开画师库…</p></div><label class="search"><span>搜索画师</span><input id="search" type="search" placeholder="输入画师名字" autocomplete="off"></label></div>
     <div class="toolbar"><button id="add-artist" class="action primary-action">＋ 添加画师</button><button id="manage-tags" class="action">管理标签</button><button id="batch-artists" class="action">批量导入名字</button><button id="test-import-open" class="action">导入测试风格图</button><span class="toolbar-spacer"></span><button id="export-data" class="action">导出备份</button><button id="import-data" class="action">导入备份</button><input id="import-file" type="file" accept=".json" hidden></div>
@@ -191,19 +206,24 @@ dialog[open]::backdrop{opacity:1}
     <div class="setting-row"><div><strong>刷新所有画师数据</strong><p class="field-help">逐位到 Danbooru 核对当前正式名（画师改名后旧名会留在站点的其他名字里），同时刷新作品总数与截至日期前数量。名字改动会把画师目录一起改名，里面的缩略图与大图会搬过去。按每 25 位写盘一次，中途可以停下来。</p></div><button id="sync-all" class="action" type="button">开始刷新</button></div>
     <div class="setting-row"><div><strong>保存大图</strong><p class="field-help">开启后，点开作品预览时会把这件作品的原图保存进画师目录的「大图」文件夹，之后预览直接读本地、不再联网，也能离线查看。关闭时原图只在本次预览中临时加载，关掉即释放。</p></div><label class="switch"><input id="save-large" type="checkbox"><span></span></label></div>
     <div class="setting-row"><div><strong>预览图尺寸</strong><p class="field-help">调整主页面每位画师的作品预览图大小，每行显示几位画师会跟着自动变化；设置会记住。识别画师与编辑页的作品列表另有各自的「预览大小」滑动条。</p></div><div class="size-control"><input id="card-size" type="range" min="140" max="360" step="1" value="220"><span id="card-size-value">220</span></div></div>
-    <div class="setting-row"><div><strong>固定测试风格图</strong><p class="field-help">开启后，每张卡片右侧的 2 格固定留给「测试风格 1」「测试风格 2」，作品图排不到这两格上，也不会因为测试图变多被挤掉。固定格空着时里面会出现「生成」按钮，按下就用下面「生图参数」里的设置向 NovelAI 要一张图，拿回来直接回填到对应格子里；每次生成都会消耗 Anlas。</p></div><label class="switch"><input id="fixed-test" type="checkbox"><span></span></label></div>
-    <h3 class="manage-heading">生图参数</h3>
-    <p class="field-help">这些参数只用于生成测试风格图，保存在本机浏览器里，不写进画师库数据文件，导出备份也不会带上。token 同样只存在本机，请勿分享。</p>
-    <div class="setting-row"><div><strong>NovelAI token</strong><p class="field-help">在 novelai.net 登录后，Account → Get Persistent API Token 取得，形如 pst-…。只发往 image.novelai.net，请求由「画师库 · 图片助手」扩展代为发出。</p></div><div class="token-control"><input id="gen-token" type="password" autocomplete="off" spellcheck="false" placeholder="pst-…" aria-label="NovelAI token"><button id="gen-token-toggle" class="action" type="button">显示</button></div></div>
+    <div class="setting-row"><div><strong>固定测试风格图</strong><p class="field-help">开启后，每张卡片右侧的 2 格固定留给「测试风格 1」「测试风格 2」，作品图排不到这两格上，也不会因为测试图变多被挤掉。固定格空着时里面会出现「生成」按钮，按下就用顶部「生图参数」里的设置向 NovelAI 要一张图，拿回来直接回填到对应格子里。</p></div><label class="switch"><input id="fixed-test" type="checkbox"><span></span></label></div>
+  </div></dialog>
+  <dialog id="gen-settings" class="small-dialog wide-dialog" aria-labelledby="gen-title"><div class="viewer-bar"><h2 id="gen-title">生图参数</h2><button id="close-gen-settings" type="button">关闭 ×</button></div><div class="form-body settings-body">
+    <p class="field-help">这里的参数只用于生成测试风格图，保存在本机浏览器里，不写进画师库数据文件，导出备份也不会带上。token 同样只存在本机，请勿分享。</p>
+    <div class="setting-row"><div><strong>NovelAI token</strong><p class="field-help">在 novelai.net 登录后，Account → Get Persistent API Token 取得，形如 pst-…。只发往 image.novelai.net 与 api.novelai.net，请求由「画师库 · 图片助手」扩展代为发出。</p></div><div class="token-control"><input id="gen-token" type="password" autocomplete="off" spellcheck="false" placeholder="pst-…" aria-label="NovelAI token"><button id="gen-token-toggle" class="action" type="button">显示</button></div></div>
+    <div class="setting-row"><div><strong>剩余额度</strong><p class="field-help" id="gen-account" role="status">还没有查询。</p></div><button id="gen-account-refresh" class="action" type="button">刷新额度</button></div>
+    <div class="setting-row"><div><strong>是否使用点数</strong><p class="field-help">关闭时只在 Opus 免费额度内生成：步数压到 28 以内、总像素压到 1024 × 1024 以内，一点 Anlas 都不花，但读不到剩余额度时就不允许生成。开启后按下面填的参数原样发出，超出免费范围的部分会消耗 Anlas（点数）。</p></div><label class="switch"><input id="gen-anlas" type="checkbox"><span></span></label></div>
     <div class="setting-row"><div><strong>模型</strong><p class="field-help">默认 V5 Full。V5 会自动补上质量标签与 UC 预设文本，反向提示词接在预设文本之后。</p></div><select id="gen-model" aria-label="生图模型"></select></div>
     <div class="setting-row"><div><strong>尺寸</strong><p class="field-help">先挑一个档位（竖图 832 × 1216、宽图、方图、大图、壁纸），要别的宽高就在右边自己填：填了就以你填的为准，并会向 64 对齐、单边限制在 64–2048。NovelAI 还限制总像素不超过 1536 × 2048，超了会在发送前提示你把一边调小。</p></div><div class="size-pair"><select id="gen-size" aria-label="生图尺寸"></select><input id="gen-width" type="number" min="64" max="2048" step="64" placeholder="宽"><input id="gen-height" type="number" min="64" max="2048" step="64" placeholder="高"></div></div>
-    <div class="setting-row"><div><strong>步数与引导</strong><p class="field-help">采样步数 1–50，默认 28；提示词引导强度（CFG Scale）0–20，默认 5。步数越高越慢。</p></div><div class="size-pair"><input id="gen-steps" type="number" min="1" max="50" step="1" placeholder="步数" aria-label="采样步数"><input id="gen-scale" type="number" min="0" max="20" step="0.5" placeholder="引导" aria-label="引导强度"></div></div>
+    <div class="setting-row"><div><strong>步数与引导</strong><p class="field-help">采样步数 1–50，默认 28；提示词引导强度（Prompt Guidance）0–20，默认 5。步数越高越慢。</p></div><div class="size-pair"><input id="gen-steps" type="number" min="1" max="50" step="1" placeholder="步数" aria-label="采样步数"><input id="gen-scale" type="number" min="0" max="20" step="0.5" placeholder="引导" aria-label="引导强度"></div></div>
+    <div class="setting-row"><div><strong>Prompt Guidance Rescale</strong><p class="field-help">0–1，默认 0。引导强度调高之后画面容易过曝、发灰，把它往上推一点可以把高引导的副作用压回去；不动就填 0。</p></div><input id="gen-cfg-rescale" type="number" min="0" max="1" step="0.02" placeholder="0" aria-label="Prompt Guidance Rescale"></div>
     <div class="setting-row"><div><strong>采样器</strong><p class="field-help">默认 Euler Ancestral，是站点自带的默认值；换成别的只是口味不同。</p></div><select id="gen-sampler" aria-label="采样器"></select></div>
     <div class="setting-row"><div><strong>随机种子</strong><p class="field-help">留空就是每次随机；填一个数字可以复现同一张图。同一个种子配合同一套提示词才会得到相同结果。</p></div><input id="gen-seed" type="number" min="0" max="4294967295" step="1" placeholder="留空随机" aria-label="随机种子"></div>
     <div class="setting-row"><div><strong>UC 预设</strong><p class="field-help">NovelAI 自带的「不想看到的内容」预设，默认 Heavy。它拼出来的那段文字会加在下面反向提示词的前面。</p></div><select id="gen-uc" aria-label="UC 预设"></select></div>
-    <div class="setting-row"><div><strong>反向提示词</strong><p class="field-help">额外不想要的内容，会接在 UC 预设文本之后；留空就只用预设。</p></div><textarea id="gen-negative" rows="3" placeholder="例如：bad hands, extra fingers" aria-label="反向提示词"></textarea></div>
-    <div class="setting-row"><div><strong>提示词模板 · 测试风格 1</strong><p class="field-help">占最右那一格。用 {tag} 代表画师 tag，例如「{tag}, 1girl, solo」；要加前缀可以写 artist:{tag}。写错的 {变量} 会原样保留，方便发现。</p></div><textarea id="gen-prompt1" rows="3" aria-label="提示词模板 1"></textarea></div>
-    <div class="setting-row"><div><strong>提示词模板 · 测试风格 2</strong><p class="field-help">占右边第二格。两个模板可以用同一个画师 tag 换不同构图，方便对比画风。</p></div><textarea id="gen-prompt2" rows="3" aria-label="提示词模板 2"></textarea></div>
+    <div class="setting-row"><div><strong>transparent BG</strong><p class="field-help">输出带原生 Alpha 的透明背景 PNG，只有 V5 模型支持；选别的模型时会在发送前拦下来。开启后会按站点客户端的做法发 tag_hint_transparent_background、straight_alpha 与 image_format=png。</p></div><label class="switch"><input id="gen-transparent" type="checkbox"><span></span></label></div>
+    <div class="setting-row"><div><strong>反向提示词</strong><p class="field-help">额外不想要的内容，会接在 UC 预设文本之后；留空就只用预设。文本越长越占位置，换行会被当成空格。</p></div><textarea id="gen-negative" rows="12" placeholder="例如：bad hands, extra fingers" aria-label="反向提示词"></textarea></div>
+    <div class="setting-row"><div><strong>提示词模板 · 测试风格 1</strong><p class="field-help">占最右那一格。用 {tag} 代表画师 tag，例如「{tag}, 1girl, solo」；要加前缀可以写 artist:{tag}。写错的 {变量} 会原样保留，方便发现。</p></div><textarea id="gen-prompt1" rows="12" aria-label="提示词模板 1"></textarea></div>
+    <div class="setting-row"><div><strong>提示词模板 · 测试风格 2</strong><p class="field-help">占右边第二格。两个模板可以用同一个画师 tag 换不同构图，方便对比画风。</p></div><textarea id="gen-prompt2" rows="12" aria-label="提示词模板 2"></textarea></div>
     <div class="setting-row"><div><strong>图片助手</strong><p class="field-help" id="gen-bridge" role="status">正在检测…</p></div><button id="gen-check" class="action" type="button">重新检测</button></div>
   </div></dialog>
   <dialog id="viewer" aria-labelledby="viewer-title"><div class="viewer-bar"><h2 id="viewer-title"></h2><button id="close-viewer" aria-label="关闭图片">关闭 ×</button></div><div class="viewer-image"><img id="large-image" alt=""></div><div class="viewer-bottom"><p id="viewer-caption"></p><div class="viewer-actions"><button id="save-original" class="action" type="button">保存原图</button><a id="viewer-source" target="_blank" rel="noopener noreferrer">查看作品来源 ↗</a></div></div></dialog>
@@ -339,8 +359,13 @@ dialog[open]::backdrop{opacity:1}
   const ArtistId=root.ArtistId||(typeof module!=='undefined'?require('./artist-id.js'):null);
   const IMAGE_KINDS=['thumb','large'],SIZES=['thumb','preview','large'],FOLDER_OF={thumb:'缩略图',large:'大图'},LEGACY_FOLDER='预览图',MAX_IMAGE_BYTES=50*1024*1024;
   const TYPES={jpeg:'image/jpeg',png:'image/png',webp:'image/webp',gif:'image/gif',avif:'image/avif'};
-  const imageNamePattern=/^[a-f0-9]{24}\.(jpeg|png|webp|gif|avif)$/;
-  const imagePathPattern=/^(?:缩略图|大图)\/[a-f0-9]{24}\.(?:jpeg|png|webp|gif|avif)$/;
+  /* 图片文件名两种都认：老图片是内容哈希（24 位十六进制），新的测试风格图叫「画师tag-测试风格N.png」。
+     ownedNamePattern 只匹配我们自己写出来的这两种名字，清理与迁移都按它来，
+     用户自己丢进「缩略图 / 大图」的其它文件不动。 */
+  const NAME_CHARS='[^\\u0000-\\u001f\\\\/:*?"<>|][^\\u0000-\\u001f\\\\/:*?"<>|]{0,99}',EXT='(?:jpeg|png|webp|gif|avif)';
+  const imageNamePattern=new RegExp('^(?:[a-f0-9]{24}|'+NAME_CHARS+'\\.'+EXT+')$');
+  const ownedNamePattern=new RegExp('^(?:[a-f0-9]{24}|'+NAME_CHARS+'-测试风格\\d{1,3})\\.'+EXT+'$');
+  const imagePathPattern=new RegExp('^(?:缩略图|大图)\\/(?:[a-f0-9]{24}|'+NAME_CHARS+'\\.'+EXT+')$');
   const inlinePattern=/^data:image\/(jpeg|png|webp|gif|avif);base64,([a-zA-Z0-9+/=\s]+)$/;
   const remotePattern=/^https:\/\/\S+$/;
   const snapshots=new WeakMap(),legacy=new WeakMap(),warnings=[];
@@ -418,14 +443,15 @@ dialog[open]::backdrop{opacity:1}
     const stored=(legacy.get(dir)||new Map()).get(uid)||uid;
     return artists.getDirectoryHandle(stored,{create});
   }
-  async function saveImage(dir,uid,kind,blob){
+  async function saveImage(dir,uid,kind,blob,preferredName){
     if(!IMAGE_KINDS.includes(kind))throw Error('图片类型错误：'+kind);
     if(!ArtistId.valid(uid))throw Error('画师标识格式错误');
     if(!blob||typeof blob.arrayBuffer!=='function'||!blob.size)throw Error('图片内容为空');
     if(blob.size>MAX_IMAGE_BYTES)throw Error('图片超过 '+(MAX_IMAGE_BYTES/1024/1024)+' MB');
     const extension=extensionOf(blob.type);
     if(!extension)throw Error('不支持的图片格式：'+(blob.type||'未知'));
-    const bytes=new Uint8Array(await blob.arrayBuffer()),name=(await hashOf(bytes))+'.'+extension;
+    const bytes=new Uint8Array(await blob.arrayBuffer());
+    const name=preferredName?preferredName+'.'+extension:(await hashOf(bytes))+'.'+extension;
     const folder=await artistFolder(dir,uid,true),images=await folder.getDirectoryHandle(FOLDER_OF[kind],{create:true});
     await put(images,name,bytes);
     return FOLDER_OF[kind]+'/'+name;
@@ -468,11 +494,18 @@ dialog[open]::backdrop{opacity:1}
   async function copyImages(source,target){
     let entries;try{entries=source;}catch{return;}
     for await(const entry of entries.values()){
-      if(entry.kind!=='file'||!imageNamePattern.test(entry.name))continue;
+      if(entry.kind!=='file'||!ownedNamePattern.test(entry.name))continue;
       const file=await entry.getFile();
       if(file.size>MAX_IMAGE_BYTES)continue;
       await put(target,entry.name,new Uint8Array(await file.arrayBuffer()));
     }
+  }
+  /* 测试风格图按「画师tag-测试风格N」命名，方便在资源管理器里直接认出来是哪位画师的哪一格。
+     同一批里重名时往后加序号，绝不让后一张悄悄盖掉前一张。 */
+  function testImageName(artistName,testSeq){
+    const seq=Number.isSafeInteger(testSeq)&&testSeq>0?testSeq:1;
+    const tag=String(artistName||'').replace(/[\u0000-\u001f\\/:*?"<>|]/g,'_').trim().slice(0,80)||'画师';
+    return tag+'-测试风格'+seq;
   }
   async function exportTo(dir,data,stream,progress=()=>{}){
     const {artists,...header}=data;await stream.write(JSON.stringify(header).slice(0,-1)+',"artists":[');
@@ -492,9 +525,9 @@ dialog[open]::backdrop{opacity:1}
       const stamp=signature(a);
       if(!moved.has(a.uid)&&before.get(a.uid)===stamp){records.set(a.uid,stamp);result.artists.push(a);continue;}
       const oldUid=moved.get(a.uid);if(oldUid)mapped.delete(a.uid);
-      const folder=await artists.getDirectoryHandle(a.uid,{create:true}),copy=structuredClone(a),used={};
+      const folder=await artists.getDirectoryHandle(a.uid,{create:true}),copy=structuredClone(a),used={},taken={};
       for(const kind of IMAGE_KINDS){
-        const images=await folder.getDirectoryHandle(FOLDER_OF[kind],{create:true});used[kind]=new Set();
+        const images=await folder.getDirectoryHandle(FOLDER_OF[kind],{create:true});used[kind]=new Set();taken[kind]=new Set();
         /* uid 变了（改名或补编号）时要把旧目录的图片搬过来，否则稍后旧目录会被删掉，
            图片就没了。缩略图可能还在旧版的「预览图」目录里，所以两处都找。 */
         if(oldUid){
@@ -504,13 +537,22 @@ dialog[open]::backdrop{opacity:1}
         }
       }
       for(const w of copy.works){
-        for(const kind of IMAGE_KINDS)if(typeof w[kind]==='string'&&w[kind].startsWith('data:'))w[kind]=await saveImage(dir,a.uid,kind,blobOf(w[kind]));
+        for(const kind of IMAGE_KINDS)if(typeof w[kind]==='string'&&w[kind].startsWith('data:')){
+          /* 测试风格图用人读得懂的名字落盘，缩略图与大图各自带自己的扩展名。 */
+          let base=null;
+          if(w.kind==='test'){
+            const wanted=testImageName(a.name,w.testSeq);
+            base=wanted;let n=2;while(taken[kind].has(base))base=wanted+'-'+n++;
+            taken[kind].add(base);
+          }
+          w[kind]=await saveImage(dir,a.uid,kind,blobOf(w[kind]),base);
+        }
         for(const kind of IMAGE_KINDS)if(typeof w[kind]==='string')used[kind].add(w[kind].split('/').pop());
       }
       await put(folder,'信息.json',JSON.stringify(copy,null,2));records.set(a.uid,signature(copy));result.artists.push(copy);cleanup.push({folder,used});
     }
     await put(dir,'画师库.json',JSON.stringify({...data,artists:[...ids]},null,2));snapshots.set(dir,records);legacy.set(dir,new Map());
-    for(const {folder,used} of cleanup)for(const kind of IMAGE_KINDS)try{const images=await folder.getDirectoryHandle(FOLDER_OF[kind]);for await(const entry of images.values())if(entry.kind==='file'&&imageNamePattern.test(entry.name)&&!used[kind].has(entry.name))await images.removeEntry(entry.name);}catch(error){warn('旧图片清理失败（'+error.message+'）');}
+    for(const {folder,used} of cleanup)for(const kind of IMAGE_KINDS)try{const images=await folder.getDirectoryHandle(FOLDER_OF[kind]);for await(const entry of images.values())if(entry.kind==='file'&&ownedNamePattern.test(entry.name)&&!used[kind].has(entry.name))await images.removeEntry(entry.name);}catch(error){warn('旧图片清理失败（'+error.message+'）');}
     /* 下面两段会删到同一批目录：登记过改名的旧目录，往往就是上一次索引里有、这次没有的那个。
        第一段删掉之后第二段再删只会报「找不到」，可那正说明目的已经达到，不该当成失败。
        真正需要报出来的是权限、占用这类错误。 */
@@ -519,14 +561,14 @@ dialog[open]::backdrop{opacity:1}
     for(const oldUid of moved.values())if(ArtistId.valid(oldUid)&&!ids.has(oldUid)&&!removed.has(oldUid))try{await artists.removeEntry(oldUid,{recursive:true});removed.add(oldUid);}catch(error){if(error.name!=='NotFoundError')warn('旧目录 '+oldUid+' 删除失败（'+error.message+'）');}
     return result;
   }
-  root.FolderStore={read,write,readImage,saveImage,imageOf,previewWorks,nextTestSeq,validWork,exportTo,remember,rename,empty,takeWarnings,IMAGE_KINDS,SIZES,FOLDER_OF,MAX_IMAGE_BYTES};
+  root.FolderStore={read,write,readImage,saveImage,imageOf,previewWorks,nextTestSeq,testImageName,validWork,exportTo,remember,rename,empty,takeWarnings,IMAGE_KINDS,SIZES,FOLDER_OF,MAX_IMAGE_BYTES};
   if(typeof module!=='undefined')module.exports=root.FolderStore;
 })(globalThis);
 </script><script>(() => {
   const pending=new Map();let connected=false,version='';
-  /* 接口通道是 0.3.2、生图通道是 0.4.0 才有的。旧扩展不认这些类型，会静默丢弃消息、
-     让页面干等到超时，所以先按版本判断能不能用，不能用就直接让调用方退回直连。 */
-  const API_VERSION=[0,3,2],GENERATE_VERSION=[0,4,0];
+  /* 接口通道是 0.3.2、生图通道是 0.4.0、额度查询是 0.4.1 才有的。旧扩展不认这些类型，
+     会静默丢弃消息、让页面干等到超时，所以先按版本判断能不能用，不能用就直接让调用方退回直连。 */
+  const API_VERSION=[0,3,2],GENERATE_VERSION=[0,4,0],ACCOUNT_VERSION=[0,4,1];
   const supports=(value,required)=>{
     const parts=String(value||'').split('.').map(Number);
     if(parts.length<3||parts.some(part=>!Number.isInteger(part)||part<0))return false;
@@ -543,7 +585,7 @@ dialog[open]::backdrop{opacity:1}
     pending.set(id,{resolve,reject,finish,type});signal?.addEventListener('abort',abort,{once:true});timer=setTimeout(()=>{finish();window.postMessage({channel:'artist-images-v1',type:'cancel',id},'*');reject(Error(type==='ping'?'未连接扩展：请更新扩展、开启“允许访问文件网址”，再重新打开本网页。':type==='generate'?'生图请求超时：NovelAI 可能正忙，稍后可重试。':'扩展请求超时，请检查连接或稍后重试。'));},TIMEOUT[type]||DEFAULT_TIMEOUT);
     window.postMessage({channel:'artist-images-v1',type,id,...payload},'*');
   });}
-  window.ArtistExtension={get connected(){return connected;},get version(){return version;},get canFetchApi(){return connected&&supports(version,API_VERSION);},get canGenerate(){return connected&&supports(version,GENERATE_VERSION);},async check(){try{const result=await request('ping',{});connected=true;version=String(result?.version||'');return result.version;}catch(error){connected=false;version='';throw error;}},async resolve(id,signal){if(!connected)await this.check();const r=await request('resolve',{url:id},signal);if(typeof r.url!=='string'||!r.url.startsWith('https://'))throw Error('扩展返回了无效的原图地址');return r.url;},async image(url,signal){if(!connected)await this.check();const r=await request('image',{url},signal);if(!/^data:image\/(jpeg|png|webp|gif|avif);base64,[a-zA-Z0-9+/=]+$/.test(r.data))throw Error('扩展返回了无效图片');return (await fetch(r.data)).blob();},async api(url,signal){if(!connected)await this.check();const r=await request('api',{url},signal);const status=Number(r.status)||0;return {ok:status>=200&&status<300,status,json:async()=>r.json};},async generate(body,token,signal){if(!connected)await this.check();const r=await request('generate',{url:'https://image.novelai.net/ai/generate-image',body,token},signal);if(!/^data:application\/zip;base64,[a-zA-Z0-9+/=]+$/.test(r.data))throw Error('扩展返回了无效的生图结果');return (await fetch(r.data)).blob();}};
+  window.ArtistExtension={get connected(){return connected;},get version(){return version;},get canFetchApi(){return connected&&supports(version,API_VERSION);},get canGenerate(){return connected&&supports(version,GENERATE_VERSION);},get canAccount(){return connected&&supports(version,ACCOUNT_VERSION);},async check(){try{const result=await request('ping',{});connected=true;version=String(result?.version||'');return result.version;}catch(error){connected=false;version='';throw error;}},async resolve(id,signal){if(!connected)await this.check();const r=await request('resolve',{url:id},signal);if(typeof r.url!=='string'||!r.url.startsWith('https://'))throw Error('扩展返回了无效的原图地址');return r.url;},async image(url,signal){if(!connected)await this.check();const r=await request('image',{url},signal);if(!/^data:image\/(jpeg|png|webp|gif|avif);base64,[a-zA-Z0-9+/=]+$/.test(r.data))throw Error('扩展返回了无效图片');return (await fetch(r.data)).blob();},async api(url,signal){if(!connected)await this.check();const r=await request('api',{url},signal);const status=Number(r.status)||0;return {ok:status>=200&&status<300,status,json:async()=>r.json};},async generate(body,token,signal){if(!connected)await this.check();const r=await request('generate',{url:'https://image.novelai.net/ai/generate-image',body,token},signal);if(!/^data:application\/zip;base64,[a-zA-Z0-9+/=]+$/.test(r.data))throw Error('扩展返回了无效的生图结果');return (await fetch(r.data)).blob();},async subscription(url,token,signal){if(!connected)await this.check();if(!this.canAccount)throw Error('图片助手需要 0.4.1 或更高版本才能查点数：请到浏览器的扩展页重新加载扩展。');return (await request('subscription',{url,token},signal)).json;}};
 })();
 </script><script>(function(root){
   'use strict';
@@ -553,6 +595,9 @@ dialog[open]::backdrop{opacity:1}
   const ENDPOINT='https://image.novelai.net/ai/generate-image';
   /* 站点对总像素的限制：1536 × 2048。单边 2048 只是硬上限，超预算要在发请求前拦住。 */
   const MAX_PIXELS=1536*2048;
+  /* Opus 的免费额度范围：总像素不超过 1M、步数不超过 28。超出这两条就要花 Anlas（点数），
+     站点客户端的「Limit to free generation」用的也是这两个数。 */
+  const FREE_PIXELS=1024*1024,FREE_STEPS=28;
   const MODELS=[
     {value:'nai-diffusion-5-full',label:'V5 Full'},
     {value:'nai-diffusion-5-curated',label:'V5 Curated'},
@@ -604,6 +649,14 @@ dialog[open]::backdrop{opacity:1}
   /* 单边硬上限是 2048；总像素上限 1536×2048 由调用方在发请求前把关。 */
   const clamp=(n,min,max)=>{const v=Number(n);return Number.isFinite(v)?Math.min(max,Math.max(min,v)):min;};
   const sizeOf=value=>SIZES.find(s=>s.value===value)||SIZES[0];
+  /* 把宽高压进免费额度：等比缩到 maxPixels 之内，再向 64 对齐并保证不超预算。
+     对齐只会向下取，所以缩完永远不会反弹回预算之上。 */
+  function fitPixels(width,height,maxPixels){
+    const w=Math.max(64,Number(width)||64),h=Math.max(64,Number(height)||64);
+    if(w*h<=maxPixels)return {width:w,height:h};
+    const scale=Math.sqrt(maxPixels/(w*h));
+    return {width:Math.max(64,Math.floor(w*scale/64)*64),height:Math.max(64,Math.floor(h*scale/64)*64)};
+  }
   const ucTagsOf=(model,preset)=>preset==='heavy'?UC_HEAVY[familyOf(model)]:'';
   const qualityTagsOf=model=>QUALITY_TAGS[familyOf(model)];
 
@@ -622,9 +675,11 @@ dialog[open]::backdrop{opacity:1}
     const finalUc=ucTagsOf(model,preset)+String(settings.negativePrompt??'');
     const steps=Number.isSafeInteger(settings.steps)&&settings.steps>0?settings.steps:28;
     const scale=Number.isFinite(settings.scale)&&settings.scale>=0?settings.scale:5;
+    /* Prompt Guidance Rescale（站点 UI 就叫这个名字）：0–1，越大越压高引导带来的过曝。 */
+    const cfgRescale=Number.isFinite(settings.cfgRescale)&&settings.cfgRescale>=0&&settings.cfgRescale<=1?settings.cfgRescale:0;
     const seed=Number.isSafeInteger(settings.seed)&&settings.seed>=0?settings.seed:Math.floor(Math.random()*4294967295);
     const parameters={
-      cfg_rescale:0,controlnet_strength:1,dynamic_thresholding:false,skip_cfg_above_sigma:null,
+      cfg_rescale:cfgRescale,controlnet_strength:1,dynamic_thresholding:false,skip_cfg_above_sigma:null,
       legacy:false,legacy_uc:false,legacy_v3_extend:false,n_samples:1,
       negative_prompt:finalUc,params_version:3,noise_schedule:'native',qualityToggle:false,
       sampler,scale,seed,steps,
@@ -643,9 +698,12 @@ dialog[open]::backdrop{opacity:1}
       parameters.qualityPresetId='standard';
       parameters.tag_hint_qt=1;parameters.tag_hint_uc_preset=2;
       parameters.normalize_reference_strength_multiple=true;
-      parameters.straight_alpha=true;parameters.image_format='png';
+      parameters.image_format='png';
       parameters.inpaintImg2ImgStrength=1;parameters.add_original_image=true;
       delete parameters.sm;delete parameters.sm_dyn;delete parameters.qualityToggle;delete parameters.skip_cfg_above_sigma;
+      /* 透明背景是 V5 独有的原生 Alpha 输出，站点客户端就是这么发的三个字段。
+         别的模型不发：buildBody 不认识就当作没开，由调用方在发请求前把话说明白。 */
+      if(settings.transparentBg===true){parameters.tag_hint_transparent_background=true;parameters.straight_alpha=true;parameters.image_format='png';}
     }
     return body;
   }
@@ -674,19 +732,23 @@ dialog[open]::backdrop{opacity:1}
     throw Error('压缩包里没有图片');
   }
 
-  const api={fillTemplate,buildBody,firstImageFromZip,ENDPOINT,MODELS,SIZES,SAMPLERS,UC_PRESETS,QUALITY_TAGS,UC_HEAVY,isV5,isV4x,familyOf,nearest64,MAX_PIXELS};
+  const api={fillTemplate,buildBody,firstImageFromZip,fitPixels,ENDPOINT,MODELS,SIZES,SAMPLERS,UC_PRESETS,QUALITY_TAGS,UC_HEAVY,isV5,isV4x,familyOf,nearest64,MAX_PIXELS,FREE_PIXELS,FREE_STEPS};
   root.ArtistNovelAI=api;if(typeof module!=='undefined')module.exports=api;
 })(globalThis);
 </script><script>(function(root){
   'use strict';
   /* 生图参数只存在本机浏览器里：token 单独一个键，其余参数一个键。
      绝不写进「画师库.json」，导出的备份也就不会带上 token。 */
-  const KEY='artist-library.image-gen',TOKEN_KEY='artist-library.novelai-token',MIN_VERSION='0.4.0';
+  const KEY='artist-library.image-gen',TOKEN_KEY='artist-library.novelai-token',MIN_VERSION='0.4.1';
   const DEFAULT_PROMPTS={
     prompt1:'{tag}, 1girl, solo, upper body, looking at viewer, simple background, white background',
     prompt2:'{tag}, 1girl, solo, full body, standing, outdoors, day, scenery',
   };
-  const DEFAULTS={model:'nai-diffusion-5-full',size:'832x1216',width:null,height:null,steps:28,scale:5,sampler:'k_euler_ancestral',seed:null,ucPreset:'heavy',negativePrompt:'',...DEFAULT_PROMPTS};
+  const DEFAULTS={model:'nai-diffusion-5-full',size:'832x1216',width:null,height:null,steps:28,scale:5,cfgRescale:0,sampler:'k_euler_ancestral',seed:null,ucPreset:'heavy',negativePrompt:'',transparentBg:false,useAnlas:false,...DEFAULT_PROMPTS};
+  /* 两个都能答订阅信息，站点客户端会先问 image 再问 api。 */
+  const ACCOUNT_ENDPOINTS=['https://image.novelai.net/user/subscription','https://api.novelai.net/user/subscription'];
+  const ACCOUNT_TTL=60000;
+  let accountCache=null;
   const int=(value,min,max)=>{const n=Number(String(value??'').trim());return Number.isSafeInteger(n)&&n>=min&&n<=max?n:null;};
   const num=(value,min,max)=>{const n=Number(String(value??'').trim());return Number.isFinite(n)&&n>=min&&n<=max?n:null;};
   const text=(value,max)=>typeof value==='string'?value.slice(0,max):'';
@@ -699,39 +761,95 @@ dialog[open]::backdrop{opacity:1}
       width:int(input.width,64,2048),height:int(input.height,64,2048),
       steps:int(input.steps,1,50)??DEFAULTS.steps,
       scale:num(input.scale,0,20)??DEFAULTS.scale,
+      cfgRescale:num(input.cfgRescale,0,1)??DEFAULTS.cfgRescale,
       sampler:pick(root.ArtistNovelAI.SAMPLERS,input.sampler,DEFAULTS.sampler),
       seed:int(input.seed,0,4294967295),
       ucPreset:pick(root.ArtistNovelAI.UC_PRESETS,input.ucPreset,DEFAULTS.ucPreset),
-      negativePrompt:text(input.negativePrompt,2000),
-      prompt1:typeof input.prompt1==='string'?input.prompt1.slice(0,2000):DEFAULT_PROMPTS.prompt1,
-      prompt2:typeof input.prompt2==='string'?input.prompt2.slice(0,2000):DEFAULT_PROMPTS.prompt2,
+      negativePrompt:text(input.negativePrompt,4000),
+      transparentBg:input.transparentBg===true,
+      useAnlas:input.useAnlas===true,
+      prompt1:typeof input.prompt1==='string'?input.prompt1.slice(0,4000):DEFAULT_PROMPTS.prompt1,
+      prompt2:typeof input.prompt2==='string'?input.prompt2.slice(0,4000):DEFAULT_PROMPTS.prompt2,
     };
   }
   function load(){try{return sanitize(JSON.parse(root.localStorage.getItem(KEY)||'{}'));}catch{return sanitize({});}}
   const save=settings=>{const clean=sanitize(settings);try{root.localStorage.setItem(KEY,JSON.stringify(clean));}catch{}return clean;};
   const loadToken=()=>{try{return String(root.localStorage.getItem(TOKEN_KEY)||'').trim();}catch{return '';}};
   /* 清空时写成空串而不是删键：存储不可用时也不会抛错。 */
-  const saveToken=value=>{try{root.localStorage.setItem(TOKEN_KEY,String(value??'').trim());}catch{}};
+  const saveToken=value=>{const token=String(value??'').trim();try{root.localStorage.setItem(TOKEN_KEY,token);}catch{}accountCache=null;return token;};
   const promptFor=(settings,seq,artist)=>root.ArtistNovelAI.fillTemplate(seq===2?settings.prompt2:settings.prompt1,{tag:String(artist?.name||'')});
   const bodyFor=(settings,seq,artist)=>root.ArtistNovelAI.buildBody(settings,promptFor(settings,seq,artist));
+
+  /* 站点把 Opus 额度给成一个会随时间回复的百分比，网页界面上显示的张数是按
+     17.3 × 百分比 估出来的（照抄站点客户端的算式），所以只能当估算值看。 */
+  const estimate=percent=>percent==null?null:Math.round(17.3*percent);
+  function normalizeAccount(payload){
+    const raw=payload&&typeof payload==='object'?payload:{},steps=raw.trainingStepsLeft&&typeof raw.trainingStepsLeft==='object'?raw.trainingStepsLeft:{};
+    const value=key=>{const n=Number(key);return Number.isFinite(n)?n:0;};
+    const usage=raw.usage&&typeof raw.usage==='object'?raw.usage:null;
+    const percentRaw=usage?Number(usage.percent):NaN;
+    const negative=usage?.isNegative===true;
+    const percent=Number.isFinite(percentRaw)?(negative?0:Math.max(0,percentRaw)):null;
+    const seconds=usage?Number(usage.timeUntilNextPercent):NaN;
+    const refillPercent=Number.isFinite(seconds)&&seconds>0?Math.round(86400/seconds*10)/10:null;
+    return {
+      tier:raw.tier??raw.subscriptionTier??null,
+      subscriptionAnlas:value(steps.fixedTrainingStepsLeft),paidAnlas:value(steps.purchasedTrainingSteps),
+      anlas:value(steps.fixedTrainingStepsLeft)+value(steps.purchasedTrainingSteps),
+      opusPercent:percent,opusImages:estimate(percent),
+      refillPercent,refillImages:estimate(refillPercent),negative,
+    };
+  }
+  /* 查额度。默认 60 秒内用缓存，避免每张卡片渲染都去打接口。 */
+  async function account({bridge=root.ArtistExtension,token=loadToken(),force=false,signal}={}){
+    if(!token)throw Error('还没有填写 NovelAI token：请打开「生图参数」。');
+    if(!force&&accountCache&&Date.now()-accountCache.time<ACCOUNT_TTL)return accountCache.value;
+    if(!bridge)throw Error('没有检测到「画师库 · 图片助手」扩展，无法查询点数。');
+    if(!bridge.connected)await bridge.check();
+    if(!bridge.canAccount)throw Error('图片助手需要 '+MIN_VERSION+' 或更高版本才能查点数：请到浏览器的扩展页重新加载扩展。');
+    let lastError=null;
+    for(const url of ACCOUNT_ENDPOINTS){
+      try{const value={...normalizeAccount(await bridge.subscription(url,token,signal)),at:Date.now()};accountCache={value,time:Date.now()};return value;}
+      catch(error){if(error?.name==='AbortError')throw error;lastError=error;}
+    }
+    throw lastError||Error('读取订阅信息失败。');
+  }
+  const cachedAccount=()=>accountCache?accountCache.value:null;
+  const clearAccount=()=>{accountCache=null;};
+  const needsPoints=(width,height,steps)=>width*height>root.ArtistNovelAI.FREE_PIXELS||steps>root.ArtistNovelAI.FREE_STEPS;
   /* 拿扩展当代理去调 NovelAI：请求由扩展的后台发出，不受页面所在 file:// 的跨域限制。 */
   async function generate(artist,seq,{bridge=root.ArtistExtension,signal,settings=load(),token=loadToken()}={}){
-    if(!token)throw Error('还没有填写 NovelAI token：请打开「设置 → 生图参数」。');
+    if(!token)throw Error('还没有填写 NovelAI token：请打开「生图参数」。');
     if(!settings)settings=load();
     const prompt=promptFor(settings,seq,artist);
-    if(!prompt.trim())throw Error('提示词模板是空的，请先在「设置 → 生图参数」里填写。');
+    if(!prompt.trim())throw Error('提示词模板是空的，请先在「生图参数」里填写。');
+    if(settings.transparentBg&&!root.ArtistNovelAI.isV5(settings.model))throw Error('透明背景（Native Alpha）只有 V5 模型支持，请换模型或关掉这个开关。');
     if(!bridge)throw Error('没有检测到「画师库 · 图片助手」扩展，无法调用 NovelAI。');
     if(!bridge.connected)await bridge.check();
-    if(!bridge.canGenerate)throw Error('图片助手需要 '+MIN_VERSION+' 或更高版本才能生图：请到浏览器的扩展页重新加载扩展。');
-    const body=bodyFor(settings,seq,artist),{width,height}=body.parameters;
+    if(!bridge.canGenerate||!bridge.canAccount)throw Error('图片助手需要 '+MIN_VERSION+' 或更高版本才能生图：请到浏览器的扩展页重新加载扩展。');
+    const body=bodyFor(settings,seq,artist),parameters=body.parameters;
+    let width=parameters.width,height=parameters.height,steps=parameters.steps;
+    const free=settings.useAnlas!==true;
+    /* 「不用点数」时先确认免费额度还查得到且还有剩：查不到就不发，免得在不知情的情况下花掉 Anlas。 */
+    let info=null,accountError=null;
+    try{info=await account({bridge,token,signal});}catch(error){if(error?.name==='AbortError')throw error;accountError=error;}
+    if(free){
+      if(accountError)throw Error('读不到 Opus 剩余额度，按「不使用点数」的规则先不生成（'+accountError.message+'）。也可以打开「使用点数」，自行承担可能的消耗。');
+      if(!(info.opusPercent>0))throw Error('Opus 免费额度已经用完（剩余 '+info.opusPercent+'%）。等额度回复，或打开「使用点数」用 Anlas 生成。');
+      const fit=root.ArtistNovelAI.fitPixels(width,height,root.ArtistNovelAI.FREE_PIXELS);
+      width=parameters.width=fit.width;height=parameters.height=fit.height;
+      steps=parameters.steps=Math.min(steps,root.ArtistNovelAI.FREE_STEPS);
+    }else if(info&&info.anlas<=0&&needsPoints(width,height,steps)){
+      throw Error('没有可用点数（Anlas 0），当前 '+width+' × '+height+' / '+steps+' 步超出了免费范围。把尺寸或步数调小，或去 NovelAI 充值点数。');
+    }
     /* 单边上限之外的约束是总像素：1536 × 2048。超了先在本地拦住，别白跑一趟还浪费一次请求。 */
     if(width*height>root.ArtistNovelAI.MAX_PIXELS)throw Error(`宽 × 高 超过 NovelAI 的上限（1536 × 2048），当前 ${width} × ${height}，请把其中一边调小。`);
     /* 请求体在这里就序列化成字符串：扩展只是搬运工，不碰参数的含义。 */
     const zip=await bridge.generate(JSON.stringify(body),token,signal);
     const blob=await root.ArtistNovelAI.firstImageFromZip(new Uint8Array(await zip.arrayBuffer()));
-    return {blob,prompt,settings};
+    return {blob,prompt,settings,free,width,height,steps,account:info,accountError};
   }
-  root.ArtistImageGen={load,save,loadToken,saveToken,sanitize,promptFor,bodyFor,generate,DEFAULTS,DEFAULT_PROMPTS,KEY,TOKEN_KEY,MIN_VERSION};
+  root.ArtistImageGen={load,save,loadToken,saveToken,sanitize,promptFor,bodyFor,generate,account,cachedAccount,clearAccount,normalizeAccount,needsPoints,DEFAULTS,DEFAULT_PROMPTS,ACCOUNT_ENDPOINTS,KEY,TOKEN_KEY,MIN_VERSION};
   if(typeof module!=='undefined')module.exports=root.ArtistImageGen;
 })(globalThis);
 </script><script>(function(root){
@@ -1100,7 +1218,7 @@ dialog[open]::backdrop{opacity:1}
   const text=(v,max=5000)=>typeof v==='string'?v.slice(0,max):'';
   const url=v=>{try{const u=new URL(v);return /^https?:$/.test(u.protocol)?u.href:'';}catch{return '';}};
   const link=(label,href,cls)=>{const a=el('a',cls,label);a.href=url(href);a.target='_blank';a.rel='noopener noreferrer';return a;};
-  const imageValue=v=>typeof v==='string'&&(/^data:image\/(jpeg|png|webp|gif|avif);base64,/.test(v)||/^(?:缩略图|大图)\/[a-f0-9]{24}\.(?:jpeg|png|webp|gif|avif)$/.test(v))?v:null;
+  const imageValue=v=>typeof v==='string'&&(/^data:image\/(jpeg|png|webp|gif|avif);base64,/.test(v)||/^(?:缩略图|大图)\/(?:[a-f0-9]{24}|[^\u0000-\u001f\\/:*?"<>|][^\u0000-\u001f\\/:*?"<>|]{0,99}\.(?:jpeg|png|webp|gif|avif))$/.test(v))?v:null;
   const httpsValue=v=>typeof v==='string'&&v.startsWith('https://')?v:null;
   const seqOf=a=>ArtistId.parse(a.uid)?.seq??a.order;
   /* 卡片固定 5 格。开了「固定测试风格图」后最右 2 格归测试风格 1、2，作品图不能占用。 */
@@ -1163,29 +1281,60 @@ dialog[open]::backdrop{opacity:1}
   }
   function reset(){state.category='全部';state.tags.clear();state.scores.clear();state.query='';$('search').value='';}
   function showImage(a,w){ArtistViewer.open({title:a.name,uid:a.uid,work:w,caption:w.caption,persist:true});}
-  /* 空着的固定格：一个「生成」按钮，外加它对应的测试风格序号。 */
+  /* 空着的固定格：一个「生成」按钮，外加它对应的测试风格序号。
+     按钮自己承担二次确认（第一次点亮、第二次才真发），不再弹系统对话框。 */
   function generateSlot(a,seq){
-    const box=el('div','work work-generate'),button=btn('生成',()=>generateTest(a,seq),'generate-button');
-    button.title=`用 NovelAI 生成「测试风格 ${seq}」并回填到这一格（每次生成消耗 Anlas）`;
-    box.append(button,el('span','generate-seq','测试风格 '+seq));
+    const box=el('div','work work-generate'),label=el('span','generate-seq','测试风格 '+seq),button=btn('生成',()=>armGenerate(a,seq,{box,button,label}),'generate-button');
+    button.title=`用 NovelAI 生成「测试风格 ${seq}」并回填到这一格`;
+    box.append(button,label);
     return box;
   }
-  async function generateTest(a,seq){
+  let armedSlot=null,armedTimer=null;
+  function disarmSlot(){
+    clearTimeout(armedTimer);armedTimer=null;
+    if(!armedSlot)return;
+    const {box,button,label,text}=armedSlot;
+    button.textContent='生成';button.classList.remove('is-armed');box.classList.remove('is-armed');
+    label.textContent=text;armedSlot=null;
+  }
+  function armGenerate(a,seq,slot){
     if(busy||generating)return;
-    if(!folder){status('请先选择「数据」文件夹，生成出来的图片要有地方保存。',true);return;}
-    if(!confirm(`用 NovelAI 为「${a.name}」生成测试风格 ${seq}？\n\n每次生成都会消耗 Anlas，参数与提示词在「设置 → 生图参数」里。`))return;
+    if(armedSlot&&armedSlot.button===slot.button){disarmSlot();generateTest(a,seq,slot);return;}
+    disarmSlot();
+    armedSlot={...slot,text:slot.label.textContent};
+    slot.button.textContent='再点一次开始';slot.button.classList.add('is-armed');slot.box.classList.add('is-armed');
+    slot.label.textContent='会消耗额度或点数';
+    armedTimer=setTimeout(disarmSlot,5000);
+  }
+  /* 生成期间的过渡动画：格子里换成转动的环与一行进度文字，按钮置灰。 */
+  const progressOf=box=>[...box.children].find(child=>String(child.className).includes('gen-progress'));
+  function generatingMark(box,text){
+    box.classList.add('is-generating');
+    box.replaceChildren(el('span','gen-spinner'),el('span','gen-progress',text));
+  }
+  async function generateTest(a,seq,slot){
+    if(busy||generating)return;
+    if(!folder){disarmSlot();status('请先选择「数据」文件夹，生成出来的图片要有地方保存。',true);return;}
+    const box=slot?.box,previous=box?[...box.children]:null;
+    if(box)generatingMark(box,'正在请求 NovelAI…');
     generating=true;status(`正在向 NovelAI 请求「${a.name}」的测试风格 ${seq}…`);
     try{
-      const {blob,prompt}=await ArtistImageGen.generate(a,seq);
-      status('已返回图片，正在保存…');
+      const before=ArtistImageGen.cachedAccount();
+      const {blob,prompt,free,width,height,steps}=await ArtistImageGen.generate(a,seq);
+      const progress=box&&progressOf(box);
+      if(progress)progress.textContent='正在保存到画师目录…';
       const original=await readImage(blob),next=clone(data),target=next.artists.find(item=>item.uid===a.uid);
       if(!target)throw Error('这位画师已经不在库里了，图片没有保存。');
       const testSeq=FolderStore.nextTestSeq(target.works,seq);
       /* 生成时用了什么提示词一并记下来：以后要复现或对比，不用去猜。 */
       target.works.push({id:'',url:'',caption:prompt,kind:'test',testSeq,thumb:await thumbnail(original),large:original,thumbUrl:null,largeUrl:null});
-      await save(next,`已为「${a.name}」生成测试风格 ${testSeq}`);
-    }catch(error){status('生成失败：'+error.message,true);}
-    finally{generating=false;}
+      await save(next,`已为「${a.name}」生成测试风格 ${testSeq}（${width} × ${height} · ${steps} 步${free?' · 未用点数':''}）`);
+      const after=await refreshAccount(true);
+      if(after&&before&&!free&&after.anlas<before.anlas)status(`已生成测试风格 ${testSeq}；这次消耗了 ${before.anlas-after.anlas} 点 Anlas，剩余 ${after.anlas} 点。`);
+    }catch(error){
+      status('生成失败：'+error.message,true);
+      if(box){box.classList.remove('is-generating');box.replaceChildren(...previous);}
+    }finally{generating=false;disarmSlot();}
   }
   function artistCard(a){
     const article=el('article','artist'),info=el('div','artist-info'),top=el('div','artist-top');article.dataset.artist=a.name;
@@ -1795,15 +1944,49 @@ dialog[open]::backdrop{opacity:1}
   }
   /* ---- 生图参数：只存在本机浏览器里，绝不写进画师库数据文件，导出备份也就不会带 token ---- */
   const GEN_LISTS=[['gen-model',()=>ArtistNovelAI.MODELS],['gen-size',()=>ArtistNovelAI.SIZES],['gen-sampler',()=>ArtistNovelAI.SAMPLERS],['gen-uc',()=>ArtistNovelAI.UC_PRESETS]];
-  const GEN_FIELDS=[['gen-model','model'],['gen-size','size'],['gen-width','width'],['gen-height','height'],['gen-steps','steps'],['gen-scale','scale'],['gen-sampler','sampler'],['gen-seed','seed'],['gen-uc','ucPreset'],['gen-negative','negativePrompt'],['gen-prompt1','prompt1'],['gen-prompt2','prompt2']];
-  function fillGenSettings(){const settings=ArtistImageGen.load();for(const [id,key] of GEN_FIELDS)$(id).value=settings[key]==null?'':String(settings[key]);$('gen-token').value=ArtistImageGen.loadToken();}
+  const GEN_FIELDS=[['gen-model','model'],['gen-size','size'],['gen-width','width'],['gen-height','height'],['gen-steps','steps'],['gen-scale','scale'],['gen-cfg-rescale','cfgRescale'],['gen-sampler','sampler'],['gen-seed','seed'],['gen-uc','ucPreset'],['gen-negative','negativePrompt'],['gen-prompt1','prompt1'],['gen-prompt2','prompt2']];
+  const GEN_SWITCHES=[['gen-transparent','transparentBg'],['gen-anlas','useAnlas']];
+  function fillGenSettings(){
+    const settings=ArtistImageGen.load();
+    for(const [id,key] of GEN_FIELDS)$(id).value=settings[key]==null?'':String(settings[key]);
+    for(const [id,key] of GEN_SWITCHES)$(id).checked=settings[key]===true;
+    $('gen-token').value=ArtistImageGen.loadToken();
+  }
   /* 输入框里是字符串、可能是空、可能超范围：统一交给 sanitize 收口，坏值回落到默认。 */
-  function readGenSettings(){const raw={};for(const [id,key] of GEN_FIELDS)raw[key]=$(id).value;return ArtistImageGen.save(raw);}
+  function readGenSettings(){const raw={};for(const [id,key] of GEN_FIELDS)raw[key]=$(id).value;for(const [id,key] of GEN_SWITCHES)raw[key]=$(id).checked;return ArtistImageGen.save(raw);}
   function bindGenSettings(){
     for(const [id,list] of GEN_LISTS)$(id).replaceChildren(...list().map(item=>new Option(item.label,item.value)));
     for(const [id] of GEN_FIELDS){const node=$(id);node.onchange=readGenSettings;node.oninput=readGenSettings;}
-    $('gen-token').oninput=()=>ArtistImageGen.saveToken($('gen-token').value);
+    for(const [id] of GEN_SWITCHES)$(id).onchange=readGenSettings;
+    $('gen-token').oninput=()=>{ArtistImageGen.saveToken($('gen-token').value);showAccount('token 已存到本机，点「刷新额度」重新读取。');};
     $('gen-token-toggle').onclick=()=>{const box=$('gen-token'),hidden=box.type==='password';box.type=hidden?'text':'password';$('gen-token-toggle').textContent=hidden?'隐藏':'显示';};
+  }
+  const tierName=tier=>tier==='3'||tier===3?'Opus':tier==='2'||tier===2?'Scroll':tier==='1'||tier===1?'Tablet':tier==='0'||tier===0?'Paper':tier==null?'未知套餐':String(tier);
+  /* 顶部与对话框里都显示额度。Opus 的张数是按站点客户端的算式（17.3 × 百分比）估出来的，
+     所以文案里写「约」，别当成精确值。 */
+  function showAccount(message,error=false){
+    const node=$('opus-status'),line=$('gen-account');
+    node.classList.toggle('error',error);line.classList.toggle('error',error);
+    if(message){node.textContent='额度：…';line.textContent=message;return;}
+    const info=ArtistImageGen.cachedAccount();
+    if(!info){node.textContent='额度：未查询';line.textContent='点右边「刷新额度」读取 Opus 剩余张数与 Anlas 点数。';return;}
+    const images=info.opusImages==null?'未知':('约 '+info.opusImages+' 张');
+    const parts=[`套餐 ${tierName(info.tier)}`,`免费额度剩 ${images}${info.opusPercent==null?'':`（${info.opusPercent}%）`}`,`Anlas 点数 ${info.anlas}`,info.refillPercent?`每天回复约 ${info.refillPercent}%（≈ ${info.refillImages} 张）`:''].filter(Boolean);
+    node.textContent='额度：'+images+(info.opusPercent==null?'':` ${info.opusPercent}%`)+' · '+info.anlas+' 点';
+    node.title=parts.join('｜')+'（张数是按站点算式估算的，仅供参考）';
+    line.textContent=parts.join('｜')+'。张数是按站点算式 17.3 × 百分比 估算的，仅供参考。';
+  }
+  async function refreshAccount(force){
+    if(!ArtistImageGen.loadToken()){showAccount('还没有填写 token，填好并刷新后才能生成。');return null;}
+    showAccount('正在读取 Opus 额度…');
+    try{const info=await ArtistImageGen.account({force});showAccount('');return info;}
+    catch(error){showAccount('读取额度失败：'+error.message,true);return null;}
+  }
+  /* 顶部按钮上的额度：只在已经配好 token 与扩展时自动查一次，其余交给用户点。 */
+  function autoAccount(){
+    if(!ArtistImageGen.loadToken()){showAccount();return;}
+    if(!ArtistExtension.canAccount){showAccount();return;}
+    refreshAccount(false);
   }
   async function init(){
     applyCardSize();
@@ -1818,7 +2001,10 @@ dialog[open]::backdrop{opacity:1}
     $('test-remove-all').onclick=()=>{for(const box of $('test-remove-list').querySelectorAll('input[type=checkbox]'))box.checked=true;};
     $('test-remove-none').onclick=()=>{for(const box of $('test-remove-list').querySelectorAll('input[type=checkbox]'))box.checked=false;};
     $('test-remove-run').onclick=()=>ArtistTestImages.runRemove();
-    $('settings-open').onclick=()=>{$('history-date').value=data.cutoffDate;$('save-large').checked=data.saveLargeImages===true;$('fixed-test').checked=data.fixedTestSlots===true;$('work-order').value=data.workOrder;$('card-size').value=String(prefs.cardSize);$('card-size-value').textContent=prefs.cardSize;fillGenSettings();updateGenStatus();$('settings').showModal();};$('close-settings').onclick=()=>$('settings').close();
+    $('settings-open').onclick=()=>{$('history-date').value=data.cutoffDate;$('save-large').checked=data.saveLargeImages===true;$('fixed-test').checked=data.fixedTestSlots===true;$('work-order').value=data.workOrder;$('card-size').value=String(prefs.cardSize);$('card-size-value').textContent=prefs.cardSize;$('settings').showModal();};$('close-settings').onclick=()=>$('settings').close();
+    $('gen-settings-open').onclick=()=>{fillGenSettings();showAccount();updateGenStatus();$('gen-settings').showModal();if(ArtistImageGen.loadToken()&&!ArtistImageGen.cachedAccount())refreshAccount(false);};$('close-gen-settings').onclick=()=>$('gen-settings').close();
+    $('opus-status').onclick=()=>refreshAccount(true);
+    $('gen-account-refresh').onclick=()=>refreshAccount(true);
     $('card-size').oninput=()=>{const value=Number($('card-size').value);$('card-size-value').textContent=value;prefs.setCardSize(value);};
     $('save-large').onchange=async()=>{const next=clone(data);next.saveLargeImages=$('save-large').checked;await save(next,next.saveLargeImages?'已开启「保存大图」：预览作品时会保存原图':'已关闭「保存大图」：预览作品时不再保存原图');};
     $('fixed-test').onchange=async()=>{const next=clone(data);next.fixedTestSlots=$('fixed-test').checked;await save(next,next.fixedTestSlots?'已开启「固定测试风格图」：每张卡片右侧 2 格留给测试风格 1、2':'已关闭「固定测试风格图」：测试风格图不再占固定格子');};
@@ -1840,7 +2026,7 @@ dialog[open]::backdrop{opacity:1}
     $('viewer').addEventListener('close',()=>{ArtistImages.dispose('viewer');ArtistViewer.dispose();});$('save-original').onclick=()=>ArtistViewer.saveOriginal();
     document.querySelectorAll('dialog').forEach(dialog=>dialog.addEventListener('click',event=>{if(event.target===dialog)dialog.close();}));
     $('extension-status').onclick=checkExtension;
-    window.addEventListener('beforeunload',e=>{if(volatile||busy){e.preventDefault();e.returnValue='';}});render();document.querySelectorAll('button,input,textarea,select').forEach(b=>b.disabled=true);$('choose-folder').disabled=false;$('extension-status').disabled=false;$('choose-folder').onclick=connectFolder;checkExtension();
+    window.addEventListener('beforeunload',e=>{if(volatile||busy){e.preventDefault();e.returnValue='';}});render();document.querySelectorAll('button,input,textarea,select').forEach(b=>b.disabled=true);$('choose-folder').disabled=false;$('extension-status').disabled=false;$('choose-folder').onclick=connectFolder;checkExtension().then(autoAccount);
   }
   init();
 })();

@@ -2,12 +2,13 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import vm from 'node:vm';
-import {fetchImage,resolvePost,imageUrl,postUrl,apiUrl,fetchApi,generateImage,novelaiUrl,bearerToken} from './图片取图扩展/probe.mjs';
+import {fetchImage,resolvePost,imageUrl,postUrl,apiUrl,fetchApi,generateImage,novelaiUrl,bearerToken,subscriptionUrl,fetchSubscription} from './图片取图扩展/probe.mjs';
 const url='https://cdn.donmai.us/180x180/79/ac/79ac317b7f7c085b9ac65f02752f9211.jpg';
 test('扩展只请求指定网站，本地连接脚本仅匹配文件页面',async()=>{
   const m=JSON.parse(await fs.readFile('图片取图扩展/manifest.json','utf8'));
-  assert.equal(m.manifest_version,3);assert.deepEqual(m.host_permissions,['https://danbooru.donmai.us/*','https://cdn.donmai.us/*','https://image.novelai.net/*']);assert.deepEqual(m.content_scripts[0].matches,['file:///*']);assert.equal(m.content_scripts[0].all_frames,false);
+  assert.equal(m.manifest_version,3);assert.deepEqual(m.host_permissions,['https://danbooru.donmai.us/*','https://cdn.donmai.us/*','https://image.novelai.net/*','https://api.novelai.net/*']);assert.deepEqual(m.content_scripts[0].matches,['file:///*']);assert.equal(m.content_scripts[0].all_frames,false);
   assert.match(m.content_security_policy.extension_pages,/connect-src[^;]*https:\/\/image\.novelai\.net/,'后台要发得出去，CSP 里必须放行生图端点');
+  assert.match(m.content_security_policy.extension_pages,/connect-src[^;]*https:\/\/api\.novelai\.net/,'查额度用的是 api 域名，也要放行');
   for(const s of ['https://evil.example/a.jpg','http://cdn.donmai.us/a.jpg','https://cdn.donmai.us.evil.example/a.jpg','https://user:pass@cdn.donmai.us/a.jpg','https://cdn.donmai.us:444/a.jpg'])assert.throws(()=>imageUrl(s));
   assert.equal(postUrl('12036303'),'https://danbooru.donmai.us/posts/12036303.json');assert.throws(()=>postUrl('0'));assert.throws(()=>postUrl('https://evil.example/posts/12036303'));
 });
@@ -31,6 +32,24 @@ test('生图：POST 到 NovelAI，token 只走 Authorization 头，返回 zip',a
   assert.equal(seen.options.redirect,'error');
   assert.equal(blob.type,'application/zip');
   assert.deepEqual(new Uint8Array(await blob.arrayBuffer()),zip);
+});
+test('额度查询走白名单，只带 token 读订阅信息',async()=>{
+  assert.equal(subscriptionUrl('https://image.novelai.net/user/subscription'),'https://image.novelai.net/user/subscription');
+  assert.equal(subscriptionUrl('https://api.novelai.net/user/subscription'),'https://api.novelai.net/user/subscription');
+  assert.equal(subscriptionUrl('https://api.novelai.net/user/subscription?x=1#y'),'https://api.novelai.net/user/subscription','查询串与片段都要丢掉');
+  for(const bad of ['https://evil.example/user/subscription','http://api.novelai.net/user/subscription','https://api.novelai.net.evil.example/user/subscription','https://user:pass@api.novelai.net/user/subscription','https://api.novelai.net:444/user/subscription','https://api.novelai.net/user/data','https://image.novelai.net/user/subscription/../user/data'])
+    assert.throws(()=>subscriptionUrl(bad),/额度地址/,'应拒绝：'+bad);
+  let seen=null;
+  const payload=await fetchSubscription('https://api.novelai.net/user/subscription',{token:'pst-abcdefghijklmnop',
+    fetcher:async(target,options)=>{seen={target,options};return new Response(JSON.stringify({tier:3,usage:{percent:42}}),{headers:{'content-type':'application/json'}});}});
+  assert.equal(seen.options.headers.authorization,'Bearer pst-abcdefghijklmnop','token 只能放在请求头里');
+  assert.equal(seen.options.credentials,'omit');
+  assert.equal(payload.tier,3);assert.equal(payload.usage.percent,42);
+  const fail=(status,body,type='application/json')=>fetchSubscription('https://api.novelai.net/user/subscription',{token:'pst-abcdefghijklmnop',fetcher:async()=>new Response(body,{status,headers:{'content-type':type}})});
+  await assert.rejects(fail(401,JSON.stringify({message:'Invalid token'})),/token 被拒绝/);
+  await assert.rejects(fail(500,'boom','text/plain'),/HTTP 500/);
+  await assert.rejects(fail(200,'<html>challenge</html>','text/html'),/没有返回 JSON/);
+  await assert.rejects(fetchSubscription('https://api.novelai.net/user/subscription',{token:'bad token',fetcher:async()=>new Response('{}')}),/token/,'token 形状不对就别发出去');
 });
 test('生图失败时带出服务器原话，且不把错误正文当成图片',async()=>{
   const fail=(status,body,type='application/json')=>generateImage('https://image.novelai.net/ai/generate-image','{}',{token:'pst-abcdefghijklmnop',fetcher:async()=>new Response(body,{status,headers:{'content-type':type}})});

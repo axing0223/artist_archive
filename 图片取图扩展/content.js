@@ -3,7 +3,7 @@
   const reply=(id,result)=>window.postMessage({channel:'artist-images-reply-v1',id,...result},'*');
   const send=message=>chrome.runtime.sendMessage(message);
   window.addEventListener('message',async event=>{
-    const m=event.data;if(event.source!==window||m?.channel!=='artist-images-v1'||typeof m.id!=='string'||m.id.length>100||!['ping','image','cancel','resolve','api','generate'].includes(m.type))return;
+    const m=event.data;if(event.source!==window||m?.channel!=='artist-images-v1'||typeof m.id!=='string'||m.id.length>100||!['ping','image','cancel','resolve','api','generate','subscription'].includes(m.type))return;
     try{
       const meta=await send({channel:m.channel,id:m.id,type:m.type,url:m.url,body:m.body,token:m.token});
       if(m.type!=='image'&&m.type!=='generate'){reply(m.id,meta||{ok:false,error:'扩展未响应，请刷新扩展和画师库'});return;}

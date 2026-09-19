@@ -23,14 +23,29 @@
 .work.is-test{position:relative}.work.is-test::after{content:'测试风格';position:absolute;top:0;left:0;z-index:1;background:#e08b1f;color:#fff;font-size:11px;line-height:1;padding:4px 7px;border-radius:7px 0 7px 0}
 .test-preview{display:flex;flex-direction:column;gap:6px}.work-empty{border:1px dashed #e3e7ef;border-radius:7px;height:var(--card-size,220px);background:#fafbfd}
 .work-generate{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;border:1px dashed #c9d4f5;border-radius:7px;height:var(--card-size,220px);background:#f7f9ff}
-.generate-button{padding:7px 18px;border:1px solid #b9c6ee;border-radius:8px;background:#fff;color:#375af5;font-size:13px;cursor:pointer}
+.work-generate.is-armed{border-color:#e08b1f;background:#fff8ec}
+.generate-button{padding:7px 18px;border:1px solid #b9c6ee;border-radius:8px;background:#fff;color:#375af5;font-size:13px;cursor:pointer;transition:background-color .18s ease,border-color .18s ease,color .18s ease}
 .generate-button:hover{background:#eef2ff;border-color:#8fa4e6}
+.generate-button.is-armed,.generate-button.is-armed:hover{background:#e08b1f;border-color:#e08b1f;color:#fff;animation:arm-pulse 1.1s ease-in-out infinite}
 .generate-seq{font-size:12px;color:#788496}
-.setting-row textarea{width:100%;min-width:0;max-width:420px;flex:1 1 260px;font-size:13px}
-.setting-row .field-help.error,.setting-row p.error{color:#b4453c}
+.work-generate.is-armed .generate-seq{color:#a2660f}
+/* 生成中的过渡动画：转动的环 + 一行进度文字 */
+.work-generate.is-generating{border-style:solid;border-color:#c9d4f5;background:#f2f6ff}
+.gen-spinner{width:34px;height:34px;border-radius:50%;border:3px solid #d8e0f5;border-top-color:#375af5;animation:gen-spin .9s linear infinite}
+.gen-progress{font-size:12px;color:#5a6a8a;text-align:center;padding:0 10px;line-height:1.5}
+.work-generate.is-generating .gen-progress{animation:gen-fade 1.6s ease-in-out infinite}
+@keyframes gen-spin{to{transform:rotate(360deg)}}
+@keyframes gen-fade{0%,100%{opacity:.55}50%{opacity:1}}
+@keyframes arm-pulse{0%,100%{box-shadow:0 0 0 0 #e08b1f55}50%{box-shadow:0 0 0 6px #e08b1f00}}
+@media(prefers-reduced-motion:reduce){.gen-spinner{animation-duration:2.4s}.generate-button.is-armed{animation:none}.work-generate.is-generating .gen-progress{animation:none}}
+.setting-row textarea{width:100%;min-width:0;max-width:520px;flex:1 1 300px;font-size:13px;line-height:1.6;min-height:150px;resize:vertical}
+.setting-row .field-help.error,.setting-row p.error{color:#b4453c;font-weight:600}
 .size-pair{display:flex;align-items:center;gap:8px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;max-width:440px}
 .size-pair select{min-width:170px}
 .size-pair input[type=number]{width:104px}
+.wide-dialog{width:min(920px,94vw)}
+.wide-dialog .form-body{max-height:78vh;overflow-y:auto}
+button.error,.action.error{border-color:#e6b2ae;color:#b4453c}
 .artist.is-editing{grid-template-columns:1fr;background:#fbfcff;border-color:#c9d4f5}
 .artist.is-editing .artist-info{align-self:stretch}
 .edit-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;width:100%}
