@@ -1,4 +1,8 @@
 (() => {
+  /* 跑在扩展自己的页面里时，页面本身就能带 Cookie 直连，不需要消息通道那一层：
+     直接用直连实现顶上，接口一模一样。file:// 页面才走下面的桥。 */
+  const inExtension=typeof location!=='undefined'&&location.protocol==='chrome-extension:'&&!!window.ArtistHostDirect;
+  if(inExtension){window.ArtistExtension=window.ArtistHostDirect;return;}
   const pending=new Map();let connected=false,version='';
   /* 接口通道是 0.3.2、生图通道是 0.4.0、额度查询是 0.4.1 才有的。旧扩展不认这些类型，
      会静默丢弃消息、让页面干等到超时，所以先按版本判断能不能用，不能用就直接让调用方退回直连。 */

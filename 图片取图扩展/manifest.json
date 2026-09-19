@@ -1,12 +1,12 @@
 {
   "manifest_version": 3,
   "name": "画师库 · 图片助手",
-  "version": "0.4.1",
-  "description": "为本地画师库获取 Danbooru 缩略图与原始大图，并可代画师库向 NovelAI 请求文生图与查询点数。",
+  "version": "0.5.0",
+  "description": "本地画师库：可以直接在扩展里打开画师库（直连 Danbooru 与 NovelAI），也保留下单图取图测试页。",
   "host_permissions": ["https://danbooru.donmai.us/*", "https://cdn.donmai.us/*", "https://image.novelai.net/*", "https://api.novelai.net/*"],
   "background": {"service_worker": "background.js", "type": "module"},
   "content_scripts": [{"matches": ["file:///*"], "js": ["content.js"], "run_at": "document_idle", "all_frames": false}],
-  "action": {"default_title": "打开单图取图测试"},
+  "action": {"default_title": "打开画师库（详细：右键 → 选项）"},
   "options_page": "test.html",
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'none'; connect-src https://danbooru.donmai.us https://cdn.donmai.us https://image.novelai.net https://api.novelai.net; img-src 'self' blob: data:; base-uri 'none'"

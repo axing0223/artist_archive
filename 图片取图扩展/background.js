@@ -1,6 +1,20 @@
 import {fetchImage,resolvePost,fetchApi,imageUrl,generateImage,fetchSubscription} from './probe.mjs';
 import {allowedSender} from './bridge-policy.mjs';
-chrome.action.onClicked.addListener(()=>chrome.tabs.create({url:chrome.runtime.getURL('test.html')}));
+/* 点扩展图标打开画师库（跑在扩展页里，直连站点）；已经开着就切过去，别开一堆标签页。
+   没有 getContexts（旧版 Chrome）或还没构建出镜像时，退回到单图测试页。 */
+const LIBRARY='app/index.html';
+chrome.action.onClicked.addListener(async()=>{
+  const url=chrome.runtime.getURL(LIBRARY);
+  try{
+    if(chrome.runtime.getContexts){
+      const contexts=await chrome.runtime.getContexts({contextTypes:['TAB'],documentUrls:[url]});
+      const open=contexts.find(context=>context.tabId!=null&&context.tabId>=0);
+      if(open){await chrome.tabs.update(open.tabId,{active:true});await chrome.windows.update(open.windowId,{focused:true});return;}
+    }
+  }catch{}
+  try{await chrome.tabs.create({url});}
+  catch{chrome.tabs.create({url:chrome.runtime.getURL('test.html')});}
+});
 const CHUNK=4*1024*1024,MAX_BYTES=50*1024*1024,KEEP=120000,GENERATE_URL='https://image.novelai.net/ai/generate-image';
 const jobs=new Map(),queue=[];let active=0;
 function sweep(){const now=Date.now();for(const [key,job] of jobs)if(job.expires&&job.expires<now)jobs.delete(key);}
