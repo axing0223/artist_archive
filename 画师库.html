@@ -46,12 +46,15 @@
 @keyframes gen-fade{0%,100%{opacity:.55}50%{opacity:1}}
 @keyframes arm-pulse{0%,100%{box-shadow:0 0 0 0 #e08b1f55}50%{box-shadow:0 0 0 6px #e08b1f00}}
 @media(prefers-reduced-motion:reduce){.gen-spinner{animation-duration:2.4s}.generate-button.is-armed{animation:none}.work-generate.is-generating .gen-progress{animation:none}}
-.setting-row textarea{width:100%;min-width:0;max-width:520px;flex:1 1 300px;font-size:13px;line-height:1.6;min-height:150px;resize:vertical}
+.setting-row textarea{flex:1 1 auto;width:auto;max-width:none;min-width:260px;font-size:13px;line-height:1.6;min-height:160px;resize:vertical}
+/* 反向提示词与两份提示词模板：左侧说明栏固定同宽，三个框因此一样宽，并且吃掉整行剩余宽度。 */
+.setting-row.textarea-row>div:first-child{flex:0 0 320px}
+@media(max-width:900px){.setting-row.textarea-row{flex-wrap:wrap}.setting-row.textarea-row>div:first-child{flex:1 1 100%}.setting-row.textarea-row textarea{flex:1 1 100%}}
 .setting-row .field-help.error,.setting-row p.error{color:#b4453c;font-weight:600}
 .size-pair{display:flex;align-items:center;gap:8px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;max-width:440px}
 .size-pair select{min-width:170px}
 .size-pair input[type=number]{width:104px}
-.wide-dialog{width:min(920px,94vw)}
+.wide-dialog{width:min(1180px,96vw)}
 .wide-dialog .form-body{max-height:78vh;overflow-y:auto}
 button.error,.action.error{border-color:#e6b2ae;color:#b4453c}
 .artist.is-editing{grid-template-columns:1fr;background:#fbfcff;border-color:#c9d4f5}
@@ -220,10 +223,11 @@ dialog[open]::backdrop{opacity:1}
     <div class="setting-row"><div><strong>采样器</strong><p class="field-help">默认 Euler Ancestral，是站点自带的默认值；换成别的只是口味不同。</p></div><select id="gen-sampler" aria-label="采样器"></select></div>
     <div class="setting-row"><div><strong>随机种子</strong><p class="field-help">留空就是每次随机；填一个数字可以复现同一张图。同一个种子配合同一套提示词才会得到相同结果。</p></div><input id="gen-seed" type="number" min="0" max="4294967295" step="1" placeholder="留空随机" aria-label="随机种子"></div>
     <div class="setting-row"><div><strong>UC 预设</strong><p class="field-help">NovelAI 自带的「不想看到的内容」预设，默认 Heavy。它拼出来的那段文字会加在下面反向提示词的前面。</p></div><select id="gen-uc" aria-label="UC 预设"></select></div>
+    <div class="setting-row"><div><strong>质量标签</strong><p class="field-help">控制是否在提示词后面自动补一段质量标签，默认开启（跟站点一致）：V5 / V4.5 是「very aesthetic, masterpiece, no text」，V4 是「no text, best quality, very aesthetic, absurdres」，V3 是「best quality, amazing quality, very aesthetic, absurdres」。关掉就一点都不加，也不会再发质量预设的提示字段。想自己写就在提示词模板里直接写，那部分永远是你说什么就是什么。</p></div><label class="switch"><input id="gen-quality" type="checkbox"><span></span></label></div>
     <div class="setting-row"><div><strong>transparent BG</strong><p class="field-help">输出带原生 Alpha 的透明背景 PNG，只有 V5 模型支持；选别的模型时会在发送前拦下来。开启后会按站点客户端的做法发 tag_hint_transparent_background、straight_alpha 与 image_format=png。</p></div><label class="switch"><input id="gen-transparent" type="checkbox"><span></span></label></div>
-    <div class="setting-row"><div><strong>反向提示词</strong><p class="field-help">额外不想要的内容，会接在 UC 预设文本之后；留空就只用预设。文本越长越占位置，换行会被当成空格。</p></div><textarea id="gen-negative" rows="12" placeholder="例如：bad hands, extra fingers" aria-label="反向提示词"></textarea></div>
-    <div class="setting-row"><div><strong>提示词模板 · 测试风格 1</strong><p class="field-help">占最右那一格。用 {tag} 代表画师 tag，例如「{tag}, 1girl, solo」；要加前缀可以写 artist:{tag}。写错的 {变量} 会原样保留，方便发现。</p></div><textarea id="gen-prompt1" rows="12" aria-label="提示词模板 1"></textarea></div>
-    <div class="setting-row"><div><strong>提示词模板 · 测试风格 2</strong><p class="field-help">占右边第二格。两个模板可以用同一个画师 tag 换不同构图，方便对比画风。</p></div><textarea id="gen-prompt2" rows="12" aria-label="提示词模板 2"></textarea></div>
+    <div class="setting-row textarea-row"><div><strong>反向提示词</strong><p class="field-help">额外不想要的内容，会接在 UC 预设文本之后；留空就只用预设。文本越长越占位置，换行会被当成空格。</p></div><textarea id="gen-negative" rows="12" placeholder="例如：bad hands, extra fingers" aria-label="反向提示词"></textarea></div>
+    <div class="setting-row textarea-row"><div><strong>提示词模板 · 测试风格 1</strong><p class="field-help">占最右那一格。用 {tag} 代表画师 tag，例如「{tag}, 1girl, solo」；要加前缀可以写 artist:{tag}。写错的 {变量} 会原样保留，方便发现。</p></div><textarea id="gen-prompt1" rows="12" aria-label="提示词模板 1"></textarea></div>
+    <div class="setting-row textarea-row"><div><strong>提示词模板 · 测试风格 2</strong><p class="field-help">占右边第二格。两个模板可以用同一个画师 tag 换不同构图，方便对比画风。</p></div><textarea id="gen-prompt2" rows="12" aria-label="提示词模板 2"></textarea></div>
     <div class="setting-row"><div><strong>图片助手</strong><p class="field-help" id="gen-bridge" role="status">正在检测…</p></div><button id="gen-check" class="action" type="button">重新检测</button></div>
   </div></dialog>
   <dialog id="viewer" aria-labelledby="viewer-title"><div class="viewer-bar"><h2 id="viewer-title"></h2><button id="close-viewer" aria-label="关闭图片">关闭 ×</button></div><div class="viewer-image"><img id="large-image" alt=""></div><div class="viewer-bottom"><p id="viewer-caption"></p><div class="viewer-actions"><button id="save-original" class="action" type="button">保存原图</button><a id="viewer-source" target="_blank" rel="noopener noreferrer">查看作品来源 ↗</a></div></div></dialog>
@@ -507,11 +511,16 @@ dialog[open]::backdrop{opacity:1}
     const tag=String(artistName||'').replace(/[\u0000-\u001f\\/:*?"<>|]/g,'_').trim().slice(0,80)||'画师';
     return tag+'-测试风格'+seq;
   }
+  /* 导出备份：只带缩略图，不带任何原图——原图动辄是缩略图的十几倍，备份会因此小一大截。
+     原图字段只保留在线链接（那只是个地址，不是图片数据）；本地上传/生成的原图不进备份，
+     要连原图一起备份就复制整个「数据」文件夹。 */
   async function exportTo(dir,data,stream,progress=()=>{}){
     const {artists,...header}=data;await stream.write(JSON.stringify(header).slice(0,-1)+',"artists":[');
     for(let i=0;i<artists.length;i++){const {works,...meta}=artists[i];progress(i+1,artists.length);await stream.write((i?',':'')+JSON.stringify(meta).slice(0,-1)+',"works":[');
       for(let j=0;j<works.length;j++){const copy={...works[j]};
-        for(const kind of IMAGE_KINDS){const value=copy[kind];if(typeof value==='string'&&!value.startsWith('data:')){const blob=await readImage(dir,meta.uid,value);copy[kind]='data:'+blob.type+';base64,'+base64Of(new Uint8Array(await blob.arrayBuffer()));}}
+        copy.large=typeof copy.large==='string'&&remotePattern.test(copy.large)?copy.large:null;
+        const value=copy.thumb;
+        if(typeof value==='string'&&!value.startsWith('data:')){const blob=await readImage(dir,meta.uid,value);copy.thumb='data:'+blob.type+';base64,'+base64Of(new Uint8Array(await blob.arrayBuffer()));}
         await stream.write((j?',':'')+JSON.stringify(copy));}
       await stream.write(']}');}
     await stream.write(']}');
@@ -665,13 +674,15 @@ dialog[open]::backdrop{opacity:1}
     return String(template??'').replace(/\{(\w+)\}/g,(all,key)=>Object.prototype.hasOwnProperty.call(vars,key)?String(vars[key]):all);
   }
   /* V5/V4 要求 negative_prompt 与 v4_negative_prompt.caption.base_caption 同步，
-     少了任何一处服务器都会直接报内部错误。 */
+     少了任何一处服务器都会直接报内部错误。
+     质量标签默认跟着站点预设走，但和 UC 预设一样由用户决定要不要：settings.qualityTags===false 就一点都不加。 */
   function buildBody(settings={},prompt=''){
     const model=MODELS.some(m=>m.value===settings.model)?settings.model:MODELS[0].value;
     const preset=UC_PRESETS.some(p=>p.value===settings.ucPreset)?settings.ucPreset:'heavy';
     const sampler=SAMPLERS.some(s=>s.value===settings.sampler)?settings.sampler:'k_euler_ancestral';
     const size=sizeOf(settings.size);
-    const finalPrompt=String(prompt)+qualityTagsOf(model);
+    const wantQuality=settings.qualityTags!==false;
+    const finalPrompt=String(prompt)+(wantQuality?qualityTagsOf(model):'');
     const finalUc=ucTagsOf(model,preset)+String(settings.negativePrompt??'');
     const steps=Number.isSafeInteger(settings.steps)&&settings.steps>0?settings.steps:28;
     const scale=Number.isFinite(settings.scale)&&settings.scale>=0?settings.scale:5;
@@ -695,8 +706,9 @@ dialog[open]::backdrop{opacity:1}
     if(isV5(model)){
       parameters.params_version=4;
       parameters.ucPresetId=preset;
-      parameters.qualityPresetId='standard';
-      parameters.tag_hint_qt=1;parameters.tag_hint_uc_preset=2;
+      /* 关掉质量标签时连预设提示一起撤掉，免得服务器按预设自己再补一份。 */
+      if(wantQuality){parameters.qualityPresetId='standard';parameters.tag_hint_qt=1;}
+      parameters.tag_hint_uc_preset=2;
       parameters.normalize_reference_strength_multiple=true;
       parameters.image_format='png';
       parameters.inpaintImg2ImgStrength=1;parameters.add_original_image=true;
@@ -744,7 +756,7 @@ dialog[open]::backdrop{opacity:1}
     prompt1:'{tag}, 1girl, solo, upper body, looking at viewer, simple background, white background',
     prompt2:'{tag}, 1girl, solo, full body, standing, outdoors, day, scenery',
   };
-  const DEFAULTS={model:'nai-diffusion-5-full',size:'832x1216',width:null,height:null,steps:28,scale:5,cfgRescale:0,sampler:'k_euler_ancestral',seed:null,ucPreset:'heavy',negativePrompt:'',transparentBg:false,useAnlas:false,...DEFAULT_PROMPTS};
+  const DEFAULTS={model:'nai-diffusion-5-full',size:'832x1216',width:null,height:null,steps:28,scale:5,cfgRescale:0,sampler:'k_euler_ancestral',seed:null,ucPreset:'heavy',qualityTags:true,negativePrompt:'',transparentBg:false,useAnlas:false,...DEFAULT_PROMPTS};
   /* 两个都能答订阅信息，站点客户端会先问 image 再问 api。 */
   const ACCOUNT_ENDPOINTS=['https://image.novelai.net/user/subscription','https://api.novelai.net/user/subscription'];
   const ACCOUNT_TTL=60000;
@@ -765,6 +777,8 @@ dialog[open]::backdrop{opacity:1}
       sampler:pick(root.ArtistNovelAI.SAMPLERS,input.sampler,DEFAULTS.sampler),
       seed:int(input.seed,0,4294967295),
       ucPreset:pick(root.ArtistNovelAI.UC_PRESETS,input.ucPreset,DEFAULTS.ucPreset),
+      /* 质量标签默认开（跟站点一致），但和 UC 预设一样交给用户决定。 */
+      qualityTags:input.qualityTags!==false,
       negativePrompt:text(input.negativePrompt,4000),
       transparentBg:input.transparentBg===true,
       useAnlas:input.useAnlas===true,
@@ -1790,7 +1804,7 @@ dialog[open]::backdrop{opacity:1}
   }
   async function exportData(){
     if(busy)return;let stream;const controls=[...document.querySelectorAll('button,input,textarea,select')].map(e=>[e,e.disabled]);
-    try{const handle=await window.showSaveFilePicker({suggestedName:'画师库备份_'+new Date().toISOString().slice(0,10)+'.json',types:[{description:'画师库 JSON',accept:{'application/json':['.json']}}]});busy=true;controls.forEach(([e])=>e.disabled=true);stream=await handle.createWritable();await FolderStore.exportTo(folder,data,stream,(i,n)=>status(`正在导出 ${i} / ${n} 位画师…`));await stream.close();stream=null;status('备份已保存，包含本地缩略图与原图；未下载的原图保留在线链接。');
+    try{const handle=await window.showSaveFilePicker({suggestedName:'画师库备份_'+new Date().toISOString().slice(0,10)+'.json',types:[{description:'画师库 JSON',accept:{'application/json':['.json']}}]});busy=true;controls.forEach(([e])=>e.disabled=true);stream=await handle.createWritable();await FolderStore.exportTo(folder,data,stream,(i,n)=>status(`正在导出 ${i} / ${n} 位画师…`));await stream.close();stream=null;status('备份已保存：只含缩略图，不含任何原图（原图只保留在线链接）。要连原图一起备份，请复制整个「数据」文件夹。');
     }catch(error){if(stream)await stream.abort().catch(()=>{});if(error.name!=='AbortError')status('备份失败：'+error.message,true);}finally{busy=false;controls.forEach(([e,disabled])=>e.disabled=disabled);}
   }
   async function importData(e){
@@ -1945,14 +1959,15 @@ dialog[open]::backdrop{opacity:1}
   /* ---- 生图参数：只存在本机浏览器里，绝不写进画师库数据文件，导出备份也就不会带 token ---- */
   const GEN_LISTS=[['gen-model',()=>ArtistNovelAI.MODELS],['gen-size',()=>ArtistNovelAI.SIZES],['gen-sampler',()=>ArtistNovelAI.SAMPLERS],['gen-uc',()=>ArtistNovelAI.UC_PRESETS]];
   const GEN_FIELDS=[['gen-model','model'],['gen-size','size'],['gen-width','width'],['gen-height','height'],['gen-steps','steps'],['gen-scale','scale'],['gen-cfg-rescale','cfgRescale'],['gen-sampler','sampler'],['gen-seed','seed'],['gen-uc','ucPreset'],['gen-negative','negativePrompt'],['gen-prompt1','prompt1'],['gen-prompt2','prompt2']];
-  const GEN_SWITCHES=[['gen-transparent','transparentBg'],['gen-anlas','useAnlas']];
+  const GEN_SWITCHES=[['gen-transparent','transparentBg'],['gen-anlas','useAnlas'],['gen-quality','qualityTags']];
   function fillGenSettings(){
     const settings=ArtistImageGen.load();
     for(const [id,key] of GEN_FIELDS)$(id).value=settings[key]==null?'':String(settings[key]);
     for(const [id,key] of GEN_SWITCHES)$(id).checked=settings[key]===true;
     $('gen-token').value=ArtistImageGen.loadToken();
   }
-  /* 输入框里是字符串、可能是空、可能超范围：统一交给 sanitize 收口，坏值回落到默认。 */
+  /* 输入框里是字符串、可能是空、可能超范围：统一交给 sanitize 收口，坏值回落到默认。
+     开关按 DOM 给的真假值传，sanitize 那边负责「不是 false 就算开」的默认语义。 */
   function readGenSettings(){const raw={};for(const [id,key] of GEN_FIELDS)raw[key]=$(id).value;for(const [id,key] of GEN_SWITCHES)raw[key]=$(id).checked;return ArtistImageGen.save(raw);}
   function bindGenSettings(){
     for(const [id,list] of GEN_LISTS)$(id).replaceChildren(...list().map(item=>new Option(item.label,item.value)));

@@ -151,11 +151,16 @@
     const tag=String(artistName||'').replace(/[\u0000-\u001f\\/:*?"<>|]/g,'_').trim().slice(0,80)||'画师';
     return tag+'-测试风格'+seq;
   }
+  /* 导出备份：只带缩略图，不带任何原图——原图动辄是缩略图的十几倍，备份会因此小一大截。
+     原图字段只保留在线链接（那只是个地址，不是图片数据）；本地上传/生成的原图不进备份，
+     要连原图一起备份就复制整个「数据」文件夹。 */
   async function exportTo(dir,data,stream,progress=()=>{}){
     const {artists,...header}=data;await stream.write(JSON.stringify(header).slice(0,-1)+',"artists":[');
     for(let i=0;i<artists.length;i++){const {works,...meta}=artists[i];progress(i+1,artists.length);await stream.write((i?',':'')+JSON.stringify(meta).slice(0,-1)+',"works":[');
       for(let j=0;j<works.length;j++){const copy={...works[j]};
-        for(const kind of IMAGE_KINDS){const value=copy[kind];if(typeof value==='string'&&!value.startsWith('data:')){const blob=await readImage(dir,meta.uid,value);copy[kind]='data:'+blob.type+';base64,'+base64Of(new Uint8Array(await blob.arrayBuffer()));}}
+        copy.large=typeof copy.large==='string'&&remotePattern.test(copy.large)?copy.large:null;
+        const value=copy.thumb;
+        if(typeof value==='string'&&!value.startsWith('data:')){const blob=await readImage(dir,meta.uid,value);copy.thumb='data:'+blob.type+';base64,'+base64Of(new Uint8Array(await blob.arrayBuffer()));}
         await stream.write((j?',':'')+JSON.stringify(copy));}
       await stream.write(']}');}
     await stream.write(']}');
