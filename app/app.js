@@ -34,12 +34,14 @@
     const stored=Number(localStorage.getItem(PREF_KEY));if(Number.isFinite(stored)&&stored>=70&&stored<=220)prefs.thumbHeight=stored;
     const card=Number(localStorage.getItem(PREF_CARD));if(Number.isFinite(card)&&card>=140&&card<=360)prefs.cardSize=card;
   }catch{}
-  let data,folder,draft,editingId,busy=false,uploading=false,volatile=false,refreshTimer=null,generating=false,lastRowSignature=null;
+  let data,folder,draft,editingId,busy=false,uploading=false,volatile=false,generating=false,queueCount=null;
   /* 生图排队：一次只跑一条，两条之间隔 5±3 秒，避免一口气打过去被站点限流。
      排了长队就得能喊停，所以顶部有一个「排队 N · 清空」，只在真的有人排队时才出现。 */
   const genQueue=ArtistGenerateQueue.create({gap:()=>ArtistImageGen.genGapDelay(),onChange:()=>{paintQueue();/* 队列状态变了，格子上的「正在生成／排队中」要跟着走 */if(!busy&&data)render();}});
   function paintQueue(){
     const node=$('gen-queue'),count=genQueue.pending;
+    /* 排队数变了就轻轻弹一下，让「已经排上了」有个交代。 */
+    if(count!==queueCount){queueCount=count;if(typeof node.animate==='function')node.animate([{transform:'scale(.86)'},{transform:'scale(1)'}],{duration:220,easing:'ease-out'});}
     node.hidden=count===0;
     node.textContent=count?`排队 ${count} · 清空`:'排队 0';
     node.title=count?`还有 ${count} 条生成需求在排队，点一下全部取消（正在跑的那条会跑完）`:'';
@@ -62,7 +64,12 @@
     });
     return {version:1,categories:categoryList,cutoffDate:/^\d{4}-\d{2}-\d{2}$/.test(raw.cutoffDate)?raw.cutoffDate:'2026-07-01',saveLargeImages:raw.saveLargeImages===true,fixedTestSlots:raw.fixedTestSlots===true,workOrder:WORK_ORDERS.includes(raw.workOrder)?raw.workOrder:DEFAULT_WORK_ORDER,date:text(raw.date,40),method:text(raw.method,12000),tags:unique([...(Array.isArray(raw.tags)?raw.tags:defaults),...artists.flatMap(a=>a.tags)]).map(t=>t.slice(0,40)),artists};
   }
-  function status(t,error=false){$('storage-status').textContent=t;$('storage-status').classList.toggle('error',error);}
+  /* 文案真的变了才轻轻淡一下：保存、生图、检测都会写状态栏，一直闪反而吵。 */
+  function status(t,error=false){
+    const node=$('storage-status');
+    if(node.textContent!==t&&typeof node.animate==='function')node.animate([{opacity:.45},{opacity:1}],{duration:200,easing:'ease-out'});
+    node.textContent=t;node.classList.toggle('error',error);
+  }
   /* 复制到剪贴板。file:// 下 clipboard API 通常可用，失败时退回选中文本再 execCommand 的老办法。 */
   async function copyText(text,what){
     try{await navigator.clipboard.writeText(text);status('已复制'+what+'：'+text);return;}catch{}
@@ -80,6 +87,8 @@
     const loaded=normalize(await FolderStore.read(chosen),true);
     cancelLookup();clearCandidates();
     folder=chosen;data=loaded;FolderStore.remember(chosen,loaded);ArtistImages.setFolder(chosen);
+    /* 换了文件夹就是另一批卡片：告诉画廊把旧占位全忘掉，别把上一位画师的卡片接着用。 */
+    ArtistGallery.clear();
     reset();render();
     document.querySelectorAll('button,input,textarea,select').forEach(e=>e.disabled=false);
     $('folder-name').textContent='当前文件夹：'+folder.name;
@@ -132,9 +141,29 @@
   }
   function reset(){state.category='全部';state.tags.clear();state.scores.clear();state.query='';$('search').value='';}
   function showImage(a,w){ArtistViewer.open({title:a.name,uid:a.uid,work:w,caption:w.caption,persist:true});}
+  /* 一格作品的稳定编号：重画之后靠它认出「还是这一格」，好让它滑到新位置而不是跳过去。
+     既没有作品编号也没有来源链接的，只能拿它在列表里的位置凑合（这种一格本来也没什么可对的）。 */
+  const workKey=(uid,w,slot)=>uid+':'+(w.kind==='test'?`test${w.testSeq||1}`:(w.id||w.url||'i'+slot));
+  /* 删掉/加进一格作品之后，同一张卡片里没被动的格子应该滑到新位置。
+     用法：动数据之前取一次位置，重画之后再结算。 */
+  function rememberWorkSlots(){
+    const before=new Map();
+    for(const figure of document.querySelectorAll('#gallery .work[data-work]'))before.set(figure.dataset.work,figure.getBoundingClientRect());
+    return ()=>{
+      if(typeof matchMedia==='function'&&matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+      for(const figure of document.querySelectorAll('#gallery .work[data-work]')){
+        const was=before.get(figure.dataset.work);
+        if(!was||typeof figure.animate!=='function')continue;
+        const now=figure.getBoundingClientRect(),dx=was.left-now.left,dy=was.top-now.top;
+        if(Math.abs(dx)<1&&Math.abs(dy)<1)continue;
+        figure.animate([{transform:`translate(${dx}px,${dy}px)`},{transform:'none'}],{duration:220,easing:'cubic-bezier(.22,.61,.36,1)'});
+      }
+    };
+  }
   /* 一格作品：图 + 左下角说明 + 右下角删除。 */
   function workFigure(a,w,slot){
     const figure=el('figure','work'),open=btn('',()=>showImage(a,w),'thumb'),img=el('img');
+    figure.dataset.work=workKey(a.uid,w,slot);
     if(w.kind==='test')figure.classList.add('is-test');
     open.setAttribute('aria-label',`查看 ${a.name} 的${w.kind==='test'?'测试风格图片':'作品 '+(slot+1)}`);
     img.alt=a.name+' 的作品';ArtistImages.bind(img,a.uid,w,'card:'+a.uid,'thumb');open.append(img);
@@ -158,7 +187,9 @@
     const next=clone(data),target=next.artists.find(item=>item.uid===a.uid);
     if(!target||!target.works[index]){status('这一格已经不在库里了。',true);return;}
     target.works.splice(index,1);
+    const settle=rememberWorkSlots();
     await save(next,`已删除「${a.name}」的${what}`);
+    settle();
   }
   /* 外部拖图进来：落到哪一格就换成哪一格（测试格按该格的序号，作品格换掉那一格）。 */
   function attachDrop(node,a,index){
@@ -182,7 +213,9 @@
       const next=clone(data),target=next.artists.find(item=>item.uid===a.uid);
       if(!target)throw Error('这位画师已经不在库里了。');
       target.works=FolderStore.placeWork(target,index,added,{limit:PREVIEW_SLOTS,reserve:reservedOf()});
+      const settle=rememberWorkSlots();
       await save(next,`已把 ${added.length} 张图片放进「${a.name}」从第 ${index+1} 格起的位置${skipped.length?`；跳过 ${skipped.length} 个不支持的文件：${skipped.slice(0,3).join('、')}`:''}`);
+      settle();
     }catch(error){status('拖入失败：'+error.message,true);}
     finally{uploading=false;}
   }
@@ -390,7 +423,7 @@
     const actions=el('div','artist-actions');actions.append(btn('保存',saveDraft,'action primary-action'),btn('取消',cancelEdit,'action'),btn('刷新',refreshCurrentArtist,'action'));
     const remove=removeButton();if(!editingId)remove.hidden=true;actions.append(remove);info.append(actions);
     const works=el('div','works');
-    draft.works.forEach((w,i)=>{const figure=el('figure','work'),thumb=btn('',()=>showImage({uid:draft.uid,name:draft.name},w),'thumb'),img=el('img');if(w.kind==='test')figure.classList.add('is-test');img.alt=draft.name+' 的作品';ArtistImages.bind(img,draft.uid,w,'editor','thumb');thumb.append(img);const caption=el('figcaption');caption.append(el('span','',w.kind==='test'?`测试风格 ${w.testSeq||1}`:'作品 '+(i+1)));caption.append(btn('移除',()=>{draft.works.splice(i,1);render();},'danger-link'));figure.append(thumb,caption);works.append(figure);});
+    draft.works.forEach((w,i)=>{const figure=el('figure','work'),thumb=btn('',()=>showImage({uid:draft.uid,name:draft.name},w),'thumb'),img=el('img');figure.dataset.work=workKey(draft.uid,w,i);if(w.kind==='test')figure.classList.add('is-test');img.alt=draft.name+' 的作品';ArtistImages.bind(img,draft.uid,w,'editor','thumb');thumb.append(img);const caption=el('figcaption');caption.append(el('span','',w.kind==='test'?`测试风格 ${w.testSeq||1}`:'作品 '+(i+1)));caption.append(btn('移除',()=>{const settle=rememberWorkSlots();draft.works.splice(i,1);render();settle();},'danger-link'));figure.append(thumb,caption);works.append(figure);});
     const uploadLabel=el('label','action upload-label','＋ 上传本地图片'),uploadInput=el('input');uploadInput.type='file';uploadInput.accept='image/jpeg,image/png,image/webp,image/gif,image/avif';uploadInput.multiple=true;uploadInput.hidden=true;uploadInput.onchange=upload;uploadLabel.append(uploadInput);
     works.append(el('p','sample-note',`共 ${draft.works.length} 张图片 · 可单独移除；保存后才会写入画师目录`));
     const expand=el('section','artist-expand'),head=el('div','expand-head');head.append(el('strong','','从 Danbooru 添加作品'),btn('展开读取',()=>togglePicker(expand),'action'),uploadLabel);expand.append(head);
@@ -414,15 +447,9 @@
     const activeTags=[...state.tags];
     const rows=data.artists.filter(a=>(state.category==='全部'||(state.category==='待判断'?!a.category:a.category===state.category))&&activeTags.every(t=>a.tags.includes(t))&&(state.scores.size===0||state.scores.has(a.score||0))&&a.name.toLowerCase().includes(state.query));
     if(draft&&!editingId)rows.push(draft);
-    /* 只有「画师列表本身变了」（筛选、搜索、新增、删除、重排）才让卡片重新入场。
-       单纯保存某一位画师的改动、或者生图队列状态变化，不该让整屏卡片重播淡入动画——
-       那正是「一改东西整页闪一下」的来源。 */
-    const gallery=$('gallery'),signature=rows.map(a=>a.uid).join(',');
-    if(signature!==lastRowSignature){
-      lastRowSignature=signature;
-      gallery.classList.add('is-refreshing');
-      clearTimeout(refreshTimer);refreshTimer=setTimeout(()=>gallery.classList.remove('is-refreshing'),260);
-    }
+    /* 列表换人之后的动效由画廊负责：活下来的卡片从旧位置滑到新位置，新来的在原位淡入。
+       这里不再给整屏再加一层入场动画——两层叠在一起，就是之前「一改东西整页闪一下」的观感。 */
+    const gallery=$('gallery');
     ArtistGallery.render(gallery,rows,card);
     $('count').textContent=`找到 ${rows.length} / ${data.artists.length} 位 · 连续滚动，按需加载${state.tags.size>1?' · 同时包含所选标签':''}`;$('empty').hidden=rows.length!==0;
     $('library-summary').textContent=`${data.artists.length} 位画师 · ${data.artists.reduce((n,a)=>n+a.works.length,0)} 张作品 · 由你自由整理`;$('sample-date').textContent=data.date?'初始样本日期：'+data.date:'';
@@ -443,7 +470,7 @@
       const chosen=editorPicker.selected();
       if(!chosen.length){setEditorError('请先勾选要添加的作品。');return;}
       action.disabled=true;action.textContent='正在下载缩略图…';
-      try{const saved=await cacheWorks(draft.uid,chosen);draft.works.push(...saved);closeWorkPicker();render();focusEditingCard();}
+      try{const settle=rememberWorkSlots();const saved=await cacheWorks(draft.uid,chosen);draft.works.push(...saved);closeWorkPicker();render();settle();focusEditingCard();}
       catch(error){setEditorError('添加失败：'+error.message);}
       finally{action.disabled=false;action.textContent='添加所选到作品列表';}
     },'action primary-action'),bar=el('div','picker-actions');

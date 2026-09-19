@@ -264,13 +264,6 @@ test('取消编辑：改动不写入数据',async()=>{
   assert.equal(state.rows.length,1);
   assert.equal(state.rows[0].name,'原名字','取消后应保留原值');
 });
-test('重排时给画廊加临时标记，标记过后滚动挂载的卡片不再重复淡入',async()=>{
-  const {elements}=await boot();
-  const gallery=elements.get('gallery');
-  assert.equal(String(gallery.className).includes('is-refreshing'),true,'渲染后应带上重排标记');
-  await wait(340);
-  assert.equal(String(gallery.className).includes('is-refreshing'),false,'标记会自动移除，之后滚动加载的卡片不再播动画');
-});
 test('删除分类也走按钮二次确认，不再弹系统对话框',async()=>{
   const {elements,state}=await boot();
   elements.get('manage-tags').onclick();
@@ -993,22 +986,21 @@ test('固定格的生成按钮：排队/正在生成时，重建卡片也要显�
   release?.({blob:new Blob([]),prompt:'x',free:true,width:832,height:1216,steps:28,account:null});
   await wait(30);
 });
-test('保存一位画师不会让整屏卡片重播入场动画；列表本身变了才重播',async()=>{
+test('保存一位画师、切换筛选都不再整屏重播入场动画；动效只由画廊逐张处理',async()=>{
   const {elements,state}=await boot();
   await createArtist(state,elements,'tester');
   const gallery=()=>getEl(elements,'gallery');
-  assert.equal(String(gallery().className).includes('is-refreshing'),true,'第一次出现列表时要重播（新卡片入场）');
-  gallery().classList.remove('is-refreshing');
-  /* 只是改内容（保存设置、保存某位画师）：列表还是那一批人，不该再重播 */
+  assert.equal(String(gallery().className).includes('is-refreshing'),false,'不该再挂整屏重播标记');
+  /* 只是改内容（保存设置、保存某位画师）：列表还是那一批人，本来就不该动 */
   getEl(elements,'save-large').checked=true;
   await getEl(elements,'save-large').onchange();
   assert.equal(String(gallery().className).includes('is-refreshing'),false,'保存不该让整屏重播动画');
-  /* 列表本身变了（筛选出 0 位）：要重播 */
+  /* 列表本身变了（筛选出 0 位）：现在由画廊决定谁滑动、谁入场，页面这一层不再插手 */
   const tags=getEl(elements,'tags');
   assert.equal(tags.children.length>0,true,'默认标签按钮应当已经渲染');
   tags.children[0].onclick();
-  assert.equal(String(gallery().className).includes('is-refreshing'),true,'筛选改变了列表，才重播');
   assert.equal(state.rows.length,0,'筛选后列表确实变了');
+  assert.equal(String(gallery().className).includes('is-refreshing'),false,'整屏重播这套已经取消');
 });
 test('生图抖动等待期间，格子上显示的是「正在生成」而不是「排队中」',async()=>{
   const {elements,state,ctx}=await boot();

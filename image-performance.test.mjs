@@ -84,23 +84,80 @@ test('同一批画师重绘时不重建占位，只重画已挂载的卡片',asy
   assert.equal(built,builtBefore+2,'已挂载的卡片要重画，内容才会更新');
   assert.equal(window.ArtistGallery.visible().map(artist=>artist.n).join(','),'2,2','挂载记录要指向新对象');
 });
-test('画师增减或换序时才重建占位',async()=>{
-  const observers=[];let created=0;
-  class Element{constructor(){created++;this.style={};this.dataset={};this.children=[];}append(child){this.children.push(child);}replaceChildren(...nodes){this.children=nodes;}getBoundingClientRect(){return {height:320};}}
-  class IO{constructor(fn){this.fn=fn;observers.push(this);}observe(){}disconnect(){}}
+/* 带布局的假画廊：占位高度按 style.height 累计出 top，动画调用记在 animations 里。
+   画廊「该滑多远」就是拿前后两次 top 相减算出来的，所以这层假布局必须给出真的 top——
+   只返回一个 height 的话，滑动这条路径等于没测。 */
+function stage(){
+  const observers=[],disposed=[];
+  class Element{
+    constructor(){this.style={};this.dataset={};this.children=[];this.animations=[];}
+    append(child){child.parentNode=this;this.children.push(child);}
+    replaceChildren(...nodes){for(const node of nodes)node.parentNode=this;this.children=nodes.filter(Boolean);}
+    animate(frames,options){this.animations.push({frames,options});return {finished:Promise.resolve(),cancel(){}};}
+    getBoundingClientRect(){
+      /* 容器自己负责排版：按顺序把每个占位的 top 算出来（挂上卡片的用卡片高度，空占位用记下的高度）。 */
+      if(this.isStage){let y=0;for(const slot of this.children){const h=slot.style.height?parseFloat(slot.style.height):(slot.cardHeight||300);slot.top=y;slot.height=h;y+=h;}return {top:0,height:y,left:0};}
+      return {top:this.top||0,height:this.height||0,left:0};
+    }
+  }
+  class IO{constructor(fn){this.fn=fn;observers.push(this);}observe(){}unobserve(){}disconnect(){}}
   class RO{observe(){}unobserve(){}disconnect(){}}
-  const window={innerWidth:1200},context={window,document:{createElement:()=>new Element()},IntersectionObserver:IO,ResizeObserver:RO,ArtistImages:{dispose(){}}};
-  vm.runInNewContext(await fs.readFile('app/virtual-gallery.js','utf8'),context);
-  const gallery=new Element();
-  window.ArtistGallery.render(gallery,[{uid:'a'},{uid:'b'}],()=>new Element());
-  const first=gallery.children[0];
-  window.ArtistGallery.render(gallery,[{uid:'a'},{uid:'b'},{uid:'c'}],()=>new Element());
-  assert.equal(gallery.children.length,3,'多了一位要重建');
-  assert.notEqual(gallery.children[0],first);
-  const before=gallery.children.slice();
-  window.ArtistGallery.render(gallery,[{uid:'b'},{uid:'a'},{uid:'c'}],()=>new Element());
-  assert.notEqual(gallery.children[0],before[0],'换了顺序也要重建，否则占位与画师对不上');
-  assert.equal(gallery.children[0].dataset.uid,'b');
+  const window={innerWidth:1200,innerHeight:800},gallery=new Element();gallery.isStage=true;
+  return {Element,window,gallery,observers,disposed,context:{window,document:{createElement:()=>new Element()},IntersectionObserver:IO,ResizeObserver:RO,ArtistImages:{dispose:id=>disposed.push(id)}}};
+}
+/* 首次渲染时每张卡都有自己的入场动画；要单独看「这次变化带来了什么动画」，先把它清掉。 */
+function clearAnimations(gallery){for(const slot of gallery.children)slot.animations.length=0;}
+/* 把当前所有占位一次性挂上卡片：模拟 IntersectionObserver 说「都进视野了」。 */
+function mountAll(observers,gallery,height=320){for(const slot of gallery.children)slot.cardHeight=height;observers[observers.length-1].fn(gallery.children.map(target=>({target,isIntersecting:true})));clearAnimations(gallery);}
+test('画师增减或换序时按 uid 复用占位，只有新来的才新建',async()=>{
+  const kit=stage();
+  vm.runInNewContext(await fs.readFile('app/virtual-gallery.js','utf8'),kit.context);
+  const gallery=kit.gallery;
+  kit.window.ArtistGallery.render(gallery,[{uid:'a'},{uid:'b'}],()=>new kit.Element());
+  const [slotA,slotB]=gallery.children;
+  kit.window.ArtistGallery.render(gallery,[{uid:'a'},{uid:'b'},{uid:'c'}],()=>new kit.Element());
+  assert.equal(gallery.children.length,3,'多了一位');
+  assert.equal(gallery.children[0],slotA,'没动的占位要接着用');
+  assert.equal(gallery.children[1],slotB);
+  assert.equal(gallery.children[2].dataset.uid,'c','只有新来的才新建占位');
+  kit.window.ArtistGallery.render(gallery,[{uid:'b'},{uid:'a'},{uid:'c'}],()=>new kit.Element());
+  assert.equal(gallery.children.map(slot=>slot.dataset.uid).join(','),'b,a,c','顺序要跟着列表走');
+  assert.deepEqual(gallery.children.map(slot=>slot.dataset.index),[0,1,2],'占位上的下标要跟着更新');
+});
+test('删除一位画师时，剩下的卡片从旧位置滑上来，而不是直接跳上去',async()=>{
+  const kit=stage(),{gallery,observers,window}=kit;
+  vm.runInNewContext(await fs.readFile('app/virtual-gallery.js','utf8'),kit.context);
+  const rows=[{uid:'a'},{uid:'b'},{uid:'c'}];
+  window.ArtistGallery.render(gallery,rows,()=>new kit.Element());
+  mountAll(observers,gallery);
+  assert.equal(window.ArtistGallery.visible().length,3,'三张都挂上了');
+  const [slotA,slotB,slotC]=gallery.children,cardC=slotC.children[0];
+  window.ArtistGallery.render(gallery,[{uid:'a'},{uid:'c'}],()=>new kit.Element());
+  assert.equal(gallery.children.length,2);
+  assert.equal(gallery.children[0],slotA);
+  assert.equal(gallery.children[1],slotC);
+  assert.equal(slotC.children[0],cardC,'卡片 DOM 不能重建：重建会重新取图，看着就是闪一下');
+  assert.equal(window.ArtistGallery.visible().length,2,'剩下的卡片保持在挂载状态');
+  assert.equal(kit.disposed.join(','),'card:b','只释放被删掉那张的图');
+  assert.equal(slotA.animations.length,0,'没动的卡片不该有动画');
+  assert.equal(slotB.animations.length,0);
+  assert.equal(slotC.animations.length,1,'下面那位要滑上来');
+  /* vm 里造出来的对象和测试不在同一个 realm，deepEqual 会卡在原型不同上，所以比 JSON。 */
+  assert.equal(JSON.stringify(slotC.animations[0].frames),JSON.stringify([{transform:'translateY(320px)'},{transform:'none'}]),'滑的距离正好是被删掉那张的高度');
+});
+test('新出现的卡片在原位淡入上浮；系统里关了动效就一个都不放',async()=>{
+  const kit=stage(),{gallery,observers,window}=kit;
+  vm.runInNewContext(await fs.readFile('app/virtual-gallery.js','utf8'),kit.context);
+  window.ArtistGallery.render(gallery,[{uid:'a'}],()=>new kit.Element());
+  mountAll(observers,gallery);
+  const slotA=gallery.children[0];
+  window.ArtistGallery.render(gallery,[{uid:'a'},{uid:'b'}],()=>new kit.Element());
+  const slotB=gallery.children[1];
+  assert.equal(slotA.animations.length,0,'原来那张没动就不该有动画');
+  assert.equal(slotB.animations.length,1,'新来的要淡入上浮');
+  assert.equal(JSON.stringify(slotB.animations[0].frames),JSON.stringify([{opacity:0,transform:'translateY(16px) scale(.985)'},{opacity:1,transform:'none'}]),'新来的要淡入上浮');  kit.context.matchMedia=()=>({matches:true});
+  window.ArtistGallery.render(gallery,[{uid:'a'},{uid:'b'},{uid:'c'}],()=>new kit.Element());
+  assert.equal(gallery.children[2].animations.length,0,'关掉动效后新卡也不该动');
 });
 test('查看器里缩略图换成原图时做交叉淡入，中途不清空已显示的图',async()=>{
   const observers=[],animations=[],revoked=[];
