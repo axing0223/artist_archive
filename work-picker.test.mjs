@@ -61,9 +61,12 @@ test('仅勾选模式跨页保留完整selected结果，不会误加已加入标
  await choose();await buttons(host).next.onclick();await choose();assert.deepEqual([...picker.selected()].map(w=>w.id),['1','22']);assert.match(get(host,'picker-count').textContent,/已选 2/);
 });
 
-test('加入失败还原勾选，异步加入期间不能翻页或换排序',async()=>{
+test('加入失败还原勾选；异步加入期间不锁住翻页与换排序',async()=>{
  const request=gate();const {context}=await setup(async()=>ids(1,21));const host=new Element(),picker=context.WorkPicker.mount(host,{uid:'u',tag:'a',onAdd:()=>request.promise,orderOptions:[{label:'最新',value:'id_desc'}]});await picker.ready;
- const box=all(host,'pick')[0].children[0];box.checked=true;const pending=box.onchange();assert.equal(buttons(host).next.disabled,true);assert.equal(get(host,'picker-order').children[1].disabled,true);request.reject(Error('下载失败'));await pending;
+ const box=all(host,'pick')[0].children[0];box.checked=true;const pending=box.onchange();
+ /* 缩略图还在下载时不该锁住导航：勾选状态存在独立的 picked 里，翻页不会把它弄丢。 */
+ assert.equal(buttons(host).next.disabled,false,'下载期间仍可翻页');assert.equal(get(host,'picker-order').children[1].disabled,false,'下载期间仍可换排序');
+ request.reject(Error('下载失败'));await pending;
  assert.equal(box.checked,false);assert.equal(buttons(host).next.disabled,false);assert.match(get(host,'picker-message').textContent,/加入失败：下载失败/);assert.equal(picker.added().length,0);
 });
 

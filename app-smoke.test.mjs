@@ -75,9 +75,9 @@ function makeIndexedDB(remembered){
   return db;
 }
 async function boot(options={}){
-  const elements=new Map(),state={renders:[],queried:[],scrolled:[],mounted:[],copied:[],pageListeners:[],pageMessages:[],pendingActions:options.actions||[]};
+  const elements=new Map(),state={renders:[],queried:[],scrolled:[],scrollCalls:[],mounted:[],copied:[],pageListeners:[],pageMessages:[],pendingActions:options.actions||[]};
   const document={getElementById:id=>{if(!elements.has(id))elements.set(id,new El());return elements.get(id);},createElement:tag=>new El(tag),
-    querySelector:selector=>{state.queried.push(selector);return {scrollIntoView:()=>state.scrolled.push(selector),classList:{add(){},remove(){}},getBoundingClientRect:()=>({top:0,height:0,left:0,width:0})};},
+    querySelector:selector=>{state.queried.push(selector);return {scrollIntoView:(options={})=>{state.scrolled.push(selector);state.scrollCalls.push({selector,options});},classList:{add(){},remove(){}},getBoundingClientRect:()=>({top:0,height:0,left:0,width:0})};},
     querySelectorAll:()=>[],documentElement:new El('html')};
   const localStorage={store:new Map(),getItem(key){return this.store.has(key)?this.store.get(key):null;},setItem(key,value){this.store.set(key,String(value));}};
   class IO{constructor(fn){this.fn=fn;}observe(){}unobserve(){}disconnect(){}}
@@ -542,12 +542,17 @@ test('清除筛选会把分数也一起清掉',async()=>{
   get('reset').onclick();
   assert.equal(get('scores').children[4]['aria-pressed'],'false','清除筛选要把分数一起复位');
 });
-test('手动展开聚焦候选作品，收起返回编辑卡片',async()=>{
+test('手动展开聚焦候选作品，视线对准画师作品格，收起返回编辑卡片',async()=>{
  const {elements,state}=await boot();elements.get('add-artist').onclick();await wait(30);const card=lastRender(state)[0];
  const input=findByPlaceholder(card,'画师名字（必填）');input.value='tester';input.oninput();
+ state.scrollCalls.length=0;
  findText(card,'展开读取').onclick();await wait(30);const grid=findByClass(card,'candidate-previews'),host=findByClass(card,'work-picker');
- assert.equal(grid.focused,true,'键盘焦点到候选作品');assert.equal(host.scrolls.length,1,'视图对准候选区顶部');
- state.scrolled.length=0;await wait(460);assert.equal(state.scrolled.length,0,'旧编辑器定位不能把手动展开的视图拉回去');
+ assert.equal(grid.focused,true,'键盘焦点到候选作品');assert.equal((host.scrolls||[]).length,0,'候选区不再自己抢视线');
+ const call=state.scrollCalls.find(item=>item.selector.includes('.works'));
+ assert.ok(call,'展开后视线交给画师作品格');assert.equal(call.options.block,'start','顶部对齐：作品格与第一行候选同时入画');
+ state.scrolled.length=0;state.scrollCalls.length=0;const hostScrolls=(host.scrolls||[]).length;await wait(460);
+ assert.equal((host.scrolls||[]).length,hostScrolls,'图片挂载后的二次校准不能把候选区再顶上去');
+ if(state.scrollCalls.length)assert.ok(state.scrollCalls.every(item=>item.selector.includes('.works')),'二次校准若发生，也只能对准作品格');
  findText(card,'收起').onclick();await wait(30);assert.ok(state.scrolled.length>0,'收起返回当前编辑卡片');
 });
 
@@ -1686,11 +1691,13 @@ test('切换「采集作品的排序」之后，视线回到画师作品上',asy
   await wait(30);
   const orderSelect=findByClass(card(),'picker-order').children[1];
   assert.ok(orderSelect,'候选区要有排序选择器');
-  state.scrolled.length=0;
+  state.scrolled.length=0;state.scrollCalls.length=0;
   orderSelect.value='score';
   await orderSelect.onchange();
   assert.equal(findByClass(card(),'candidate-previews').focused,true,'换排序后聚焦新候选页');
-  assert.ok(findByClass(card(),'work-picker').scrolls.length>=2,'候选区顶部保持可见');
+  const call=state.scrollCalls.find(item=>item.selector.includes('.works'));
+  assert.ok(call,'视线回到画师作品格，而不是把候选区顶到最上面');
+  assert.equal(call.options.block,'nearest','作品格还在眼前就不动它');
 });
 test('卡片指纹：数据一样就一样，数据变了就不一样（画廊据此决定要不要重画）',async()=>{
   const {elements,state}=await boot();
@@ -1958,4 +1965,60 @@ test('回归：导入测试风格图期间落地的保存不能被旧快照覆�
   release.resolve();await running;
   assert.equal(stored.saveLargeImages,true,'并发保存的设置不能被导入带出的旧快照抹掉');
   assert.equal(stored.artists[0].works.length,1,'导入的测试风格图要落在这位画师身上');
+});
+
+
+/* ── 回归：候选作品区的视线落点 ─────────────────────────────────────── */
+
+/* 编辑态卡片的候选区：先进入编辑态、填好名字、展开读取。 */
+async function openCandidatePicker(elements,state,ctx,posts){
+  stub(ctx,{lookup:async()=>[],details:async()=>({counts:{}}),posts});
+  elements.get('add-artist').onclick();
+  const card=()=>lastRender(state)[0];
+  const input=findByPlaceholder(card(),'画师名字（必填）');input.value='tester';input.oninput();
+  findText(card(),'展开读取').onclick();await wait(30);
+  return card;
+}
+test('回归：展开候选后视线对准画师作品格，且用顶部对齐',async()=>{
+  const {elements,state,ctx}=await boot();
+  const card=()=>lastRender(state)[0];
+  stub(ctx,{lookup:async()=>[],details:async()=>({counts:{}}),posts:async()=>[post('11')]});
+  elements.get('add-artist').onclick();
+  const input=findByPlaceholder(card(),'画师名字（必填）');input.value='tester';input.oninput();
+  state.scrollCalls.length=0;
+  findText(card(),'展开读取').onclick();
+  await wait(30);
+  const call=state.scrollCalls.find(item=>item.selector.includes('.works'));
+  assert.ok(call,'展开之后应把视线交给画师作品格，而不是候选区');
+  assert.equal(call.options.block,'start','手动展开用顶部对齐，让作品格与第一行候选同时入画');
+});
+test('回归：翻页与换排序后只在作品格看不见时才拉回视线',async()=>{
+  const {elements,state,ctx}=await boot();
+  const card=await openCandidatePicker(elements,state,ctx,async()=>Array.from({length:44},(_,i)=>post(String(i+1))));
+  state.scrollCalls.length=0;
+  findText(card(),'下一页 →').onclick();await wait(30);
+  let call=state.scrollCalls.find(item=>item.selector.includes('.works'));
+  assert.ok(call,'翻页之后也要把视线交回画师作品格，而不是把候选区顶到最上面');
+  assert.equal(call.options.block,'nearest','翻页用 nearest：作品格还在眼前就不动它');
+  state.scrollCalls.length=0;
+  const orderSelect=findByClass(card(),'picker-order').children[1];
+  orderSelect.value='score';orderSelect.onchange();await wait(30);
+  call=state.scrollCalls.find(item=>item.selector.includes('.works'));
+  assert.ok(call,'换排序之后同样把视线交回画师作品格');
+  assert.equal(call.options.block,'nearest','换排序同样用 nearest');
+});
+test('回归：勾选作品下载缩略图期间仍然可以按 a/d 翻页',async()=>{
+  const {elements,state,ctx}=await boot();
+  const release=gate();
+  ctx.ArtistImages.dataUrl=async()=>{await release.promise;return 'data:image/jpeg;base64,/9j/2Q==';};
+  const card=await openCandidatePicker(elements,state,ctx,async()=>Array.from({length:44},(_,i)=>post(String(i+1))));
+  const picker=findByClass(card(),'work-picker');
+  assert.ok(picker,'展开后应挂上候选区');
+  const grid=findByClass(card(),'candidate-previews'),box=grid.children[0].children[0];
+  box.checked=true;const adding=box.onchange();
+  await tick();
+  picker.fire('keydown',{key:'d',preventDefault(){},stopPropagation(){}});
+  await wait(30);
+  assert.equal(findByClass(card(),'picker-page').textContent,'第 2 页','缩略图还在下载时也该能翻页，不能静默吞掉按键');
+  release.resolve();await adding;
 });

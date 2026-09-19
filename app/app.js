@@ -579,11 +579,11 @@
   function setEditorError(message){if(editorError)editorError.textContent=message;}
   /* 收起要把容器本身从页面移除：dispose() 已经清空了它的内容，只清内容会留下一个空壳。 */
   function closeWorkPicker(){if(editorPicker){editorPicker.dispose();editorPicker=null;}if(editorHost){editorHost.remove?.();editorHost=null;}if(editorToggle)editorToggle.textContent='展开读取';}
-  /* 换排序之后把视线交回画师作品：候选列表换了一批，人还停在原地就不用动（nearest 只在看不见时才滚）。 */
-  function focusEditorWorks(){
+  /* 换排序、翻页之后把视线交回画师作品：候选列表换了一批，人还停在原地就不用动（nearest 只在看不见时才滚）。 */
+  function focusEditorWorks(mode='nearest'){
     if(!draft)return;
     requestAnimationFrame(()=>{
-      document.querySelector('.artist-slot[data-uid="'+(editingId||draft.uid)+'"] .works')?.scrollIntoView({block:'nearest',behavior:reducedMotion()?'auto':'smooth'});
+      document.querySelector('.artist-slot[data-uid="'+(editingId||draft.uid)+'"] .works')?.scrollIntoView({block:mode,behavior:reducedMotion()?'auto':'smooth'});
     });
   }
   /* 勾选即加入：候选列表里勾一张，这里就把它的预览图存进草稿的作品列表，并就地补上那一格。
@@ -611,8 +611,9 @@
     if(editorToggle)editorToggle.textContent='收起';
     const exclude=new Set(draft.works.map(w=>w.id).filter(Boolean));
     editorPicker=WorkPicker.mount(editorHost,{uid:draft.uid,tag,exclude,order:data.workOrder,orderOptions:WORK_ORDER_OPTIONS,
-      onPreview:work=>previewWork(draft.name,work,draft.uid),onAdd:addPickedWork,onRemove:removePickedWork});
-    if(manual){editorFocusVersion++;editorPicker.focus();}
+      onPreview:work=>previewWork(draft.name,work,draft.uid),onAdd:addPickedWork,onRemove:removePickedWork,onAlign:focusEditorWorks});
+    /* 手动展开时把作品格顶到视口上沿：作品格与第一行候选同时入画；翻页与换排序则只在看不见时才拉回来。 */
+    if(manual){editorFocusVersion++;editorPicker.focus('start');}
   }
   function focusEditingCard(){
     if(!draft)return;
