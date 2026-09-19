@@ -158,6 +158,7 @@ test('画师卡片：分类与标签整合进信息区，不再跨越作品图�
   assert.equal(info.includes('厚涂'),true,'标签位于信息区');
   assert.equal(meta.includes('二次元'),true,'分类在顶部标签条里');
   assert.equal(meta.includes('厚涂')&&meta.includes('黑白'),true,'标签也在顶部标签条里');
+  assert.equal(findByClass(findByClass(card,'name-row'),'artist-meta'),metaNode,'分类和标签紧随名称，合并到同一行');
   assert.ok(findByClass(metaNode,'primary'),'分类沿用原有徽章样式');
   assert.ok(findByClass(metaNode,'secondary'),'标签沿用原有样式');
 });
@@ -1408,7 +1409,7 @@ test('编辑卡片：还没读到笔名时给出说明，不留空白',async()=>
   assert.equal(findAllByClass(picker,'alias-choice').length,0);
   assert.ok(findByClass(picker,'tag-choices-empty'),'没有笔名时要说明什么时候会有');
 });
-test('画师卡片：打分后在信息区显示明确的参考分数，1-5 各有对应底板',async()=>{
+test('画师卡片：参考评分独立为卡片角标，1-5 分均有明确标签',async()=>{
   const {state}=await boot();
   const plain=state.card(bareArtist());
   assert.equal(findAllByClass(plain,'score-badge').length,0,'未评分不显示角标');
@@ -1418,7 +1419,9 @@ test('画师卡片：打分后在信息区显示明确的参考分数，1-5 各�
     assert.equal(badges.length,1,'分数 '+score+' 应有且只有一个角标');
     assert.equal(String(badges[0].className).includes('score-'+score),true,'分数 '+score+' 要用对应的底板');
     assert.equal(badges[0].textContent,'参考 '+score+' / 5','评分标签应明确说明数字的含义');
-    assert.equal(card.children.length,3,'评分在信息区，不覆盖图片');
+    assert.equal(card.children.length,4,'评分徽章独立于信息、作品和补充资料区');
+    assert.equal(card.children[0],badges[0],'徽章直接属于卡片，定位不受名称行影响');
+    assert.equal(findByClass(findByClass(card,'name-row'),'score-badge'),null,'评分不占名称行空间');
   }
 });
 test('画师卡片：越界或非法分数不会渲染出没有底板的角标',async()=>{

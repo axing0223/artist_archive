@@ -364,8 +364,8 @@
     row.append(el('span','serial',String(seqOf(a)).padStart(4,'0')),heading);if(a.alias)row.append(el('span','alias',a.alias));
     const meta=el('div','artist-meta');meta.append(el('span',a.category?'primary':'pending-badge',a.category||'待判断'));
     if(a.tags.length){const tags=el('div','secondary');a.tags.forEach(t=>tags.append(el('span','',t)));meta.append(tags);}
-    if(Number.isSafeInteger(a.score)&&a.score>=1&&a.score<=5){const score=el('span','score-badge score-'+a.score,'参考 '+a.score+' / 5');score.setAttribute('aria-label','参考评分 '+a.score+' 分');meta.append(score);}
-    identity.append(row,meta);
+    if(Number.isSafeInteger(a.score)&&a.score>=1&&a.score<=5){const score=el('span','score-badge score-'+a.score,'参考 '+a.score+' / 5');score.setAttribute('aria-label','参考评分 '+a.score+' 分');score.title='参考评分 '+a.score+' / 5';article.append(score);}
+    row.append(meta);identity.append(row);
     const actions=el('div','artist-actions');actions.append(btn('编辑',()=>startEdit(a),'edit-button'));
     if(a.artistUrl){const source=link('↗',a.artistUrl,'edit-button');source.setAttribute('aria-label','打开 '+a.name+' 的画师页面');source.title='画师页面';actions.append(source);}
     const menu=el('details','action-menu card-menu'),summary=el('summary','','···'),panel=el('div','menu-panel');summary.setAttribute('aria-label',a.name+' 的更多操作');panel.append(deleteArtistButton(a));menu.append(summary,panel);actions.append(menu);info.append(identity,actions);

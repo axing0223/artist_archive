@@ -7,7 +7,7 @@
   <title>画师库 · 作品对比工作台</title>
   <link rel="icon" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHJlY3Qgd2lkdGg9IjMyIiBoZWlnaHQ9IjMyIiByeD0iNyIgZmlsbD0iIzM3NWFmNSIvPjxwYXRoIGQ9Ik04IDhoMTZNOSAxMnYxMmgxNFYxMk0xMyAxMmg2djdoLTZ6IiBmaWxsPSJub25lIiBzdHJva2U9IiNmZmYiIHN0cm9rZS13aWR0aD0iMiIvPjwvc3ZnPgo=" type="image/svg+xml">
   <style>/* Portrait workspace — neutral surfaces, full-width five-image comparisons. */
-:root{font-family:"Segoe UI","Microsoft YaHei",sans-serif;font-synthesis:none;color-scheme:dark;--bg:#14161d;--panel:#1d2029;--raised:#252935;--input:#191c24;--line:#333744;--line-soft:#292e39;--text:#e8eaf2;--muted:#a0a7b8;--faint:#757f93;--accent:#c4ccff;--accent-text:#202741;--accent-soft:#303951;--warm:#e5b787;--warm-bg:#393027;--danger:#efaaa5;--danger-bg:#422a30;--shadow:0 16px 50px #0005;--header:66px;--card-size:280px;background:var(--bg);color:var(--text)}
+:root{font-family:"Segoe UI","Microsoft YaHei",sans-serif;font-synthesis:none;color-scheme:dark;--bg:#14161d;--panel:#1d2029;--raised:#252935;--input:#191c24;--line:#333744;--line-soft:#292e39;--text:#e8eaf2;--muted:#a0a7b8;--faint:#757f93;--accent:#c4ccff;--accent-text:#202741;--accent-soft:#303951;--warm:#e5b787;--warm-bg:#393027;--danger:#efaaa5;--danger-bg:#422a30;--shadow:0 16px 50px #0005;--header:66px;--card-size:280px;--preview-limit:190px;background:var(--bg);color:var(--text)}
 :root[data-theme=light]{color-scheme:light;--bg:#f4f5f8;--panel:#fff;--raised:#eceef4;--input:#fafbfe;--line:#d7dce7;--line-soft:#e8ebf2;--text:#252c3e;--muted:#657087;--faint:#788399;--accent:#4e63cb;--accent-text:#fff;--accent-soft:#e8ecff;--warm:#8d5c25;--warm-bg:#fff1df;--danger:#ad3e45;--danger-bg:#ffecef;--shadow:0 16px 50px #20305915}
 *{box-sizing:border-box}
 html{scrollbar-gutter:stable;scroll-padding-top:185px}
@@ -126,47 +126,47 @@ main{max-width:1440px;margin:0 auto;padding:30px 28px 12px;min-width:0}
 .task-controls .action{padding:5px 9px;font-size:13px}
 .task-spinner{width:13px;height:13px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite}
 /* 每位画师占一行：信息在上，五张作品在下，所有尺寸都不换列、不裁图。 */
-#gallery{display:grid;gap:18px}
+#gallery{display:grid;gap:16px}
 .artist-slot{min-width:0;scroll-margin-top:200px;overflow-anchor:auto}
 .artist-slot:empty{border:1px solid var(--line-soft);border-radius:12px;background:var(--panel)}
-.artist{min-width:0;position:relative;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:17px 16px 13px;transition:border-color .18s}
+.artist{min-width:0;position:relative;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:13px 12px 8px;transition:border-color .18s}
 .artist:hover{border-color:var(--faint)}
-.artist-info{display:flex;align-items:flex-start;justify-content:space-between;gap:15px;margin-bottom:15px;min-width:0}
+.artist-info{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:6px;min-width:0}
 .artist-identity{min-width:0;flex:1}
-.name-row{display:flex;align-items:center;gap:9px;min-width:0}
+.name-row{display:flex;align-items:center;flex-wrap:wrap;gap:4px 9px;min-width:0}
 .serial{font:12px ui-monospace,Consolas,monospace;color:var(--faint);letter-spacing:.04em}
 .artist h2{font-size:20px;line-height:1.35;font-weight:600;margin:0;min-width:0;overflow-wrap:anywhere;letter-spacing:-.02em}
 .artist-name{background:none;border:0;border-radius:3px;color:var(--text);padding:0;font:inherit;text-align:left;overflow-wrap:anywhere}
 .artist-name:hover{color:var(--accent)}
 .alias{font-size:13px;color:var(--faint);overflow-wrap:anywhere}
-.artist-meta{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-top:8px}
+.artist-meta{display:flex;align-items:center;gap:7px;flex-wrap:wrap;min-width:0}
 .primary,.pending-badge{font-size:12px;padding:2px 6px;border-radius:4px;color:var(--accent);background:var(--accent-soft)}
 .pending-badge{color:var(--muted);background:var(--raised)}
 .secondary{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
 .secondary span{color:var(--muted);font-size:12px}
 .secondary span+span::before{content:'·';color:var(--faint);margin-right:5px}
-.score-badge{font:12px ui-monospace,"Microsoft YaHei",monospace;color:var(--warm);padding:2px 6px;border:1px solid var(--line);border-radius:4px;white-space:nowrap}
+.score-badge{position:absolute;top:-12px;left:-9px;z-index:1;display:inline-flex;align-items:center;min-height:24px;font:600 12px/1.4 ui-monospace,"Microsoft YaHei",monospace;color:var(--warm);padding:3px 9px;background:var(--warm-bg);border:1px solid var(--warm);border-radius:8px 8px 8px 2px;box-shadow:0 2px 5px #0002;white-space:nowrap}
 .artist-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}
-.edit-button{border:1px solid var(--line);border-radius:6px;background:transparent;color:var(--muted);padding:6px 11px;font-size:13px}
+.edit-button{border:1px solid var(--line);border-radius:6px;background:transparent;color:var(--muted);padding:4px 9px;font-size:13px}
 .edit-button:hover{background:var(--raised);color:var(--text)}
-a.edit-button{padding:6px 8px}
+a.edit-button{padding:4px 7px}
 .card-menu>summary{font-size:22px;letter-spacing:1px;line-height:1;padding:3px 6px}
 .card-menu .menu-panel{width:150px}
 .card-menu .danger{color:var(--danger)}
 .works{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:9px;min-width:0;align-content:start}
 .work{position:relative;margin:0;min-width:0}
-.thumb{display:block;width:100%;height:min(var(--card-size),calc((100vw - 112px)*.34));padding:0;background:var(--input);border:1px solid var(--line-soft);border-radius:7px;overflow:hidden;cursor:zoom-in}
+.thumb{display:block;width:100%;height:min(var(--card-size),var(--preview-limit),calc((100vw - 112px)*.34));padding:0;background:var(--input);border:1px solid var(--line-soft);border-radius:7px;overflow:hidden;cursor:zoom-in}
 .thumb img{display:block;width:100%;height:100%;object-fit:contain;transition:opacity .18s}
 .thumb:hover{border-color:var(--accent)}
 img:not([src]){opacity:0}
 .thumb img.image-failed{opacity:1;color:var(--danger);font-size:13px}
-.work figcaption{display:flex;align-items:center;justify-content:space-between;gap:3px;margin-top:7px;min-height:22px;color:var(--faint);font:12px ui-monospace,"Microsoft YaHei",monospace;min-width:0}
+.work figcaption{display:flex;align-items:center;justify-content:space-between;gap:3px;margin-top:3px;min-height:20px;color:var(--faint);font:12px ui-monospace,"Microsoft YaHei",monospace;min-width:0}
 .work figcaption>a,.work figcaption>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .work-id:hover{color:var(--accent)}
 .slot-delete{background:none;border:0;border-radius:3px;padding:3px 4px;font-size:12px;color:var(--faint);white-space:nowrap}
 .slot-delete:hover{color:var(--danger);background:var(--danger-bg)}
 .work.is-test::before{content:'测试风格';position:absolute;top:7px;left:7px;z-index:1;border-radius:3px;background:var(--warm-bg);color:var(--warm);font-size:11px;line-height:1.4;padding:2px 5px;pointer-events:none}
-.work-empty,.work-generate{height:min(var(--card-size),calc((100vw - 112px)*.34));border:1px dashed var(--line);border-radius:7px;background:var(--input)}
+.work-empty,.work-generate{height:min(var(--card-size),var(--preview-limit),calc((100vw - 112px)*.34));border:1px dashed var(--line);border-radius:7px;background:var(--input)}
 .work-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--faint);font-size:13px;gap:6px}
 .work-empty::before{content:'＋';font-size:24px;font-weight:300;color:var(--line)}
 .work-generate{display:flex;align-items:center;justify-content:center;flex-direction:column;gap:9px}
@@ -180,7 +180,7 @@ img:not([src]){opacity:0}
 .gen-progress{font-size:12px;text-align:center;padding:0 6px;color:var(--muted)}
 .work.is-drop-target{outline:2px dashed var(--accent);outline-offset:3px;border-radius:7px}
 .work.is-drop-target .thumb{background:var(--accent-soft)}
-.artist-footer{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:5px 15px;margin-top:9px;padding-top:9px;border-top:1px solid var(--line-soft)}
+.artist-footer{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:4px 12px;margin-top:4px;padding-top:4px;border-top:1px solid var(--line-soft)}
 .work-count{font-size:12px;color:var(--faint)}
 .artist-notes{font-size:13px;color:var(--muted);text-align:right;max-width:65%}
 .artist-notes summary{cursor:pointer;overflow-wrap:anywhere}
@@ -337,12 +337,12 @@ legend{font-size:14px;color:var(--muted)}
 .command-results button{display:flex;align-items:center;justify-content:space-between;background:none;border:0;border-radius:6px;padding:12px;text-align:left;color:var(--text);font-size:15px}
 .command-results button:hover,.command-results button:focus{background:var(--accent-soft);color:var(--accent)}
 .command-results small{color:var(--faint);font-size:12px}
-html[data-density=compact] .artist:not(.is-editing) :is(.thumb,.work-empty,.work-generate){height:min(var(--card-size),190px,calc((100vw - 112px)*.28))}
+html[data-density=compact]{--preview-limit:150px}
 html[data-density=compact] .artist{padding-top:13px}
-html[data-density=compact] .artist-info{margin-bottom:11px}
-html[data-density=compact] #gallery{gap:12px}
+html[data-density=compact] .artist-info{margin-bottom:4px}
+html[data-density=compact] #gallery{gap:16px}
 @media(min-width:1200px){main{padding-left:36px;padding-right:36px}
-.artist{padding-left:20px;padding-right:20px}
+.artist{padding-left:14px;padding-right:14px}
 .works{gap:12px}
 }
 @media(max-width:760px){:root{--header:60px}
@@ -363,9 +363,9 @@ h1{font-size:28px}
 .categories{gap:17px}
 .filter-panel{grid-template-columns:1fr;gap:18px}
 .filter-panel>.reset{margin:0}
-.artist{padding:14px 11px 10px}
+.artist{padding:13px 10px 8px}
 .works{gap:6px}
-.artist-info{gap:9px;margin-bottom:12px}
+.artist-info{gap:7px;margin-bottom:6px}
 .artist h2{font-size:18px}
 .artist-actions{gap:5px}
 .name-row{gap:6px;flex-wrap:wrap}
@@ -405,19 +405,20 @@ h1{font-size:25px}
 .action-menu summary{font-size:12px}
 #count{font-size:11px}
 .view-indicator{display:none}
-.artist{padding:12px 8px 9px;border-radius:9px}
+.artist{padding:13px 8px 7px;border-radius:9px}
 .artist-info{gap:4px}
 .artist h2{font-size:16px}
 .serial{font-size:10px}
 .alias{display:none}
-.artist-meta{margin-top:6px}
-.primary,.pending-badge,.score-badge{font-size:10px;padding:2px 4px}
+.artist-meta{gap:4px}
+.primary,.pending-badge{font-size:10px;padding:2px 4px}
+.score-badge{font-size:11px}
 .secondary{display:none}
 .artist-actions .edit-button{font-size:11px;padding:5px 7px}
 .artist-actions a.edit-button{padding:5px}
 .card-menu>summary{font-size:19px;padding:4px}
 .works{gap:4px}
-.thumb,.work-empty,.work-generate{border-radius:4px;height:min(var(--card-size),calc((100vw - 68px)*.32))}
+.thumb,.work-empty,.work-generate{border-radius:4px;height:min(var(--card-size),var(--preview-limit),calc((100vw - 68px)*.32))}
 .work figcaption{font-size:10px;margin-top:4px;flex-wrap:wrap;gap:0;min-height:25px}
 .slot-delete{font-size:10px;padding:2px}
 .work.is-test::before{font-size:9px;padding:1px 3px;left:3px;top:3px}
@@ -426,7 +427,7 @@ h1{font-size:25px}
 .generate-button{font-size:10px;padding:4px 5px}
 .generate-seq,.gen-progress{font-size:10px}
 .gen-spinner{width:18px;height:18px}
-.artist-footer{margin-top:6px;padding-top:7px;gap:4px}
+.artist-footer{margin-top:3px;padding-top:4px;gap:4px}
 .work-count{font-size:10px}
 .artist-notes{font-size:11px}
 .description,.sample-note{font-size:13px}
@@ -529,7 +530,7 @@ to{opacity:1;transform:none}
     <div class="setting-row"><div><strong>采集作品的排序</strong><p class="field-help">决定识别和采集时优先读取哪些作品。作品较多的画师若出现超时，可切换为「最新发布」。</p></div><select id="work-order" aria-label="采集作品的排序"></select></div>
     <div class="setting-row"><div><strong>刷新所有画师数据</strong><p class="field-help">核对站点正式名称、作品总数和截至日期前数量。改名时会同步迁移本地图片；进度分批保存，可随时停止。</p></div><button id="sync-all" class="action" type="button">开始刷新</button></div>
     <div class="setting-row"><div><strong>保存大图</strong><p class="field-help">开启后，预览作品会将在线原图保存到本地，之后可离线查看。关闭时只临时加载；已保存的原图仍然保留。</p></div><label class="switch"><input id="save-large" type="checkbox" aria-label="预览时保存原图"><span></span></label></div>
-    <div class="setting-row"><div><strong>作品预览高度</strong><p class="field-help">调整作品预览高度。五张图片始终同排、完整缩放显示；窄窗口和紧凑视图会限制高度。设置保存在本机。</p></div><div class="size-control"><input id="card-size" type="range" min="140" max="360" step="1" value="220" aria-label="作品预览高度"><span id="card-size-value">220</span></div></div>
+    <div class="setting-row"><div><strong>作品预览高度</strong><p class="field-help">调整作品预览高度。五张图片始终同排、完整缩放显示；高度会随窗口宽度和视图密度自动限制。设置保存在本机。</p></div><div class="size-control"><input id="card-size" type="range" min="140" max="360" step="1" value="220" aria-label="作品预览高度"><span id="card-size-value">220</span></div></div>
     <div class="setting-row"><div><strong>固定测试风格图</strong><p class="field-help">为测试风格 1、2 各保留一格，与三张作品参考对比。空格可直接生成；参数在「测试风格图」菜单中设置。</p></div><label class="switch"><input id="fixed-test" type="checkbox" aria-label="固定测试风格图"><span></span></label></div>
     <div class="setting-row"><div><strong>编辑画师时自动展开 danbooru 作品</strong><p class="field-help">编辑时自动联网读取站点作品。关闭时，可在编辑区按需点击「展开读取」。</p></div><label class="switch"><input id="auto-open-works" type="checkbox" aria-label="编辑时自动读取站点作品"><span></span></label></div>
   </div></dialog>
@@ -1557,7 +1558,7 @@ to{opacity:1;transform:none}
     }},{rootMargin:'650px'});
     const width=window.innerWidth,compact=document.documentElement?.dataset?.density==='compact';
     const requested=typeof getComputedStyle==='function'?parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--card-size'))||280:280;
-    const estimate=Math.round(Math.min(requested,compact?190:360,(width-(width<=460?68:112))*(width<=460?.32:.34))+(width<=460?140:164));
+    const estimate=Math.round(Math.min(requested,compact?150:190,(width-(width<=460?68:112))*(width<=460?.32:.34))+(width<=460?130:112));
     const list=next.map((uid,i)=>{const kept=slots.get(uid);
       /* 还在的画师接着用原来那块占位：卡片不用卸了再挂，图片也不用重取一遍。
          这条是删除/筛选之后不再整屏闪一下的关键。 */
@@ -2390,8 +2391,8 @@ to{opacity:1;transform:none}
     row.append(el('span','serial',String(seqOf(a)).padStart(4,'0')),heading);if(a.alias)row.append(el('span','alias',a.alias));
     const meta=el('div','artist-meta');meta.append(el('span',a.category?'primary':'pending-badge',a.category||'待判断'));
     if(a.tags.length){const tags=el('div','secondary');a.tags.forEach(t=>tags.append(el('span','',t)));meta.append(tags);}
-    if(Number.isSafeInteger(a.score)&&a.score>=1&&a.score<=5){const score=el('span','score-badge score-'+a.score,'参考 '+a.score+' / 5');score.setAttribute('aria-label','参考评分 '+a.score+' 分');meta.append(score);}
-    identity.append(row,meta);
+    if(Number.isSafeInteger(a.score)&&a.score>=1&&a.score<=5){const score=el('span','score-badge score-'+a.score,'参考 '+a.score+' / 5');score.setAttribute('aria-label','参考评分 '+a.score+' 分');score.title='参考评分 '+a.score+' / 5';article.append(score);}
+    row.append(meta);identity.append(row);
     const actions=el('div','artist-actions');actions.append(btn('编辑',()=>startEdit(a),'edit-button'));
     if(a.artistUrl){const source=link('↗',a.artistUrl,'edit-button');source.setAttribute('aria-label','打开 '+a.name+' 的画师页面');source.title='画师页面';actions.append(source);}
     const menu=el('details','action-menu card-menu'),summary=el('summary','','···'),panel=el('div','menu-panel');summary.setAttribute('aria-label',a.name+' 的更多操作');panel.append(deleteArtistButton(a));menu.append(summary,panel);actions.append(menu);info.append(identity,actions);
