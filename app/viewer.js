@@ -2,10 +2,21 @@
   'use strict';
   const $=id=>document.getElementById(id);
   let host=null,current=null;
-  function init(options){host=options;}
+  function init(options){
+    host=options;$('viewer-prev').onclick=()=>step(-1);$('viewer-next').onclick=()=>step(1);
+    $('viewer').addEventListener?.('keydown',event=>{if(event.isComposing||event.target?.matches?.('input,textarea,select'))return;if(event.key==='ArrowLeft'||event.key==='ArrowRight'){event.preventDefault();step(event.key==='ArrowLeft'?-1:1);}});
+  }
+  function step(delta){
+    if(!current?.items||current.items.length<2)return;
+    const next=(current.position+delta+current.items.length)%current.items.length,work=current.items[next];
+    open({...current,work,caption:work.caption});
+  }
   function dispose(){current=null;}
-  function open({title,uid,work,caption,persist=false}){
-    current={uid,work,persist,folder:host.getFolder()};
+  function open({title,uid,work,caption,persist=false,items=null}){
+    const position=items?items.indexOf(work):-1;
+    current={title,uid,work,persist,items,position,folder:host.getFolder()};
+    $('viewer-navigation').hidden=position<0||items.length<2;
+    $('viewer-position').textContent=position>=0?(position+1)+' / '+items.length:'';
     ArtistImages.dispose('viewer');
     $('viewer-title').textContent=title;$('large-image').alt=title;
     $('viewer-caption').textContent='正在获取原图…';
@@ -59,7 +70,7 @@
         refreshButton();
       }
       if(current!==request||!$('viewer').open)return;
-      img.onload=()=>{$('viewer-caption').textContent=note+(kept?'原图已保存到本地':'原图仅本次显示，不会保存到本地');};
+      img.onload=()=>{$('viewer-caption').textContent=note+(kept?'原图已保存到本地':local?.kind==='local'?'正在查看本地原图':local?.kind==='inline'?'正在查看库内图片':'原图仅本次显示，不会保存到本地');};
       ArtistImages.bind(img,uid,target,'viewer','large',error=>showMiddle(uid,work,caption,error));
     }catch(error){if(current===request&&error.name!=='AbortError')showMiddle(uid,work,caption,error);}
   }
@@ -84,7 +95,7 @@
     $('viewer-caption').textContent=note+'原图未取到：'+error.message+'，改用中图显示';
     ArtistImages.bind($('large-image'),uid,{...work,largeUrl:middle},'viewer','large',e2=>{$('viewer-caption').textContent=note+'中图也未取到：'+e2.message+'（显示的是缩略图）';});
   }
-  const api={init,dispose,open,saveOriginal,refreshButton};
+  const api={init,dispose,open,step,saveOriginal,refreshButton};
   root.ArtistViewer=api;
   if(typeof module!=='undefined')module.exports=api;
 })(globalThis);

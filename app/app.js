@@ -22,11 +22,14 @@
   /* 卡片固定 5 格。开了「固定测试风格图」后最右 2 格归测试风格 1、2，作品图不能占用。 */
   const PREVIEW_SLOTS=5,RESERVED_SLOTS=2,UPLOAD_TYPES=['image/jpeg','image/png','image/webp','image/gif','image/avif'];
   const reservedOf=()=>data&&data.fixedTestSlots?RESERVED_SLOTS:0;
-  const state={category:'全部',tags:new Set(),scores:new Set(),query:''};
+  const state={category:'全部',tags:new Set(),scores:new Set(),query:'',sort:'order'};
+  const libraryIndex=window.ArtistLibraryIndex.create();
+  let filterSignature='',editorRevision=0;
+  const reducedMotion=()=>typeof matchMedia==='function'&&matchMedia('(prefers-reduced-motion: reduce)').matches;
   const PREF_KEY='artist-library.thumb-height',PREF_CARD='artist-library.card-size';
   const savePref=(key,value)=>{try{localStorage.setItem(key,String(value));}catch{}};
   const applyCardSize=value=>document.documentElement.style.setProperty('--card-size',(value||prefs.cardSize)+'px');
-  const prefs={thumbHeight:120,cardSize:220,listeners:new Set(),
+  const prefs={thumbHeight:120,cardSize:280,listeners:new Set(),
     setThumbHeight(value){this.thumbHeight=value;savePref(PREF_KEY,value);for(const fn of this.listeners)fn(value);},
     setCardSize(value){this.cardSize=value;savePref(PREF_CARD,value);applyCardSize(value);},
     subscribe(fn){this.listeners.add(fn);},unsubscribe(fn){this.listeners.delete(fn);}};
@@ -43,9 +46,10 @@
   function paintQueue(){
     const node=$('gen-queue'),count=genQueue.pending;
     /* 排队数变了就轻轻弹一下，让「已经排上了」有个交代。 */
-    if(count!==queueCount){queueCount=count;if(typeof node.animate==='function')node.animate([{transform:'scale(.86)'},{transform:'scale(1)'}],{duration:220,easing:'ease-out'});}
+    if(count!==queueCount){queueCount=count;if(!reducedMotion()&&typeof node.animate==='function')node.animate([{transform:'scale(.86)'},{transform:'scale(1)'}],{duration:220,easing:'ease-out'});}
     node.hidden=count===0;
     node.textContent=count?`排队 ${count} · 清空`:'排队 0';
+    if(data)paintTasks();
     node.title=count?`还有 ${count} 条生成需求在排队，点一下全部取消（正在跑的那条会跑完）`:'';
   }
   function normalize(raw,backup=false){
@@ -69,8 +73,9 @@
   /* 文案真的变了才轻轻淡一下：保存、生图、检测都会写状态栏，一直闪反而吵。 */
   function status(t,error=false){
     const node=$('storage-status');
-    if(node.textContent!==t&&typeof node.animate==='function')node.animate([{opacity:.45},{opacity:1}],{duration:200,easing:'ease-out'});
-    node.textContent=t;node.classList.toggle('error',error);
+    if(!reducedMotion()&&node.textContent!==t&&typeof node.animate==='function')node.animate([{opacity:.45},{opacity:1}],{duration:200,easing:'ease-out'});
+    node.textContent=t;node.classList.toggle('error',error);node.title=t;
+    window.ArtistWorkspace?.status(t,error);if(data)paintTasks();
   }
   /* 复制到剪贴板。file:// 下 clipboard API 通常可用，失败时退回选中文本再 execCommand 的老办法。 */
   async function copyText(text,what){
@@ -128,7 +133,7 @@
     try{permission=await handle.queryPermission({mode:'readwrite'});}catch{}
     if(permission==='granted'){
       try{await adoptFolder(handle,{from:'上次的文件夹',remember:false});}
-      catch(error){status('上次的数据文件夹打不开：'+error.message+'；请点顶部「数据库文件夹」重新选择。',true);}
+      catch(error){status('上次的数据文件夹打不开：'+error.message+'；请点顶部的文件夹按钮重新选择。',true);}
       return;
     }
     if(permission!=='prompt'){$('resume-folder').hidden=true;await ArtistFolderMemory.forget();return;}
@@ -139,11 +144,11 @@
       try{
         const granted=await handle.requestPermission({mode:'readwrite'});
         if(granted==='granted')await adoptFolder(handle,{from:'上次的文件夹',remember:false});
-        else{await ArtistFolderMemory.forget();button.hidden=true;status('没有继续使用上次的文件夹，请点顶部「数据库文件夹」重新选择。',true);}
+        else{await ArtistFolderMemory.forget();button.hidden=true;status('没有继续使用上次的文件夹，请点顶部的文件夹按钮重新选择。',true);}
       }catch(error){button.hidden=true;status('继续使用上次的文件夹失败：'+error.message+'；请重新选择。',true);}
       finally{button.disabled=false;}
     };
-    status(`记得你上次用的是「${name}」：点右边按钮继续用它，或点顶部「数据库文件夹」换一个。`);
+    status(`记得你上次用的是「${name}」：点「继续使用上次的文件夹」，或点顶部的文件夹按钮换一个。`);
   }
   // 所有落盘串行执行。异步任务传入更新函数，在轮到自己时合并最新数据。
   let saveTail=Promise.resolve(),pendingSaves=0,saveControls=[];
@@ -170,7 +175,7 @@
     saveTail=operation.catch(()=>{});return operation;
   }
   function reset(){state.category='全部';state.tags.clear();state.scores.clear();state.query='';$('search').value='';}
-  function showImage(a,w){ArtistViewer.open({title:a.name,uid:a.uid,work:w,caption:w.caption,persist:true});}
+  function showImage(a,w){ArtistViewer.open({title:a.name,uid:a.uid,work:w,caption:w.caption,persist:true,items:a.works||(draft?.uid===a.uid?draft.works:null)});}
   /* 一格作品的稳定编号：重画之后靠它认出「还是这一格」，好让它滑到新位置而不是跳过去。
      既没有作品编号也没有来源链接的，只能拿它在列表里的位置凑合（这种一格本来也没什么可对的）。 */
   const workKey=(uid,w,slot)=>uid+':'+(w.kind==='test'?`test${w.testSeq||1}`:(w.id||w.url||'i'+slot));
@@ -195,8 +200,8 @@
     const figure=el('figure','work'),open=btn('',()=>showImage(a,w),'thumb'),img=el('img');
     figure.dataset.work=workKey(a.uid,w,slot);
     if(w.kind==='test')figure.classList.add('is-test');
-    open.setAttribute('aria-label',`查看 ${a.name} 的${w.kind==='test'?'测试风格图片':'作品 '+(slot+1)}`);
-    img.alt=a.name+' 的作品';ArtistImages.bind(img,a.uid,w,'card:'+a.uid,'thumb');open.append(img);
+    open.setAttribute('aria-label',`查看 ${a.name} 的${w.kind==='test'?'测试风格图片 '+(w.testSeq||1):'作品 '+(slot+1)}`);
+    img.alt=a.name+' 的'+(w.kind==='test'?'测试风格 '+(w.testSeq||1):'作品 '+(slot+1));ArtistImages.bind(img,a.uid,w,'card:'+a.uid,'thumb');open.append(img);
     const caption=el('figcaption');caption.append(slotLabel(a,w,slot),deleteSlotButton(a,w));
     figure.append(open,caption);
     return figure;
@@ -348,30 +353,30 @@
       if(box){box.classList.remove('is-generating');box.replaceChildren(...previous);unqueuedMark(box);}
     }finally{generating=false;}
   }
+  function chooseSlotImage(a,index){
+    const input=el('input');input.type='file';input.accept=UPLOAD_TYPES.join(',');input.multiple=true;
+    input.onchange=()=>{const files=[...input.files];if(files.length)dropImages(a,index,files);};input.click();
+  }
   function artistCard(a){
-    const article=el('article','artist'),info=el('div','artist-info'),top=el('div','artist-top');article.dataset.artist=a.name;
-    const numbers=el('div','artist-numbers'),countLabel=el('span','work-count','作品数量：'+(a.counts?.total??'未读取')+'（'+(a.counts?.beforeTotal??'未读取')+'）');
-    countLabel.title=a.counts?.beforeDate?'括号内数量使用的截至日期：'+a.counts.beforeDate+(a.counts.beforeDate!==data.cutoffDate?'；设置已变更，点击刷新后更新。':''):'括号内为截至日期数量，点击刷新读取。';
-    numbers.append(el('span','serial',String(seqOf(a)).padStart(4,'0')),countLabel);top.append(numbers);
-    const heading=el('h2'),nameButton=el('button','artist-name',a.name);nameButton.type='button';nameButton.title='点击复制画师 tag';
-    nameButton.onclick=()=>copyText(a.name,'画师 tag');heading.append(nameButton);info.append(top,heading);
-    if(a.alias)info.append(el('span','alias',a.alias));
-    if(a.basis)info.append(el('span','basis',a.basis));
-    if(a.description)info.append(el('p','description',a.description));
+    const article=el('article','artist'),info=el('div','artist-info'),identity=el('div','artist-identity'),row=el('div','name-row');
+    article.dataset.artist=a.name;article.setAttribute('aria-label','画师 '+a.name);
+    const heading=el('h2'),name=btn(a.name,()=>copyText(a.name,'画师 tag'),'artist-name');name.title='点击复制画师 tag';name.setAttribute('aria-label','复制画师 tag：'+a.name);heading.append(name);
+    row.append(el('span','serial',String(seqOf(a)).padStart(4,'0')),heading);if(a.alias)row.append(el('span','alias',a.alias));
     const meta=el('div','artist-meta');meta.append(el('span',a.category?'primary':'pending-badge',a.category||'待判断'));
-    if(a.tags.length){const ts=el('div','secondary');a.tags.forEach(t=>ts.append(el('span','',t)));meta.append(ts);}
-    const actions=el('div','artist-actions');actions.append(btn('编辑',()=>startEdit(a),'edit-button'),deleteArtistButton(a));if(a.artistUrl)actions.append(link('画师页面 ↗',a.artistUrl,'edit-button'));info.append(actions);
-    const works=el('div','works');if(!a.works.length){const empty=el('div','unavailable');empty.append(el('strong','',a.status||'还没有作品图片'),el('span','',a.note||'编辑画师，上传你想参考的作品。'));works.append(empty);}
-    const reserve=reservedOf(),slots=FolderStore.previewWorks(a,PREVIEW_SLOTS,reserve);
-    slots.forEach((w,i)=>{
-      /* 固定格空着的时候给一个「生成」入口：点了就用设置里的生图参数向 NovelAI 要一张测试风格图。 */
-      const node=w?workFigure(a,w,i):(i>=PREVIEW_SLOTS-reserve?generateSlot(a,PREVIEW_SLOTS-i):el('div','work work-empty'));
-      attachDrop(node,a,i);works.append(node);
+    if(a.tags.length){const tags=el('div','secondary');a.tags.forEach(t=>tags.append(el('span','',t)));meta.append(tags);}
+    if(Number.isSafeInteger(a.score)&&a.score>=1&&a.score<=5){const score=el('span','score-badge score-'+a.score,'参考 '+a.score+' / 5');score.setAttribute('aria-label','参考评分 '+a.score+' 分');meta.append(score);}
+    identity.append(row,meta);
+    const actions=el('div','artist-actions');actions.append(btn('编辑',()=>startEdit(a),'edit-button'));
+    if(a.artistUrl){const source=link('↗',a.artistUrl,'edit-button');source.setAttribute('aria-label','打开 '+a.name+' 的画师页面');source.title='画师页面';actions.append(source);}
+    const menu=el('details','action-menu card-menu'),summary=el('summary','','···'),panel=el('div','menu-panel');summary.setAttribute('aria-label',a.name+' 的更多操作');panel.append(deleteArtistButton(a));menu.append(summary,panel);actions.append(menu);info.append(identity,actions);
+    const works=el('div','works'),reserve=reservedOf(),slots=FolderStore.previewWorks(a,PREVIEW_SLOTS,reserve);
+    slots.forEach((w,i)=>{const node=w?workFigure(a,w,i):i>=PREVIEW_SLOTS-reserve?generateSlot(a,PREVIEW_SLOTS-i):btn('添加图片',()=>chooseSlotImage(a,i),'work work-empty');
+      if(!w&&i<PREVIEW_SLOTS-reserve){node.setAttribute('aria-label','为 '+a.name+' 的第 '+(i+1)+' 格添加图片');node.title='选择图片或拖入此格';}attachDrop(node,a,i);works.append(node);
     });
-    if(a.note)works.append(el('p','sample-note',a.note));
-    article.append(info,works,meta);
-    if(Number.isSafeInteger(a.score)&&a.score>=1&&a.score<=5)article.append(el('span','score-badge score-'+a.score,String(a.score)));
-    return article;
+    const footer=el('div','artist-footer'),count=el('span','work-count','站点作品 '+(a.counts?.total??'未读取')+' · 截至日期前 '+(a.counts?.beforeTotal??'未读取'));
+    count.title='本库收录 '+a.works.length+' 张图片；截至日期：'+(a.counts?.beforeDate||data.cutoffDate)+(a.counts?.beforeDate&&a.counts.beforeDate!==data.cutoffDate?'（设置已变更，请刷新资料）':'');footer.append(count);
+    if(a.description||a.note||a.basis){const notes=el('details','artist-notes');notes.append(el('summary','','画风与备注'));if(a.description)notes.append(el('p','description',a.description));if(a.note)notes.append(el('p','sample-note',a.note));if(a.basis)notes.append(el('p','basis',a.basis));footer.append(notes);}
+    article.append(info,works,footer);return article;
   }
   /* 认草稿有两种情况：新建时 rows 里放的就是 draft 本身；编辑已有画师时按 editingId 认，
      不能按 draft.uid——刷新同步到正式名之后 draft.uid 会和库里存的那条不一样。 */
@@ -382,19 +387,22 @@
   function cardKey(a){
     const active=genQueue.current,waiting=active&&active.uid===a.uid;
     const editing=draft&&(a===draft||(editingId&&a.uid===editingId));
+    // 编辑器有自己的草稿生命周期：后台任务与筛选不能重建输入框或选图器。
+    if(editing)return 'edit/'+editorRevision;
     const queue=waiting?`run${genQueue.waiting?1:0}`:`q${genQueue.positionOf(item=>item.uid===a.uid)||0}`;
     return `${editing?'edit':'show'}/${reservedOf()}/${PREVIEW_SLOTS}/${queue}/${JSON.stringify(editing?draft:a)}`;
   }
   /* 卡片内容就地更新完了（编辑态里那一排作品格），同步一下指纹。 */
-  const markEditorPainted=()=>{if(draft)ArtistGallery.markPainted(draft.uid);};
+  const markEditorPainted=()=>{if(draft)ArtistGallery.markPainted(editingId||draft.uid);};
   function editingCard(a){
     const article=el('article','artist is-editing'),info=el('div','artist-info');
-    /* 顶部的数量：括号外是这本库里存了几张，括号里是站点上这位画师一共有多少张（与浏览态卡片同一个写法）。 */
-    const countText=()=>'作品数量：'+draft.works.length+'（'+(draft.counts?.total??'未读取')+'）';
+    /* 编辑态明确区分本库已收录图片与站点作品总数。 */
+    const countText=()=>'本库图片 '+draft.works.length+' · 站点作品 '+(draft.counts?.total??'未读取');
+    article.setAttribute('aria-label','编辑画师 '+(draft.name||'新画师'));
     const numbers=el('div','artist-numbers'),workCount=el('span','work-count',countText());numbers.append(el('span','serial',String(seqOf(draft)).padStart(4,'0')),workCount);info.append(numbers);
     const field=(label,node)=>{const wrap=el('label','edit-field');wrap.append(el('span','edit-label',label),node);return wrap;};
     const fieldBox=(label,node)=>{const wrap=el('div','edit-field edit-field-wide');wrap.append(el('span','edit-label',label),node);return wrap;};
-    const nameInput=el('input');nameInput.value=draft.name;nameInput.maxLength=160;nameInput.placeholder='画师名字（必填）';nameInput.oninput=()=>{
+    const nameInput=el('input');nameInput.value=draft.name;nameInput.required=true;nameInput.maxLength=160;nameInput.placeholder='画师名字（必填）';nameInput.oninput=()=>{
       /* 手改名字就让旧的编号、数量、笔名作废——它们都属于上一个名字。
          放在这里而不是保存时判断：程序自己同步到的正式名不该被当成改名（那正是刚取回的新数据）。 */
       if(draft.name!==nameInput.value){draft.counts=null;draft.danbooruId=null;draft.aliases=[];draft.alias=null;}
@@ -467,18 +475,20 @@
     const descInput=el('textarea');descInput.rows=3;descInput.maxLength=5000;descInput.value=draft.description||'';descInput.placeholder='记录画风和特点';descInput.oninput=()=>draft.description=descInput.value;
     const noteInput=el('textarea');noteInput.rows=2;noteInput.maxLength=5000;noteInput.value=draft.note||'';noteInput.placeholder='备注';noteInput.oninput=()=>draft.note=noteInput.value;
     const grid=el('div','edit-grid');grid.append(field('画师名字',nameInput),field('主分类',categorySelect),field('画师页面链接',urlInput),scoreField,fieldBox('标签',tagEditor),aliasField);
-    editorError=el('p','error');info.append(grid,field('画风描述',descInput),field('备注',noteInput),editorError);
+    editorError=el('p','error');editorError.setAttribute('role','alert');info.append(grid,field('画风描述',descInput),field('备注',noteInput),editorError);
     const actions=el('div','artist-actions');actions.append(btn('保存',saveDraft,'action primary-action'),btn('取消',cancelEdit,'action'),btn('刷新',refreshCurrentArtist,'action'));
     const remove=removeButton();if(!editingId)remove.hidden=true;actions.append(remove);info.append(actions);
     const works=el('div','works');
     /* 作品格单独可重画：从 Danbooru 勾一张就补一张，不动整张卡片——
        重画整张会把下面正在挑作品的候选列表一起冲掉。 */
     paintEditorWorks=()=>{
+      ArtistImages.dispose('editor');
       workCount.textContent=countText();
       works.replaceChildren(...draft.works.map((w,i)=>{
         const figure=el('figure','work'),thumb=btn('',()=>showImage({uid:draft.uid,name:draft.name},w),'thumb'),img=el('img');
         figure.dataset.work=workKey(draft.uid,w,i);
         if(w.kind==='test')figure.classList.add('is-test');
+        thumb.setAttribute('aria-label','预览 '+draft.name+' 的图片 '+(i+1));
         img.alt=draft.name+' 的作品';ArtistImages.bind(img,draft.uid,w,'editor','thumb');thumb.append(img);
         const caption=el('figcaption');caption.append(el('span','',w.kind==='test'?`测试风格 ${w.testSeq||1}`:'作品 '+(i+1)));
         caption.append(btn('移除',()=>{const settle=rememberWorkSlots();draft.works.splice(i,1);paintEditorWorks();markEditorPainted();settle();},'danger-link'));
@@ -494,33 +504,45 @@
     article.append(info,works,expand);return article;
   }
   /* 当前筛选条件下的画师。渲染按它出卡片；「批量生成测试风格图」也按它填默认序号段。 */
-  function currentRows(){
-    const activeTags=[...state.tags];
-    return data.artists.filter(a=>(state.category==='全部'||(state.category==='待判断'?!a.category:a.category===state.category))&&activeTags.every(t=>a.tags.includes(t))&&(state.scores.size===0||state.scores.has(a.score||0))&&a.name.toLowerCase().includes(state.query));
+  function currentRows(){return libraryIndex.select(data.artists,state);}
+  function paintTasks(){
+    const tasks=[batchRunning?'正在采集画师':'',syncingAll?'正在刷新资料':'',generating?'正在生成测试图':'',genQueue.pending?'等待生成 '+genQueue.pending+' 项':''].filter(Boolean).join(' · ');
+    $('task-controls').hidden=!tasks;$('task-label').textContent=tasks;
+    return tasks;
   }
   function render(){
-    $('history-date').value=data.cutoffDate;
-    $('save-large').checked=data.saveLargeImages===true;
-    $('work-order').value=data.workOrder;
-    /* 分类计数一趟走完：原来是每个分类各过滤一遍全部画师，八个分类就是八趟。 */
-    const counts=new Map([['全部',data.artists.length],['待判断',0]]);for(const c of data.categories)counts.set(c,0);
-    for(const a of data.artists){if(a.category&&counts.has(a.category))counts.set(a.category,counts.get(a.category)+1);else if(!a.category)counts.set('待判断',counts.get('待判断')+1);}
-    $('categories').replaceChildren(...['全部',...data.categories,'待判断'].map(c=>{const b=btn(c,()=>{state.category=c;render();},c===state.category?'active':'');b.setAttribute('aria-pressed',String(c===state.category));b.append(el('span','n',counts.get(c)||0));return b;}));
-    $('tags').replaceChildren(...data.tags.map(t=>{const b=btn(t,()=>{state.tags.has(t)?state.tags.delete(t):state.tags.add(t);render();},state.tags.has(t)?'active':'');b.setAttribute('aria-pressed',String(state.tags.has(t)));return b;}));
-    /* 分数精确匹配、可多选；0 代表未评分 */
-    const toggleScore=value=>{state.scores.has(value)?state.scores.delete(value):state.scores.add(value);render();};
-    $('scores').replaceChildren(...[1,2,3,4,5].map(n=>{
-      const on=state.scores.has(n),b=btn(String(n),()=>toggleScore(n),`score-pick score-${n}${on?' active':''}`);
-      b.setAttribute('aria-pressed',String(on));b.setAttribute('aria-label',n+' 分');b.title=n+' 分';return b;
-    }),(()=>{const on=state.scores.has(0),b=btn('未评分',()=>toggleScore(0),`score-any${on?' active':''}`);b.setAttribute('aria-pressed',String(on));return b;})());
-    const rows=currentRows();
+    const restoreFocus=window.ArtistWorkspace?.captureFilterFocus();
+    $('history-date').value=data.cutoffDate;$('save-large').checked=data.saveLargeImages===true;$('work-order').value=data.workOrder;
+    const summary=libraryIndex.summary(data.artists),counts=summary.counts;
+    const signature=JSON.stringify([data.categories,data.tags,[...counts],state.category,[...state.tags],[...state.scores]]);
+    // 任务进度或搜索变化不重新创建筛选按钮；选择变化时恢复到同一个按钮。
+    if(signature!==filterSignature){
+      filterSignature=signature;
+      $('categories').replaceChildren(...['全部',...data.categories,'待判断'].map(c=>{
+        const b=btn(c,()=>{state.category=c;render();},c===state.category?'active':'');b.dataset.filterKey='category:'+c;b.setAttribute('aria-pressed',String(c===state.category));b.append(el('span','n',counts.get(c)||0));return b;
+      }));
+      $('tags').replaceChildren(...data.tags.map(t=>{const b=btn(t,()=>{state.tags.has(t)?state.tags.delete(t):state.tags.add(t);render();},state.tags.has(t)?'active':'');b.dataset.filterKey='tag:'+t;b.setAttribute('aria-pressed',String(state.tags.has(t)));return b;}));
+      const toggleScore=value=>{state.scores.has(value)?state.scores.delete(value):state.scores.add(value);render();};
+      $('scores').replaceChildren(...[1,2,3,4,5,0].map(n=>{const on=state.scores.has(n),label=n?n+' 分':'未评分',b=btn(n?String(n):label,()=>toggleScore(n),(n?'score-pick score-'+n:'score-any')+(on?' active':''));b.dataset.filterKey='score:'+n;b.setAttribute('aria-pressed',String(on));b.setAttribute('aria-label',label);b.title=label;return b;}));
+    }
+    const chips=[];
+    const chip=(key,label,remove)=>{const b=btn(label+' ×',()=>{remove();render();},'filter-chip');b.dataset.filterKey=key;b.setAttribute('aria-label','移除筛选：'+label);chips.push(b);};
+    if(state.category!=='全部')chip('category',state.category,()=>state.category='全部');
+    for(const tag of state.tags)chip('tag:'+tag,tag,()=>state.tags.delete(tag));
+    for(const score of state.scores)chip('score:'+score,score?score+' 分':'未评分',()=>state.scores.delete(score));
+    if(state.query)chip('query','搜索：'+state.query,()=>{state.query='';$('search').value='';});
+    $('active-filters').replaceChildren(...chips);$('active-filters').hidden=!chips.length;
+    const rows=currentRows(),matched=rows.length;
     if(draft&&!editingId)rows.push(draft);
-    /* 列表换人之后的动效由画廊负责：活下来的卡片从旧位置滑到新位置，新来的在原位淡入。
-       这里不再给整屏再加一层入场动画——两层叠在一起，就是之前「一改东西整页闪一下」的观感。 */
-    const gallery=$('gallery');
-    ArtistGallery.render(gallery,rows,card,cardKey);
-    $('count').textContent=`找到 ${rows.length} / ${data.artists.length} 位 · 连续滚动，按需加载${state.tags.size>1?' · 同时包含所选标签':''}`;$('empty').hidden=rows.length!==0;
-    $('library-summary').textContent=`${data.artists.length} 位画师 · ${data.artists.reduce((n,a)=>n+a.works.length,0)} 张作品 · 由你自由整理`;$('sample-date').textContent=data.date?'初始样本日期：'+data.date:'';
+    else if(draft&&editingId&&!rows.some(a=>a.uid===editingId)){const editing=data.artists.find(a=>a.uid===editingId);if(editing)rows.unshift(editing);}
+    ArtistGallery.render($('gallery'),rows,card,cardKey);
+    $('count').textContent=matched+' / '+summary.total+(draft?' · 编辑中':'');
+    $('empty').hidden=rows.length!==0;
+    $('library-summary').textContent=summary.total+' 位画师 · '+summary.works+' 张作品参考 · '+summary.tests+' 张测试风格图';
+    $('sample-date').textContent=data.date?'样本日期 '+data.date:'';
+    const tasks=paintTasks();
+    window.ArtistWorkspace?.update({connected:!!folder,total:summary.total,rows:rows.length,category:state.category,editing:!!draft,tasks,filterCount:chips.length});
+    restoreFocus?.();
   }
   let editorPicker=null,editorHost=null,editorError=null,editorToggle=null,editorExpand=null,paintEditorWorks=null;
   function setEditorError(message){if(editorError)editorError.textContent=message;}
@@ -530,7 +552,7 @@
   function focusEditorWorks(){
     if(!draft)return;
     requestAnimationFrame(()=>{
-      document.querySelector('.artist-slot[data-uid="'+(editingId||draft.uid)+'"] .works')?.scrollIntoView({block:'nearest',behavior:'smooth'});
+      document.querySelector('.artist-slot[data-uid="'+(editingId||draft.uid)+'"] .works')?.scrollIntoView({block:'nearest',behavior:reducedMotion()?'auto':'smooth'});
     });
   }
   /* 勾选即加入：候选列表里勾一张，这里就把它的预览图存进草稿的作品列表，并就地补上那一格。
@@ -567,7 +589,7 @@
     requestAnimationFrame(()=>{
       ArtistGallery.mount(uid);
       const slot=find();if(!slot)return;
-      slot.scrollIntoView({block:'center',behavior:'smooth'});
+      slot.scrollIntoView({block:'center',behavior:reducedMotion()?'auto':'smooth'});
       /* 平滑滚动期间上下方的卡片会按需挂载与释放，文档高度一直在变，目标位置会跟着漂。
          等滚动结束再校验一次：已经对齐就不动它，偏了才瞬时补齐，不叠第二层动画。 */
       setTimeout(()=>{
@@ -581,15 +603,16 @@
     const article=uid?document.querySelector('.artist-slot[data-uid="'+uid+'"] article'):null;
     if(!article){then();return;}
     article.classList.add('is-morphing');
-    setTimeout(then,130);
+    setTimeout(then,reducedMotion()?0:130);
   }
   function startEdit(a){
     if(busy)return;
+    $('quick-dialog').close();
     const previous=editingId;
     closeEditor();
     editingId=a?.uid||null;
     draft=a?clone(a):{uid:uid(),name:'',category:null,score:null,aliases:[],alias:null,tags:[],artistUrl:'',description:'',note:'',works:[]};
-    if(editingId)ArtistGallery.pin(editingId,true);
+    editorRevision++;ArtistGallery.pin(editingId||draft.uid,true);
     morphAway(previous||editingId,()=>{render();focusEditingCard();autoOpenPicker();});
   }
   /* 设置里开了「编辑画师时自动展开 danbooru 作品」：一进编辑态就把候选列表拉出来。
@@ -603,7 +626,7 @@
     if(busy||uploading)return;
     morphAway(editingId,()=>{closeEditor();render();});
   }
-  function closeEditor(){if(editingId)ArtistGallery.pin(editingId,false);closeWorkPicker();editingId=null;draft=null;editorError=null;editorToggle=null;editorExpand=null;paintEditorWorks=null;}
+  function closeEditor(){if(draft)ArtistGallery.pin(editingId||draft.uid,false);ArtistImages.dispose('editor');closeWorkPicker();editingId=null;draft=null;editorError=null;editorToggle=null;editorExpand=null;paintEditorWorks=null;}
   /* 从候选里挑出唯一可信的那一位：名字完全一致优先，只有一位候选时也接受。
      其余情况返回 null —— 宁可没有编号，也不写错。 */
   const pickCandidate=(found,name)=>{
@@ -711,7 +734,7 @@
         }
       }
     }finally{busy=false;}
-    render();
+    closeWorkPicker();editorRevision++;render();
     status(notes.length?'已刷新 '+name+'：'+notes.join('；')+'。保存后才会落盘。':'已刷新 '+name+' 的作品数量与笔名。保存后才会落盘。',bad);
   }
   async function saveDraft(){
@@ -785,7 +808,8 @@
     const parts=[];
     if(typeof onMove==='function'){
       const handle=el('button','manage-handle','⠿');handle.type='button';handle.draggable=true;
-      handle.setAttribute('aria-label','拖动排序：'+name);
+      handle.setAttribute('aria-label','调整顺序：'+name+'，上下方向键移动');
+      handle.onkeydown=event=>{if(!['ArrowUp','ArrowDown'].includes(event.key)||busy)return;event.preventDefault();onMove(index,index+(event.key==='ArrowUp'?-1:1));};
       handle.ondragstart=event=>{dragging={name,index};row.classList.add('is-dragging');event.dataTransfer?.setData('text/plain',name);};
       handle.ondragend=()=>{dragging=null;row.classList.remove('is-dragging');clearDropMarks();};
       row.ondragover=event=>{if(!dragging||dragging.name===name)return;event.preventDefault();clearDropMarks();row.classList.add(dragging.index<index?'drop-after':'drop-before');};
@@ -806,7 +830,7 @@
     const isCategory=which!=='tag';
     $('tab-category').classList[isCategory?'add':'remove']('active');
     $('tab-tag').classList[isCategory?'remove':'add']('active');
-    $('tab-category').setAttribute('aria-selected',String(isCategory));
+    $('tab-category').setAttribute('aria-selected',String(isCategory));$('tab-category').tabIndex=isCategory?0:-1;$('tab-tag').tabIndex=isCategory?-1:0;
     $('tab-tag').setAttribute('aria-selected',String(!isCategory));
     $('panel-category').hidden=!isCategory;
     $('panel-tag').hidden=isCategory;
@@ -1068,6 +1092,7 @@
     if(!value){status('选中的文字是空的，没有可识别的画师。',true);return;}
     cancelLookup();clearCandidates();
     const input=$('quick-input');input.value=value;
+    window.ArtistWorkspace?.openQuick();
     const section=$('quick-add');
     if(section?.scrollIntoView)section.scrollIntoView({block:'center'});
     if(input.focus)input.focus();
@@ -1318,7 +1343,7 @@
     finally{enqueueBulk=false;}
     paintQueue();render();
     node.textContent=`已排入 ${queued} 条${skipped?`，跳过 ${skipped} 条（已经在队列里）`:''}。`;
-    status(`已排入 ${queued} 条生成需求${skipped?`（${skipped} 条已在队列里）`:''}：一条一条跑，两条之间隔 5±3 秒，顶部「排队 N」可以一次清空。`);
+    status(`已排入 ${queued} 条生成需求${skipped?`（${skipped} 条已在队列里）`:''}：一条一条跑，两条之间隔 5±3 秒，任务栏的「排队 N」可以取消等待项。`);
     $('gen-batch').close();
   }
   /* 打开时默认就填你当前看到的那一段：采集完切到「待判断」之后，最常见的就是给这批新人生成。 */
@@ -1368,8 +1393,8 @@
     $('gen-check').onclick=()=>checkExtension();
     $('history-date').onchange=async()=>{const date=$('history-date').value;if(!/^\d{4}-\d{2}-\d{2}$/.test(date)){ $('history-date').value=data.cutoffDate;return;}const next=clone(data);next.cutoffDate=date;await save(next,'已保存截至日期；下次保存画师时会按新日期更新该画师的数量。');};
     $('work-order').onchange=async()=>{const value=$('work-order').value;if(!WORK_ORDERS.includes(value)){ $('work-order').value=data.workOrder;return;}const next=clone(data);next.workOrder=value;await save(next,'已改为按「'+WORK_ORDER_LABELS[value]+'」采集作品');};
-    $('add-artist').onclick=()=>startEdit(null);$('quick-form').onsubmit=e=>{e.preventDefault();detectArtist();};$('quick-input').oninput=quickChanged;$('quick-input').oncompositionend=quickChanged;bindExtensionMessages();
-    $('quick-manual').onclick=()=>{cancelLookup();startEdit(null);const value=$('quick-input').value.trim();if(value&&draft){try{const p=ArtistLookup.plan(value);if(p.kind==='name')draft.name=p.query;else if(p.kind==='url')draft.artistUrl=p.query;render();}catch{}}};
+    $('add-artist').onclick=()=>startEdit(null);$('quick-form').onsubmit=e=>{e.preventDefault();detectArtist();};$('quick-input').oninput=quickChanged;$('quick-input').addEventListener('compositionend',quickChanged);bindExtensionMessages();
+    $('quick-manual').onclick=()=>{cancelLookup();startEdit(null);const value=$('quick-input').value.trim();if(value&&draft){try{const p=ArtistLookup.plan(value);if(p.kind==='name')draft.name=p.query;else if(p.kind==='url')draft.artistUrl=p.query;editorRevision++;render();}catch{}}};
     $('manage-tags').onclick=()=>{if(!busy){manageFilter.category='';manageFilter.tag='';$('category-search').value='';$('tag-search').value='';showManageTab('category');listCategories();listTags();$('tag-manager').showModal();}};$('close-tags').onclick=()=>$('tag-manager').close();
     $('tab-category').onclick=()=>showManageTab('category');$('tab-tag').onclick=()=>showManageTab('tag');
     $('sync-all').onclick=()=>{if(syncingAll){syncAllStop=true;return null;}return syncAllArtists();};
@@ -1378,16 +1403,19 @@
     $('category-form').onsubmit=async e=>{e.preventDefault();if(busy)return;const name=$('new-category').value.trim();if(!name)return;if(data.categories.includes(name)){alert('这个分类已存在。');return;}const next=clone(data);next.categories.push(name);await save(next);$('new-category').value='';listCategories();};$('tag-form').onsubmit=async e=>{e.preventDefault();if(busy)return;const t=$('new-tag').value.trim();if(!t)return;if(data.tags.includes(t)){alert('这个标签已存在。');return;}const next=clone(data);next.tags.push(t);await save(next);$('new-tag').value='';listTags();};
     $('batch-artists').onclick=()=>{if(busy&&!batchRunning)return;/* 采集还在跑时只是把对话框收起来，别把进度和名单抹掉 */if(!batchRunning){$('batch-names').value='';$('batch-message').textContent='';$('batch-order').value=data.workOrder;disarmBatch();}$('batch-dialog').showModal();};$('close-batch').onclick=()=>$('batch-dialog').close();/* 收起 ≠ 取消：采集继续跑，要停请点「停止采集」 */$('batch-dialog').addEventListener('close',()=>disarmBatch());$('batch-stop').onclick=$('batch-stop-dialog').onclick=()=>{if(!batchRunning)return;batchStop=true;status('正在停止采集：当前这一位采集完就停，已经采集到的会保留。');};$('batch-form').onsubmit=batch;$('names-file').onchange=async e=>{try{const f=e.target.files[0];if(f){if(f.size>5*1024*1024)throw Error('TXT 名单不能超过 5 MB。');$('batch-names').value=await f.text();}}catch(error){$('batch-message').textContent=error.message;}finally{e.target.value='';}};
     $('export-data').onclick=exportData;$('import-data').onclick=()=>{if(!busy)$('import-file').click();};$('import-file').onchange=importData;
-    let searchTimer;$('search').oninput=e=>{state.query=e.target.value.trim().toLowerCase();clearTimeout(searchTimer);searchTimer=setTimeout(render,150);};$('reset').onclick=()=>{reset();render();};$('close-viewer').onclick=()=>$('viewer').close();
+    let searchTimer;
+    const searchChanged=e=>{if(e.isComposing)return;state.query=e.target.value.trim().toLowerCase();clearTimeout(searchTimer);searchTimer=setTimeout(render,120);};
+    $('search').oninput=searchChanged;$('search').addEventListener('compositionend',searchChanged);
+    $('library-sort').onchange=()=>{state.sort=$('library-sort').value;render();};$('reset').onclick=()=>{reset();render();};$('close-viewer').onclick=()=>$('viewer').close();
     ArtistViewer.init({getData:()=>data,getFolder:()=>folder,save,notify:status});
     $('viewer').addEventListener('close',()=>{ArtistImages.dispose('viewer');ArtistViewer.dispose();});$('save-original').onclick=()=>ArtistViewer.saveOriginal();
-    document.querySelectorAll('dialog').forEach(dialog=>dialog.addEventListener('click',event=>{if(event.target===dialog)dialog.close();}));
+    // 遮罩点击、键盘导航与导航焦点交由工作台统一处理。
     $('extension-status').onclick=checkExtension;
     /* 图片拖到格子以外的地方时，浏览器默认会直接打开那个文件、把当前页面顶掉（没保存的改动就没了）。
        在窗口这一层兜住：整页都不接受文件拖放，只有格子上的处理器会把事件拿走。 */
     window.addEventListener('dragover',event=>event.preventDefault());
     window.addEventListener('drop',event=>event.preventDefault());
-    window.addEventListener('beforeunload',e=>{if(volatile||busy||generating||syncingAll||batchRunning||!genQueue.idle){e.preventDefault();e.returnValue='';}});render();document.querySelectorAll('button,input,textarea,select').forEach(b=>b.disabled=true);$('choose-folder').disabled=false;$('extension-status').disabled=false;$('choose-folder').onclick=connectFolder;checkExtension().then(autoAccount);restoreFolder();
+    window.addEventListener('beforeunload',e=>{if(volatile||busy||generating||syncingAll||batchRunning||!genQueue.idle){e.preventDefault();e.returnValue='';}});render();document.querySelectorAll('button,input,textarea,select').forEach(b=>b.disabled=true);$('choose-folder').disabled=false;$('extension-status').disabled=false;$('choose-folder').onclick=connectFolder;window.ArtistWorkspace?.init({saveEditor:()=>{if(!busy&&!uploading&&draft)saveDraft();}});checkExtension().then(autoAccount);restoreFolder();
   }
   init();
 })();

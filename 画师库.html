@@ -4,214 +4,506 @@
   <meta charset="utf-8"><meta name="artist-library" content="v1">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="description" content="可离线使用的个人画师库，支持手动分类、自定义标签、上传图片和数据备份。">
-  <title>画师分类 · 手动编辑版</title>
+  <title>画师库 · 作品对比工作台</title>
   <link rel="icon" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHJlY3Qgd2lkdGg9IjMyIiBoZWlnaHQ9IjMyIiByeD0iNyIgZmlsbD0iIzM3NWFmNSIvPjxwYXRoIGQ9Ik04IDhoMTZNOSAxMnYxMmgxNFYxMk0xMyAxMmg2djdoLTZ6IiBmaWxsPSJub25lIiBzdHJva2U9IiNmZmYiIHN0cm9rZS13aWR0aD0iMiIvPjwvc3ZnPgo=" type="image/svg+xml">
-  <style>:root{font-family:"Segoe UI","Microsoft YaHei",sans-serif;color:#25262a;background:#f4f5f7;font-synthesis:none;--accent:#375af5;--muted:#737782;--line:#e1e3e8}*{box-sizing:border-box}body{margin:0}button,input,a{-webkit-tap-highlight-color:transparent}button,input{font:inherit}button{cursor:pointer}a{color:inherit;text-decoration:none}button:focus-visible,a:focus-visible,summary:focus-visible,input:focus-visible{outline:3px solid #97aaff;outline-offset:4px}.top{height:76px;padding:0 4vw;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);background:#fff}.brand{font-size:18px;font-weight:700;display:flex;align-items:center;gap:12px}.brand-mark{background:#272a32;color:#fff;border-radius:8px;display:grid;place-items:center;width:34px;height:34px;font-size:19px}main{max-width:1600px;margin:auto;padding:42px 4vw 20px}.heading{display:flex;justify-content:space-between;align-items:center;gap:24px}.eyebrow{font-size:12px;letter-spacing:.18em;font-weight:700;color:var(--accent);margin:0 0 10px}h1{font-size:32px;letter-spacing:-.03em;margin:0;line-height:1.5}.intro{color:var(--muted);font-size:14px;margin:10px 0 0;line-height:1.7}.search{width:260px;display:grid;gap:8px;font-size:13px;color:var(--muted)}input{width:100%;border:1px solid #d9dce4;border-radius:8px;background:#fff;padding:13px 14px;color:#25262a;font-size:15px}.filters{margin-top:32px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:20px 22px}.categories,.tags{display:flex;gap:8px;flex-wrap:wrap}.categories button{background:#f2f3f6;border:1px solid transparent;border-radius:7px;padding:10px 15px;font-size:15px;line-height:1.5}.categories button.active{background:var(--accent);color:#fff}.categories .n{font-size:12px;margin-left:9px;opacity:.65}.tag-line{margin-top:20px;display:flex;gap:16px;align-items:center}.filter-label{font-size:14px;color:var(--muted);white-space:nowrap}.tags button{padding:6px 12px;border-radius:30px;border:1px solid #e2e4eb;background:white;color:#555b68;font-size:14px}.tags button.active{border-color:var(--accent);color:var(--accent);background:#f1f4ff}.reset{margin-left:auto;white-space:nowrap;border:0;color:var(--muted);background:transparent;font-size:13px}.result-line{display:flex;justify-content:space-between;align-items:flex-start;margin:22px 0 16px;gap:16px;font-size:14px}.result-line p{margin:0;color:#656975}details{max-width:560px;text-align:right}summary{cursor:pointer;color:#676c78;font-size:13px}#method{margin-top:10px;text-align:left;background:white;border:1px solid var(--line);padding:16px;border-radius:8px;line-height:1.8;font-size:13px}#gallery{display:grid;gap:18px}.artist{--card-pad:24px;--info-col:230px;--card-gap:26px;--works-left:calc(var(--card-pad) + var(--info-col) + var(--card-gap));background:#fff;border:1px solid var(--line);border-radius:12px;padding:var(--card-pad);display:grid;grid-template-columns:var(--info-col) 1fr;gap:var(--card-gap);position:relative}
-.artist-meta{position:absolute;top:-15px;left:var(--works-left);right:var(--card-pad);z-index:1;display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px}
-.artist-meta .secondary{margin-top:0}.artist-info{display:flex;flex-direction:column;align-items:flex-start}.serial{font-size:12px;letter-spacing:.08em;color:#9a9faa}.artist h2{font-size:21px;margin:8px 0 12px;word-break:break-word;font-weight:650;line-height:1.35}
-.artist-name{border:0;background:transparent;font:inherit;color:inherit;padding:0;text-align:left;cursor:pointer;border-radius:5px}
-.artist-name:hover{color:var(--accent)}.primary{font-size:13px;background:#ebefff;color:#3350c6;padding:6px 10px;border-radius:5px}.secondary{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}.secondary span{font-size:12px;background:#fff;border:1px solid #e5e7ec;border-radius:4px;padding:4px 7px;color:#656a75}.description{font-size:14px;line-height:1.75;color:#565d69;margin:15px 0}.works{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;align-content:start}.work{margin:0;min-width:0}.thumb{width:100%;height:220px;display:block;border:0;border-radius:7px;background:#eff0f3;padding:0;overflow:hidden}.thumb:hover{background:#e7eaf1}.thumb img{width:100%;height:100%;object-fit:contain;display:block;transition:transform .2s}.thumb:hover img{transform:scale(1.025)}figcaption{color:#8c929d;font-size:12px;margin-top:9px;display:flex;gap:6px;justify-content:space-between;flex-wrap:wrap}.sample-note{grid-column:1/-1;margin:2px 0 0;color:#838995;font-size:12px;line-height:1.65}.unavailable{grid-column:1/-1;background:#f5f6f8;border:1px dashed #dce0e7;border-radius:8px;min-height:145px;display:flex;align-items:center;justify-content:center;flex-direction:column;text-align:center;gap:8px;padding:24px;color:#727987;font-size:14px}.pending-badge{color:#787b82;background:#f0f1f4;font-size:13px;border-radius:4px;padding:6px 10px}footer{display:flex;justify-content:space-between;gap:20px;padding:28px 0 12px;font-size:12px;color:#8a909b}#empty{text-align:center;padding:70px 15px;color:#777}#empty h2{font-size:20px}dialog{border:0;border-radius:12px;max-width:900px;width:85vw;padding:0;background:#fff;box-shadow:0 20px 80px #0004}dialog::backdrop{background:#172031ab;backdrop-filter:blur(3px)}.viewer-bar,.viewer-bottom{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px 24px}.viewer-bar h2{font-size:17px;margin:0}.viewer-bar button{border:0;background:#f0f1f4;padding:8px 12px;border-radius:6px;font-size:14px}.viewer-image{background:#eceef2;min-height:260px;display:flex;justify-content:center;align-items:center;padding:24px}.viewer-image img{max-width:100%;max-height:65vh;object-fit:contain;min-height:180px}.viewer-bottom{font-size:13px;color:#727887}.viewer-bottom a{color:var(--accent);white-space:nowrap}.viewer-bottom p{margin:0;line-height:1.7}.viewer-actions{display:flex;align-items:center;gap:14px;flex-shrink:0}.viewer-actions #save-original{padding:7px 12px;font-size:13px}.viewer-actions #save-original:disabled{opacity:.6;cursor:default}@media(min-width:1450px){.thumb{height:240px}}@media(max-width:1100px){.artist{--card-pad:20px;--info-col:190px;--card-gap:18px}.thumb{height:180px}.works{gap:8px}}@media(max-width:850px){main{padding-top:28px}.artist{grid-template-columns:1fr;--works-left:calc(var(--card-pad) + 42px)}.artist-info{display:block}.artist h2{margin:6px 0 10px}.description{margin:10px 0}.thumb{height:170px}.heading{align-items:flex-start}.search{width:220px}.tag-line{flex-wrap:wrap}.reset{margin-left:0}.filters{padding:16px}}@media(max-width:600px){.top{height:62px}.heading{display:block}h1{font-size:27px}.search{width:100%;margin-top:22px}.search span{display:none}.filters{margin-top:20px}.categories button{font-size:13px;padding:8px 10px}.categories .n{margin-left:5px}.tag-line{gap:10px}.filter-label{width:100%;font-size:12px}.tags{gap:6px}.tags button{font-size:13px;padding:5px 10px}.works{grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.thumb{height:175px}.artist{--card-pad:17px}.result-line{font-size:13px}details{max-width:65%}footer{flex-direction:column;gap:8px}dialog{width:94vw}.viewer-bar,.viewer-bottom{padding:14px}.viewer-bottom{align-items:flex-start;flex-direction:column}}@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}[hidden]{display:none!important}
-.basis{display:inline-block;font-size:12px;color:#946c2a;margin-top:8px;background:#fff5e0;padding:4px 7px;border-radius:4px}
-.toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-top:24px}.toolbar-spacer{flex:1}.action{border:1px solid #dce0e8;border-radius:7px;background:#fff;color:#444c5e;padding:9px 13px;font:inherit;font-size:14px;cursor:pointer}.primary-action{background:var(--accent);border-color:var(--accent);color:#fff}.storage-line{display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;margin:12px 0;color:#7b8290;font-size:12px;line-height:1.7}.storage-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}.storage-actions .action{padding:6px 10px;font-size:12px}.artist-top{display:flex;width:100%;align-items:center;justify-content:space-between}.edit-button{border:0;background:#f0f3ff;color:#375af5;border-radius:5px;padding:5px 10px;font-size:13px}.small-dialog{width:min(650px,94vw);max-height:85vh}dialog .viewer-bar{position:sticky;top:0;background:white;z-index:2;border-bottom:1px solid #e6e8ed}.form-body{padding:20px 24px;display:grid;gap:16px}.form-body label{display:grid;gap:7px;font-size:14px;color:#525b6b}textarea,select{width:100%;font:inherit;font-size:14px;color:#25262a;background:#fff;border:1px solid #d9dce4;border-radius:7px;padding:11px;box-sizing:border-box}textarea{resize:vertical;line-height:1.6}fieldset{border:1px solid #e0e3ea;border-radius:8px;padding:14px;min-width:0}legend{font-size:14px;color:#626a79;padding:0 7px}.inline-form{display:flex;gap:8px;align-items:center}.inline-form input{min-width:0}.inline-form button{flex-shrink:0}.field-help{margin:0;font-size:13px;color:#78808e;line-height:1.8}.form-body .upload-label{display:inline-flex;cursor:pointer;justify-self:start}.danger{color:#b74141;border:0;background:transparent;font-size:13px;cursor:pointer;white-space:nowrap}.form-footer{padding:16px 24px;position:sticky;bottom:0;background:#fff;border-top:1px solid #e5e7eb;display:flex;gap:16px;justify-content:space-between;align-items:center}.form-footer .primary-action{margin-left:auto}.error{color:#b33931!important;font-size:13px}.error:empty{display:none}.manage-tag-row{display:flex;gap:8px;margin-top:10px;align-items:center}.manage-tag-row input{min-width:0;flex:1}.manage-tag-row button{flex-shrink:0}#load-more{display:block;margin:24px auto}#method{white-space:pre-line}button:disabled{opacity:.5;cursor:wait}@media(max-width:650px){.form-body{padding:16px}.toolbar-spacer{display:none}.toolbar .action{font-size:13px;padding:8px 10px}.form-footer{padding:14px 16px}.small-dialog .form-body{gap:12px}}
-.quick-add{display:flex;gap:20px;align-items:flex-start;margin-top:22px;padding:26px;background:#fff;border:2px dashed #ccd4e7;border-radius:12px}.quick-icon{display:grid;place-items:center;width:44px;height:44px;flex-shrink:0;border-radius:10px;background:#edf1ff;color:#375af5;font-size:28px}.quick-body{min-width:0;flex:1}.quick-body h2{font-size:18px;margin:0 0 14px}.quick-body .field-help{margin-top:10px}#quick-input{min-width:0}#quick-status{font-size:14px;color:#687386;line-height:1.7;margin:12px 0}.quick-fallback{display:flex;gap:16px;flex-wrap:wrap;align-items:center}.quick-fallback a{font-size:13px;color:#375af5}.quick-fallback .reset{margin-left:0;padding:0}.candidate{display:flex;gap:16px;align-items:center;justify-content:space-between;padding:15px 16px;margin:10px 0;border:1px solid #e0e5f0;border-radius:8px;background:#f8faff}.candidate-info{min-width:0;display:flex;flex-wrap:wrap;gap:7px 12px;align-items:baseline;overflow-wrap:anywhere}.candidate-info strong{font-size:16px}.candidate-info span,.candidate-info small{color:#788496;font-size:12px}.candidate-info small{flex-basis:100%}.candidate-info a{font-size:12px;color:#375af5}.candidate>button{flex-shrink:0}@media(max-width:600px){.quick-add{padding:18px;gap:10px}.quick-icon{display:none}.quick-body>.inline-form{align-items:stretch;flex-direction:column}.candidate{align-items:stretch;flex-direction:column}}
-.artist-numbers{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.work-count{font-size:12px;color:#42516b}.candidate-previews{display:flex;gap:8px;flex-basis:100%;overflow-x:auto;padding:8px 0}.candidate-previews img{height:130px;width:100px;object-fit:cover;border-radius:6px}.candidate-info>small{flex-basis:100%}
-.header-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.artist-actions{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:12px}.artist-actions .edit-button{margin:0}@media(max-width:600px){.top{height:auto;min-height:68px;gap:12px;flex-wrap:wrap;padding-top:14px;padding-bottom:14px}.header-actions .action{font-size:12px;padding:8px}}
-.artist-info{display:flex;flex-direction:column;align-items:flex-start;align-self:stretch}.artist-actions{margin-top:auto;padding-top:18px;width:100%}
-.artist-slot{min-width:0;overflow-anchor:auto}.artist-slot:empty{border:1px solid #e7ebf2;border-radius:12px;box-sizing:border-box;background:linear-gradient(100deg,#f8f9fc,#f2f4f8)}.image-failed{font-size:12px;color:#8b4b4b}.header-actions{justify-content:flex-end}.top{height:auto;min-height:68px;gap:12px;flex-wrap:wrap}.toolbar{flex-wrap:wrap}
-.candidate-previews{flex-wrap:wrap;overflow:visible;gap:10px}.pick{position:relative;display:flex;flex-direction:column;gap:4px;padding:6px;border:1px solid #e0e5f0;border-radius:8px;background:#fff;cursor:pointer}.pick input{position:absolute;top:8px;left:8px;width:18px;height:18px;margin:0;cursor:pointer}.pick img{height:var(--pick-size,120px);width:auto;aspect-ratio:3/4;object-fit:cover;border-radius:6px}.pick a{font-size:11px;color:#375af5;text-align:center}.pick:has(input:checked){border-color:#375af5;box-shadow:0 0 0 1px #375af5}/* 勾上就是加进去了：右下角补一枚标记，换个排序又看到同一张时一眼知道已经加过。 */
-.pick.is-added::after{content:'已加入';position:absolute;right:6px;bottom:6px;background:#375af5;color:#fff;font-size:10px;border-radius:4px;padding:2px 5px;pointer-events:none}.candidate-tools{display:flex;gap:10px;align-items:center;flex-wrap:wrap;flex-basis:100%;padding-top:4px}.candidate-tools .action{padding:5px 12px;font-size:12px}.candidate-tools small{color:#788496;font-size:12px}
-.candidate-body{flex-basis:100%;display:flex;flex-direction:column;gap:6px;min-width:0}.picker-status{color:#788496;font-size:12px}.pick-id{background:none;border:none;padding:0;color:#375af5;font-size:11px;cursor:pointer;text-decoration:underline}.pick-id:hover{color:#1f3fd0}.work-picker{display:flex;flex-direction:column;gap:8px;border:1px solid #e0e5f0;border-radius:10px;padding:14px;margin-top:12px;background:#f8faff}.work-picker[hidden]{display:none}
-.picker-zoom{display:flex;align-items:center;gap:8px}.picker-zoom small{color:#788496;font-size:12px;white-space:nowrap}.picker-zoom input[type=range]{flex:none;width:130px;padding:0;border:0;background:none;accent-color:var(--accent)}
-.picker-order{display:flex;align-items:center;gap:8px}
-.picker-order small{color:#788496;font-size:12px;white-space:nowrap}
-.picker-order select{flex:none;width:auto;max-width:190px;padding:6px 8px;font-size:13px}
-.settings-body{gap:0}.setting-row{display:flex;gap:16px;align-items:flex-start;justify-content:space-between;padding:14px 0;border-bottom:1px solid #eef0f4}.setting-row:last-child{border-bottom:0;padding-bottom:0}.setting-row strong{display:block;font-size:14px;margin-bottom:5px}.setting-row .field-help{margin:0}.setting-row>button{flex-shrink:0}.setting-row input[type=date]{width:auto;min-width:160px}.setting-row select{width:auto;min-width:180px;flex-shrink:0}.switch{position:relative;display:inline-flex;flex-shrink:0;margin-top:2px}.switch input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer}.switch span{display:block;width:46px;height:26px;border-radius:13px;background:#d5d9e2;transition:background .2s}.switch span::after{content:'';position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px #0003;transition:transform .2s}.switch input:checked+span{background:var(--accent)}.switch input:checked+span::after{transform:translateX(20px)}
-.size-control{display:flex;align-items:center;gap:10px;flex-shrink:0}.size-control input[type=range]{width:180px;padding:0;border:0;background:none;accent-color:var(--accent)}.size-control span{font-size:13px;color:#788496;min-width:38px;text-align:right}
-.token-control{display:flex;align-items:center;gap:8px;flex-shrink:0}.token-control input{width:260px;font-family:ui-monospace,Consolas,monospace;font-size:13px}
-.works{grid-template-columns:repeat(auto-fill,minmax(var(--card-size,220px),1fr))}.thumb{height:var(--card-size,220px)}
-.work.is-test{position:relative}.work.is-test::after{content:'测试风格';position:absolute;top:0;left:0;z-index:1;background:#e08b1f;color:#fff;font-size:11px;line-height:1;padding:4px 7px;border-radius:7px 0 7px 0}
-/* 外部图片拖进格子：虚线高亮，鼠标显示可放下 */
-.work.is-drop-target{outline:2px dashed var(--accent);outline-offset:3px;border-radius:9px}
-.work.is-drop-target .thumb,.work.is-drop-target.work-empty,.work.is-drop-target.work-generate{background:#eef3ff}
-.work-id{color:#8c929d;text-decoration:none;border-bottom:1px dotted #c3c9d6}
-.work-id:hover{color:var(--accent);border-bottom-color:var(--accent)}
-.slot-delete{border:0;background:none;padding:0;color:#a3a9b6;font-size:12px;cursor:pointer;white-space:nowrap}
-.slot-delete:hover{color:#b4453c;text-decoration:underline}
-.slot-delete.is-armed,.slot-delete.is-armed:hover{background:#d9483c;color:#fff;border-radius:5px;padding:2px 8px;text-decoration:none}
-.test-preview{display:flex;flex-direction:column;gap:6px}.work-empty{border:1px dashed #e3e7ef;border-radius:7px;height:var(--card-size,220px);background:#fafbfd}
-.work-generate{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;border:1px dashed #c9d4f5;border-radius:7px;height:var(--card-size,220px);background:#f7f9ff}
-.work-generate.is-armed{border-color:#e08b1f;background:#fff8ec}
-.work-generate.is-queued{border-color:#c9d4f5;background:#f4f7ff}
-.work-generate.is-queued .generate-seq{color:#5a6a8a}
-.generate-button{padding:7px 18px;border:1px solid #b9c6ee;border-radius:8px;background:#fff;color:#375af5;font-size:13px;cursor:pointer;transition:background-color .18s ease,border-color .18s ease,color .18s ease}
-.generate-button:hover{background:#eef2ff;border-color:#8fa4e6}
-.generate-button.is-armed,.generate-button.is-armed:hover{background:#e08b1f;border-color:#e08b1f;color:#fff;animation:arm-pulse 1.1s ease-in-out infinite}
-.generate-seq{font-size:12px;color:#788496}
-.work-generate.is-armed .generate-seq{color:#a2660f}
-/* 生成中的过渡动画：转动的环 + 一行进度文字 */
-.work-generate.is-generating{border-style:solid;border-color:#c9d4f5;background:#f2f6ff}
-.gen-spinner{width:34px;height:34px;border-radius:50%;border:3px solid #d8e0f5;border-top-color:#375af5;animation:gen-spin .9s linear infinite}
-.gen-progress{font-size:12px;color:#5a6a8a;text-align:center;padding:0 10px;line-height:1.5}
-.work-generate.is-generating .gen-progress{animation:gen-fade 1.6s ease-in-out infinite}
-@keyframes gen-spin{to{transform:rotate(360deg)}}
-@keyframes gen-fade{0%,100%{opacity:.55}50%{opacity:1}}
-@keyframes arm-pulse{0%,100%{box-shadow:0 0 0 0 #e08b1f55}50%{box-shadow:0 0 0 6px #e08b1f00}}
-@media(prefers-reduced-motion:reduce){.gen-spinner{animation-duration:2.4s}.generate-button.is-armed{animation:none}.work-generate.is-generating .gen-progress{animation:none}}
-.setting-row textarea{flex:1 1 auto;width:auto;max-width:none;min-width:260px;font-size:13px;line-height:1.6;min-height:160px;resize:vertical}
-/* 反向提示词与两份提示词模板：左侧说明栏固定同宽，三个框因此一样宽，并且吃掉整行剩余宽度。 */
-.setting-row.textarea-row>div:first-child{flex:0 0 320px}
-@media(max-width:900px){.setting-row.textarea-row{flex-wrap:wrap}.setting-row.textarea-row>div:first-child{flex:1 1 100%}.setting-row.textarea-row textarea{flex:1 1 100%}}
-.setting-row .field-help.error,.setting-row p.error{color:#b4453c;font-weight:600}
-.size-pair{display:flex;align-items:center;gap:8px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;max-width:440px}
-.size-pair select{min-width:170px}
-.size-pair input[type=number]{width:104px}
-.wide-dialog{width:min(1180px,96vw)}
-.wide-dialog .form-body{max-height:78vh;overflow-y:auto}
-button.error,.action.error{border-color:#e6b2ae;color:#b4453c}
-.artist.is-editing{grid-template-columns:1fr;background:#fbfcff;border-color:#c9d4f5}
-/* 从漂浮提示点进来时，让新建的那张卡片自己闪一下，好找 */
-.artist.is-focus-flash{animation:focus-flash 3.2s ease-out}
-@keyframes focus-flash{0%,35%{box-shadow:0 0 0 3px var(--accent),0 8px 24px #375af53d;border-color:var(--accent)}100%{box-shadow:0 0 0 0 #375af500}}
-@media(prefers-reduced-motion:reduce){.artist.is-focus-flash{animation:none;box-shadow:0 0 0 3px var(--accent)}}
-.artist.is-editing .artist-info{align-self:stretch}
-.edit-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;width:100%}
-.edit-field{display:grid;gap:6px;width:100%;font-size:13px;color:#525b6b}
-.edit-label{font-size:12px;color:#788496}
-.artist.is-editing textarea,.artist.is-editing select,.artist.is-editing input{font-size:14px}
-.artist-expand{grid-column:1/-1;border-top:1px solid #e7ebf2;margin-top:6px;padding-top:12px;display:flex;flex-direction:column;gap:10px}
-.expand-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.expand-head strong{font-size:14px}
-.danger-link{background:none;border:0;padding:0;color:#b4453c;font-size:12px;text-decoration:underline;cursor:pointer}
-@media(max-width:650px){.edit-grid{grid-template-columns:1fr}}
-a.action{display:inline-flex;align-items:center;text-decoration:none}
-.artist .artist-numbers .action{padding:5px 11px;font-size:12px}
-.artist-actions{justify-content:space-between;margin-top:auto;padding-top:18px;width:100%}
-.artist-actions .edit-button{margin:0}
-.artist.is-editing .artist-actions{justify-content:flex-start;gap:10px}
-.action,.edit-button,.danger,.reset,.danger-link,.categories button,.tags button,.viewer-bar button,.pick-id{transition:background-color .18s ease,border-color .18s ease,color .18s ease,box-shadow .18s ease,transform .12s ease}
-.action:hover,a.action:hover{background:#f5f8fd;border-color:#c8d2e4}
-.primary-action:hover{background:#2d4bd6;border-color:#2d4bd6;box-shadow:0 4px 12px #375af53d}
-/* 大批量导入前的二次确认：主按钮就地变红，形状不变 */
-.primary-action.is-armed,.primary-action.is-armed:hover{background:#d9483c;border-color:#d9483c;color:#fff;box-shadow:0 4px 12px #d9483c40}
-/* 「批量生成测试风格图」里的序号段与风格序号：并排一行，数字框别撑满 */
-.range-control{display:flex;align-items:center;gap:8px;flex-shrink:0;color:#78808e;font-size:13px}
-.range-control input[type=number],.range-control input[type=text]{width:104px;padding:9px 10px;font-size:14px}
-.edit-button:hover{background:#e2e8ff}
-.danger:hover{background:#fbebe9;border-color:#e6b2ae}
-.danger.is-armed,.danger.is-armed:hover{background:#d9483c;border-color:#d9483c;color:#fff}
-.categories button:hover{background:#e7eaf2}
-.tags button:hover{border-color:#c8d2e4;color:#3b4252}
-.reset:hover{color:var(--accent)}.danger-link:hover{color:#8f2f28}
-.viewer-bar button:hover{background:#e4e7ec}
-.action:active,.edit-button:active,.danger:active,.categories button:active,.tags button:active,.viewer-bar button:active{transform:translateY(1px);box-shadow:none}
-button:disabled{opacity:.55;cursor:default;transform:none;box-shadow:none}
-input,textarea,select{transition:border-color .18s ease,box-shadow .18s ease,background-color .18s ease}
-input:hover,textarea:hover,select:hover{border-color:#c3ccdc}
-input:focus,textarea:focus,select:focus{border-color:var(--accent)}
-input[type=checkbox]{transition:transform .12s ease}input[type=checkbox]:active{transform:scale(.9)}
-input[type=range]::-webkit-slider-thumb{transition:transform .15s ease}input[type=range]:active::-webkit-slider-thumb{transform:scale(1.12)}
-a{transition:color .18s ease,opacity .18s ease}
-.artist{transition:border-color .2s ease,box-shadow .2s ease}.artist:hover{border-color:#d2dae9;box-shadow:0 8px 24px #1f2a4414}
-.candidate,.pick{transition:border-color .18s ease,box-shadow .18s ease}.candidate:hover,.pick:hover{border-color:#cbd5e8}
-img{transition:opacity .25s ease}img:not([src]){opacity:0}
-dialog{opacity:0;transform:translateY(10px);transition:opacity .18s ease,transform .18s ease,display .18s ease allow-discrete,overlay .18s ease allow-discrete}
-dialog[open]{opacity:1;transform:none}
-@starting-style{dialog[open]{opacity:0;transform:translateY(10px)}}
-dialog::backdrop{opacity:0;transition:opacity .2s ease,display .2s ease allow-discrete,overlay .2s ease allow-discrete}
-dialog[open]::backdrop{opacity:1}
-@starting-style{dialog[open]::backdrop{opacity:0}}
-.artist-expand{animation:panel-in .2s ease}
-@keyframes panel-in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
-@keyframes fade-in{from{opacity:0}to{opacity:1}}
-.pick img{transition:height .18s ease,opacity .25s ease}
-.thumb{transition:height .18s ease}
-.error{animation:fade-in .2s ease}
-.candidate{animation:panel-in .2s ease}
-#quick-results{transition:opacity .14s ease}#quick-results.is-leaving{opacity:0}
-.artist.is-morphing{animation:morph-out .13s ease forwards}
-@keyframes morph-out{to{opacity:0;transform:scale(.985)}}
-/* 系统里关了动效就一套都不放：面板入场、候选卡片、错误提示、删除时的收缩、对话框淡入全停。
-   画廊的滑动与新卡入场是脚本里的 Web Animations，同样看这个偏好，不在这里管。 */
-@media(prefers-reduced-motion:reduce){.artist-expand,.candidate,.error,.artist.is-morphing{animation:none}dialog,dialog::backdrop{transition:none}}.test-row{display:flex;align-items:baseline;gap:10px;font-size:13px;padding:6px 10px;border:1px solid #e6e9f0;border-radius:7px;background:#f8faff}.test-row .test-seq{font-family:ui-monospace,Consolas,monospace;color:#375af5}.test-row strong{font-size:13px}.test-row small{color:#788496;overflow-wrap:anywhere}
-#viewer{width:min(1600px,96vw);max-width:96vw;max-height:96vh}.viewer-image{padding:12px;min-height:120px;overflow:auto}.viewer-image img{max-width:100%;max-height:calc(96vh - 160px);width:auto;height:auto;min-height:0;object-fit:contain}
-.manage-name{flex:1;min-width:0;font-size:14px;color:#3d4657;overflow-wrap:anywhere}
-.manage-heading{font-size:14px;margin:6px 0 0;color:#3d4657}
-.manage-heading+.field-help{margin-top:5px}
-.manage-tabs{display:flex;gap:4px;border-bottom:1px solid var(--line)}
-.manage-tab{border:0;background:transparent;color:var(--muted);font:inherit;font-size:14px;padding:9px 14px;border-bottom:2px solid transparent;margin-bottom:-1px}
-.manage-tab:hover{color:#3b4252}
-.manage-tab.active{color:var(--accent);border-bottom-color:var(--accent)}
-.manage-panel{display:grid;gap:12px}
-.manage-panel[hidden]{display:none}
-.manage-handle{border:0;background:transparent;color:#b3bac8;font-size:15px;line-height:1;padding:4px 5px;cursor:grab;flex-shrink:0;touch-action:none}
-.manage-handle:hover{color:#6b7280}
-
-.manage-handle:active{cursor:grabbing}
-.manage-tag-row.is-dragging{opacity:.45}
-.manage-tag-row.drop-before{box-shadow:inset 0 2px 0 var(--accent)}
-.manage-tag-row.drop-after{box-shadow:inset 0 -2px 0 var(--accent)}
-.manage-search{margin-top:10px;padding:10px 12px;font-size:14px}
-.manage-empty{margin:10px 0 0;font-size:13px;color:#78808e}
-.manage-tag-row{flex-wrap:wrap}
+  <style>/* Portrait workspace — neutral surfaces, full-width five-image comparisons. */
+:root{font-family:"Segoe UI","Microsoft YaHei",sans-serif;font-synthesis:none;color-scheme:dark;--bg:#14161d;--panel:#1d2029;--raised:#252935;--input:#191c24;--line:#333744;--line-soft:#292e39;--text:#e8eaf2;--muted:#a0a7b8;--faint:#757f93;--accent:#c4ccff;--accent-text:#202741;--accent-soft:#303951;--warm:#e5b787;--warm-bg:#393027;--danger:#efaaa5;--danger-bg:#422a30;--shadow:0 16px 50px #0005;--header:66px;--card-size:280px;background:var(--bg);color:var(--text)}
+:root[data-theme=light]{color-scheme:light;--bg:#f4f5f8;--panel:#fff;--raised:#eceef4;--input:#fafbfe;--line:#d7dce7;--line-soft:#e8ebf2;--text:#252c3e;--muted:#657087;--faint:#788399;--accent:#4e63cb;--accent-text:#fff;--accent-soft:#e8ecff;--warm:#8d5c25;--warm-bg:#fff1df;--danger:#ad3e45;--danger-bg:#ffecef;--shadow:0 16px 50px #20305915}
+*{box-sizing:border-box}
+html{scrollbar-gutter:stable;scroll-padding-top:185px}
+body{margin:0;padding-bottom:40px;font-size:14px;line-height:1.5}
+button,input,select,textarea{font:inherit}
+button,input,a{-webkit-tap-highlight-color:transparent}
+button{cursor:pointer;color:inherit}
+a{color:inherit;text-decoration:none}
+svg{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+button,summary,a{touch-action:manipulation}
+button,input,textarea,select,summary{transition:background-color .16s,border-color .16s,color .16s,box-shadow .16s}
+button:disabled,input:disabled,select:disabled,textarea:disabled{opacity:.45;cursor:not-allowed}
+button:disabled{transform:none;box-shadow:none}
+:where(button,a,summary,input,textarea,select,[tabindex]):focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+input,select,textarea{width:100%;min-width:0;border:1px solid var(--line);border-radius:8px;padding:11px 12px;background:var(--input);color:var(--text)}
+input::placeholder,textarea::placeholder{color:var(--faint)}
+input:hover,select:hover,textarea:hover{border-color:var(--faint)}
+input:focus,select:focus,textarea:focus{border-color:var(--accent)}
+textarea{resize:vertical;line-height:1.8}
+input[type=range]{padding:0;accent-color:var(--accent)}
+input[type=checkbox]{width:18px;height:18px;accent-color:var(--accent)}
+[hidden]{display:none!important}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.skip-link{position:fixed;top:8px;left:16px;z-index:100;padding:10px 16px;background:var(--accent);color:var(--accent-text);border-radius:7px;transform:translateY(-150%)}
+.skip-link:focus{transform:none}
+h1,h2,h3,p{overflow-wrap:anywhere}
+h1,h2,h3{margin-top:0}
+h1{font-size:30px;line-height:1.3;font-weight:650;letter-spacing:-.04em;margin:0 0 9px}
+.title-dot{color:var(--accent);margin-left:3px}
+h2{font-size:18px}
+h3{font-size:14px}
+.eyebrow{font:10px/1.4 ui-monospace,Consolas,monospace;letter-spacing:.15em;color:var(--faint);margin:0 0 10px}
+.intro{font-size:12px;color:var(--muted);margin:0}
+.action{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--text);padding:9px 13px;font-size:13px;white-space:nowrap}
+.action:hover{background:var(--raised);border-color:var(--faint)}
+.primary-action{background:var(--accent);border-color:var(--accent);color:var(--accent-text);font-weight:600}
+.primary-action:hover{background:var(--accent);border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.action:active,.edit-button:active{transform:translateY(1px)}
+.icon-button{display:inline-grid;place-items:center;flex-shrink:0;background:transparent;color:var(--muted);border:1px solid transparent;border-radius:7px;width:36px;height:36px;font-size:18px}
+.icon-button:hover{color:var(--text);background:var(--raised)}
+.reset{border:0;background:none;padding:4px 0;color:var(--muted);font-size:12px}
+.reset:hover{color:var(--accent)}
+.danger,.danger-link{border:0;border-radius:5px;padding:5px 8px;font-size:12px;background:transparent;color:var(--danger)}
+.danger:hover,.danger-link:hover{background:var(--danger-bg)}
+.is-armed:is(.danger,.slot-delete,.primary-action){background:var(--danger);color:var(--bg);border-color:var(--danger);padding:5px 8px}
+.error{color:var(--danger)!important}
+.error:empty{display:none}
+.field-help{margin:0;color:var(--muted);font-size:12px;line-height:1.85}
+/* 全宽竖屏骨架：所有横向空间交给作品，不保留侧栏。 */
+.app-header{height:var(--header);position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:24px;padding:0 28px;background:var(--bg);border-bottom:1px solid var(--line-soft)}
+.brand{display:flex;align-items:center;gap:10px;font-size:17px;font-weight:650;letter-spacing:.04em;flex-shrink:0}
+.brand-symbol{display:grid;place-items:center;background:var(--accent);color:var(--accent-text);border-radius:8px;width:34px;height:34px;font-size:20px}
+.brand small{display:block;font:8px ui-monospace,monospace;letter-spacing:.16em;color:var(--faint);margin-top:3px}
+.connection{display:flex;align-items:center;gap:7px;min-width:0;flex:1;color:var(--muted);font-size:11px}
+#connection-dot,.status-indicator{width:5px;height:5px;border-radius:50%;background:var(--faint);flex-shrink:0}
+#connection-dot.connected{background:#9dd3b1;box-shadow:0 0 0 3px #9dd3b110}
+#folder-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.header-actions{display:flex;gap:7px;align-items:center}
+.header-actions .action{padding:7px 11px;font-size:12px}
+main{max-width:1440px;margin:0 auto;padding:30px 28px 12px;min-width:0}
+.collection-heading{display:flex;justify-content:space-between;align-items:center;gap:20px;margin-bottom:27px}
+.collection-actions{display:flex;gap:8px}
+.collection-actions .primary-action{padding:10px 17px}
+.library-controls{position:sticky;top:var(--header);z-index:25;background:var(--bg);padding-top:10px;border-bottom:1px solid var(--line)}
+.search-row{display:flex;gap:9px;align-items:center}
+.search{position:relative;display:flex;align-items:center;flex:1;min-width:120px}
+.search svg{position:absolute;left:13px;pointer-events:none;color:var(--faint)}
+.search input{height:43px;padding:11px 35px 11px 42px;border-color:var(--line);font-size:13px;background:var(--panel)}
+.search kbd{position:absolute;right:14px;pointer-events:none;border:1px solid var(--line);border-radius:4px;min-width:17px;text-align:center;color:var(--faint);font-size:11px}
+.search:focus-within kbd{display:none}
+.sort-control{width:146px;flex-shrink:0}
+.sort-control select{height:43px;padding:8px 11px;background:var(--panel);font-size:12px}
+.search-row>.action{height:43px;font-size:12px;padding:8px 12px}
+#filter-number{display:inline-grid;place-items:center;min-width:18px;height:18px;border-radius:4px;background:var(--accent);color:var(--accent-text);font:10px ui-monospace,monospace}
+.category-row{display:flex;align-items:center;gap:14px;margin-top:13px}
+.categories{display:flex;gap:21px;overflow:auto;flex:1;min-width:0;scrollbar-width:thin}
+.categories button{display:flex;align-items:center;gap:7px;flex-shrink:0;border:0;border-bottom:2px solid transparent;border-radius:0;background:none;color:var(--muted);font-size:12px;padding:11px 0 13px;white-space:nowrap}
+.categories button:hover{color:var(--text)}
+.categories button.active{color:var(--accent);border-bottom-color:var(--accent)}
+.categories .n{font:10px ui-monospace,monospace;padding:1px 5px;background:var(--raised);color:var(--faint);border-radius:4px}
+.categories button.active .n{background:var(--accent-soft);color:var(--accent)}
+.filter-panel{display:grid;grid-template-columns:1fr 210px;gap:24px;padding:20px 0;border-top:1px solid var(--line-soft);animation:panel-in .16s}
+.filter-panel h2{font-size:12px;margin:0 0 12px;font-weight:550}
+.filter-panel h2 small{font-size:10px;color:var(--faint);font-weight:400;margin-left:9px}
+.filter-panel>.reset{grid-column:1/-1;justify-self:end;margin-top:-8px}
+.tags,.tag-choices{display:flex;flex-wrap:wrap;gap:7px;max-height:170px;overflow:auto}
+.tags button,.tag-choice{border:1px solid var(--line);border-radius:5px;background:var(--panel);padding:5px 9px;color:var(--muted);font-size:12px}
+.tags button:hover,.tag-choice:hover{border-color:var(--faint);color:var(--text)}
+.tags button.active,.tag-choice.active{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
+.score-filter,.score-picker{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.score-filter button,.score-pick{border:1px solid var(--line);border-radius:5px;width:30px;height:30px;background:var(--panel);padding:0;color:var(--muted);font-size:12px}
+.score-filter button.active,.score-pick.active{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+.score-filter .score-any{width:auto;padding:0 8px;font-size:11px}
+.score-hint{font-size:12px;color:var(--muted)}
+.active-filters{display:flex;gap:7px;flex-wrap:wrap;padding:15px 0 0}
+.filter-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:5px;padding:4px 9px;background:var(--raised);color:var(--muted);font-size:11px}
+.filter-chip:hover{color:var(--accent);border-color:var(--accent)}
+.view-toolbar{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:22px 0 14px;font-size:12px}
+.view-toolbar>div{display:flex;align-items:center;gap:9px}
+.view-indicator{width:4px;height:12px;border-radius:2px;background:var(--accent)}
+#view-title{font-weight:600}
+#count{font:11px ui-monospace,"Microsoft YaHei",monospace;color:var(--faint)}
+.view-actions{gap:15px!important}
+.action-menu{position:relative}
+.action-menu summary{list-style:none;cursor:pointer;font-size:12px;color:var(--muted);border-radius:5px;padding:4px 0}
+.action-menu summary::-webkit-details-marker{display:none}
+.action-menu summary span{margin-left:6px;color:var(--faint)}
+.action-menu[open]>summary,.action-menu summary:hover{color:var(--accent)}
+.menu-panel{position:absolute;right:0;top:calc(100% + 9px);z-index:50;width:238px;padding:7px;background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);animation:panel-in .15s}
+.menu-panel button{display:flex;align-items:center;justify-content:space-between;width:100%;border:0;background:transparent;border-radius:5px;text-align:left;color:var(--text);font-size:12px;padding:10px 12px}
+.menu-panel button:hover{background:var(--raised)}
+.menu-panel p{margin:9px 12px;color:var(--faint);font-size:11px;line-height:1.7}
+.menu-panel kbd{font-size:10px;color:var(--faint)}
+.menu-panel hr{border:0;border-top:1px solid var(--line);margin:6px}
+.task-controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:11px 14px;margin-bottom:15px;background:var(--accent-soft);border:1px solid var(--line);border-radius:9px;font-size:12px}
+.task-controls .action{padding:5px 9px;font-size:11px}
+.task-spinner{width:13px;height:13px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite}
+/* 每位画师占一行：信息在上，五张作品在下，所有尺寸都不换列、不裁图。 */
+#gallery{display:grid;gap:18px}
+.artist-slot{min-width:0;scroll-margin-top:200px;overflow-anchor:auto}
+.artist-slot:empty{border:1px solid var(--line-soft);border-radius:12px;background:var(--panel)}
+.artist{min-width:0;position:relative;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:17px 16px 13px;transition:border-color .18s}
+.artist:hover{border-color:var(--faint)}
+.artist-info{display:flex;align-items:flex-start;justify-content:space-between;gap:15px;margin-bottom:15px;min-width:0}
+.artist-identity{min-width:0;flex:1}
+.name-row{display:flex;align-items:center;gap:9px;min-width:0}
+.serial{font:10px ui-monospace,Consolas,monospace;color:var(--faint);letter-spacing:.04em}
+.artist h2{font-size:18px;line-height:1.35;font-weight:600;margin:0;min-width:0;overflow-wrap:anywhere;letter-spacing:-.02em}
+.artist-name{background:none;border:0;border-radius:3px;color:var(--text);padding:0;font:inherit;text-align:left;overflow-wrap:anywhere}
+.artist-name:hover{color:var(--accent)}
+.alias{font-size:11px;color:var(--faint);overflow-wrap:anywhere}
+.artist-meta{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-top:8px}
+.primary,.pending-badge{font-size:10px;padding:2px 6px;border-radius:4px;color:var(--accent);background:var(--accent-soft)}
+.pending-badge{color:var(--muted);background:var(--raised)}
+.secondary{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.secondary span{color:var(--muted);font-size:10px}
+.secondary span+span::before{content:'·';color:var(--faint);margin-right:5px}
+.score-badge{font:10px ui-monospace,"Microsoft YaHei",monospace;color:var(--warm);padding:2px 6px;border:1px solid var(--line);border-radius:4px;white-space:nowrap}
+.artist-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.edit-button{border:1px solid var(--line);border-radius:6px;background:transparent;color:var(--muted);padding:6px 11px;font-size:11px}
+.edit-button:hover{background:var(--raised);color:var(--text)}
+a.edit-button{padding:6px 8px}
+.card-menu>summary{font-size:20px;letter-spacing:1px;line-height:1;padding:3px 6px}
+.card-menu .menu-panel{width:150px}
+.card-menu .danger{color:var(--danger)}
+.works{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:9px;min-width:0;align-content:start}
+.work{position:relative;margin:0;min-width:0}
+.thumb{display:block;width:100%;height:min(var(--card-size),calc((100vw - 112px)*.34));padding:0;background:var(--input);border:1px solid var(--line-soft);border-radius:7px;overflow:hidden;cursor:zoom-in}
+.thumb img{display:block;width:100%;height:100%;object-fit:contain;transition:opacity .18s}
+.thumb:hover{border-color:var(--accent)}
+img:not([src]){opacity:0}
+.thumb img.image-failed{opacity:1;color:var(--danger);font-size:11px}
+.work figcaption{display:flex;align-items:center;justify-content:space-between;gap:3px;margin-top:7px;min-height:22px;color:var(--faint);font:10px ui-monospace,"Microsoft YaHei",monospace;min-width:0}
+.work figcaption>a,.work figcaption>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.work-id:hover{color:var(--accent)}
+.slot-delete{background:none;border:0;border-radius:3px;padding:3px 4px;font-size:10px;color:var(--faint);white-space:nowrap}
+.slot-delete:hover{color:var(--danger);background:var(--danger-bg)}
+.work.is-test::before{content:'测试风格';position:absolute;top:7px;left:7px;z-index:1;border-radius:3px;background:var(--warm-bg);color:var(--warm);font-size:9px;line-height:1.4;padding:2px 5px;pointer-events:none}
+.work-empty,.work-generate{height:min(var(--card-size),calc((100vw - 112px)*.34));border:1px dashed var(--line);border-radius:7px;background:var(--input)}
+.work-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--faint);font-size:11px;gap:6px}
+.work-empty::before{content:'＋';font-size:22px;font-weight:300;color:var(--line)}
+.work-generate{display:flex;align-items:center;justify-content:center;flex-direction:column;gap:9px}
+.generate-seq{font-size:10px;color:var(--warm)}
+.generate-button{border:1px solid var(--line);border-radius:6px;background:var(--raised);padding:6px 12px;font-size:11px;color:var(--text)}
+.generate-button:hover{border-color:var(--warm);color:var(--warm)}
+.work-generate.is-queued,.work-generate.is-generating{border-color:var(--faint);background:var(--accent-soft)}
+.work-generate.is-armed{border-color:var(--warm);background:var(--warm-bg)}
+.generate-button.is-armed{background:var(--warm);color:var(--bg);border-color:var(--warm)}
+.gen-spinner{width:25px;height:25px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:gen-spin 1s linear infinite}
+.gen-progress{font-size:10px;text-align:center;padding:0 6px;color:var(--muted)}
+.work.is-drop-target{outline:2px dashed var(--accent);outline-offset:3px;border-radius:7px}
+.work.is-drop-target .thumb{background:var(--accent-soft)}
+.artist-footer{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:5px 15px;margin-top:9px;padding-top:9px;border-top:1px solid var(--line-soft)}
+.work-count{font-size:10px;color:var(--faint)}
+.artist-notes{font-size:11px;color:var(--muted);text-align:right;max-width:65%}
+.artist-notes summary{cursor:pointer;overflow-wrap:anywhere}
+.artist-notes[open]{flex-basis:100%;max-width:none;text-align:left}
+.description,.sample-note{font-size:12px;line-height:1.8;color:var(--muted);margin:8px 0 0;overflow-wrap:anywhere}
+.basis{font-size:11px;color:var(--warm)}
+.unavailable{grid-column:1/-1;padding:18px;border:1px dashed var(--line);border-radius:8px;text-align:center;color:var(--muted);font-size:12px}
+.sample-note{grid-column:1/-1}
+.empty-state{display:flex;flex-direction:column;align-items:center;text-align:center;min-height:550px;padding:80px 28px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
+.empty-preview{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;max-width:400px;width:100%;margin-bottom:36px}
+.empty-preview span{height:112px;border:1px solid var(--line);background:linear-gradient(160deg,var(--raised),var(--panel));border-radius:7px}
+.empty-preview span:nth-child(2){transform:translateY(-10px)}
+.empty-preview span:nth-child(3){transform:translateY(-17px);border-color:var(--faint)}
+.empty-preview span:nth-child(4){transform:translateY(-10px)}
+.empty-state h2{font-size:22px;letter-spacing:-.02em;margin:3px 0 13px}
+.empty-state>p:not(.eyebrow){color:var(--muted);font-size:13px;line-height:1.9;max-width:390px;margin:0 0 24px}
+.empty-state>.action{margin:4px}
+footer{display:flex;align-items:center;justify-content:space-between;gap:15px;color:var(--faint);font-size:10px;padding:28px 0 9px}
+footer .reset{font-size:10px}
+.status-bar{display:flex;align-items:center;gap:9px;position:fixed;bottom:0;left:0;right:0;z-index:40;min-height:34px;padding:7px 20px;border-top:1px solid var(--line);background:var(--bg);font-size:10px;color:var(--muted)}
+#storage-status{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.status-bar .reset{font-size:10px;flex-shrink:0}
+.status-bar:has(.error) .status-indicator{background:var(--danger)}
+/* 编辑与浮层使用同一套语义颜色，不改变五图网格。 */
+.artist.is-editing{border-color:var(--accent);background:var(--panel)}
+.artist.is-editing .artist-info{display:flex;flex-direction:column;gap:14px;align-items:stretch}
+.artist.is-editing .artist-actions{position:sticky;bottom:34px;z-index:10;background:var(--panel);border-top:1px solid var(--line);padding:12px 0;flex-wrap:wrap}
+.artist.is-editing .artist-actions .action{font-size:12px}
+.artist-numbers{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.edit-grid{display:grid;grid-template-columns:1fr 1fr;gap:15px;width:100%}
+.edit-field{display:grid;gap:7px;font-size:12px;min-width:0}
+.edit-label{font-size:12px;color:var(--muted)}
 .edit-field-wide{grid-column:1/-1}
-.tag-editor{display:grid;gap:10px;width:100%}
-.tag-choices{display:flex;flex-wrap:wrap;gap:6px;min-height:30px;align-items:center}
-.tag-choices-empty{font-size:13px;color:#98a0b0}
-.tag-choice{padding:5px 10px;border-radius:30px;border:1px solid #e2e4eb;background:#fff;color:#555b68;font:inherit;font-size:13px;line-height:1.5;cursor:pointer}
-.tag-choice:hover{border-color:#c8d2e4;color:#3b4252}
-.tag-choice.active{border-color:var(--accent);color:var(--accent);background:#f1f4ff}
-.score-1{background:linear-gradient(135deg,#93a0b5,#6b7891)}
-.score-2{background:linear-gradient(135deg,#41b0c6,#22869e)}
-.score-3{background:linear-gradient(135deg,#46bb7c,#228a52)}
-.score-4{background:linear-gradient(135deg,#efa63f,#c9701c)}
-.score-5{background:linear-gradient(135deg,#f2a72c,#d33f2c)}
-.score-badge{position:absolute;top:-15px;left:-15px;z-index:2;min-width:38px;padding:4px 12px;border-radius:11px;color:#fff;font-size:17px;font-weight:700;line-height:1.2;text-align:center;letter-spacing:.02em;box-shadow:0 0 0 2px #f4f5f7,0 3px 10px #1f2a4429}
-.score-picker{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-.score-pick{width:34px;height:34px;padding:0;border:0;border-radius:9px;color:#fff;font:inherit;font-size:14px;font-weight:700;opacity:.4;transition:opacity .15s ease,transform .15s ease}
-.score-pick:hover{opacity:.78}
-.score-pick.active{opacity:1;transform:translateY(-1px);box-shadow:0 3px 9px #1f2a4426}
-.score-hint{font-size:12px;color:#788496}
-.score-filter{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
-.score-filter button{border:0;border-radius:8px;color:#fff;font:inherit;font-size:13px;font-weight:700;height:30px;width:34px;padding:0;opacity:.32;transition:opacity .15s ease}
-.score-filter button:hover{opacity:.7}
-.score-filter button.active{opacity:1;box-shadow:0 0 0 2px var(--accent),0 0 0 4px #fff}
-.score-filter .score-any{width:auto;padding:0 11px;background:#f2f3f6;color:#555b68;opacity:1}
-.score-filter .score-any:hover{background:#e8ebf2}
-.score-filter .score-any.active{background:#e6ebff;color:var(--accent);box-shadow:none;outline:2px solid var(--accent);outline-offset:-2px}
-.alias{display:inline-block;margin-top:7px;font-size:12px;color:#4d5769;background:#f1f3f8;border-radius:4px;padding:4px 8px;overflow-wrap:anywhere}
-.alias-editor{display:grid;gap:10px;width:100%}
-.alias-picker{display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-height:30px}
-.alias-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.alias-row input{flex:1;min-width:130px}
-.alias-row button{flex-shrink:0}
-.alias-chip{display:inline-flex;align-items:center;max-width:100%;border:1px solid #e2e4eb;border-radius:8px;background:#fff}
-.alias-chip.active{border-color:var(--accent);background:#f1f4ff}
-.alias-choice{border:0;background:transparent;color:#555b68;font:inherit;font-size:13px;line-height:1.5;padding:5px 3px 5px 10px;max-width:100%;overflow-wrap:anywhere;text-align:left;cursor:pointer}
-.alias-chip.active .alias-choice{color:var(--accent)}
-.alias-drop{border:0;background:transparent;color:#a8b0bf;font:inherit;font-size:15px;line-height:1;padding:5px 8px 5px 2px;cursor:pointer}
-.alias-drop:hover{color:#b33931}
-.tag-editor-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.tag-editor-row select{flex:1;min-width:150px;width:auto}
-.tag-editor-row input{flex:1;min-width:130px}
-.tag-editor-row button{flex-shrink:0}
+.artist-expand{margin-top:15px;padding-top:15px;border-top:1px solid var(--line)}
+.expand-head{display:flex;align-items:center;gap:12px;font-size:13px}
+.tag-editor,.alias-editor{display:grid;gap:10px}
+.tag-editor-row,.alias-row{display:flex;gap:8px}
+.tag-editor-row input,.alias-row input{flex:1;min-width:0}
+.tag-choices-empty{font-size:12px;color:var(--faint)}
+.alias-picker{display:flex;align-items:center;flex-wrap:wrap;gap:6px}
+.alias-chip{display:inline-flex;border:1px solid var(--line);border-radius:6px;max-width:100%}
+.alias-chip.active{border-color:var(--accent);background:var(--accent-soft)}
+.alias-choice,.alias-drop{border:0;background:none;color:var(--muted);font-size:12px;padding:5px 7px;text-align:left;overflow-wrap:anywhere}
+.alias-drop:hover{color:var(--danger)}
+.artist.is-focus-flash{animation:focus-flash 2s ease-out}
+.artist.is-morphing{animation:morph-out .12s ease-in forwards}
+dialog{border:1px solid var(--line);border-radius:14px;background:var(--panel);color:var(--text);padding:0;box-shadow:var(--shadow);max-width:96vw;width:min(960px,94vw);max-height:88dvh;overflow:auto;overscroll-behavior:contain}
+dialog::backdrop{background:#080b14aa;backdrop-filter:blur(5px)}
+dialog[open]{animation:panel-in .17s ease-out}
+body:has(dialog[open]){overflow:hidden}
+.small-dialog{width:min(690px,94vw)}
+.wide-dialog{width:min(1120px,96vw)}
+.viewer-bar{display:flex;align-items:center;justify-content:space-between;gap:16px;position:sticky;top:0;z-index:5;padding:19px 23px;background:var(--panel);border-bottom:1px solid var(--line)}
+.viewer-bar h2{margin:0;font-size:16px;font-weight:600}
+.viewer-bar button{border:1px solid var(--line);border-radius:6px;padding:6px 11px;font-size:12px;background:var(--raised);color:var(--muted)}
+.viewer-bar button:hover{color:var(--text);border-color:var(--faint)}
+.form-body{display:grid;gap:18px;padding:24px}
+.form-body>label{display:grid;gap:8px;font-size:13px}
+.form-body .upload-label{display:inline-flex;justify-self:start;cursor:pointer}
+.form-footer{position:sticky;bottom:0;z-index:4;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 24px;background:var(--panel);border-top:1px solid var(--line)}
+.form-footer .primary-action{margin-left:auto}
+.inline-form{display:flex;gap:8px;align-items:center}
+.inline-form input{flex:1;min-width:0}
+.inline-form button{flex-shrink:0}
+.settings-body{gap:0}
+.setting-row{display:flex;align-items:flex-start;justify-content:space-between;gap:22px;padding:19px 0;border-bottom:1px solid var(--line-soft)}
+.setting-row:first-child{padding-top:0}
+.setting-row:last-child{border-bottom:0;padding-bottom:0}
+.setting-row>div:first-child{flex:1;min-width:0}
+.setting-row strong{display:block;font-size:13px;margin-bottom:6px;font-weight:550}
+.setting-row .field-help{font-size:12px;line-height:1.85}
+.setting-row>button{flex-shrink:0}
+.setting-row>input,.setting-row>select{width:170px;flex-shrink:0;font-size:12px}
+.setting-row select{width:auto;min-width:165px;font-size:12px}
+.switch{display:inline-flex;position:relative;flex-shrink:0;margin-top:2px}
+.switch input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer;z-index:1}
+.switch span{display:block;width:42px;height:24px;border-radius:20px;background:var(--line)}
+.switch span::after{content:'';position:absolute;left:3px;top:3px;width:18px;height:18px;border-radius:50%;background:var(--muted);transition:transform .18s,background .18s}
+.switch input:checked+span{background:var(--accent)}
+.switch input:checked+span::after{transform:translateX(18px);background:var(--accent-text)}
+.switch input:focus-visible+span{outline:2px solid var(--accent);outline-offset:3px}
+.size-control,.range-control,.size-pair,.token-control{display:flex;align-items:center;gap:8px;flex-shrink:0;font-size:12px;color:var(--muted)}
+.size-control input{width:150px}
+.size-control span{width:29px;text-align:right;font:11px ui-monospace,monospace}
+.range-control input{width:92px}
+.size-pair{flex-wrap:wrap;max-width:390px;justify-content:flex-end}
+.size-pair input{width:92px}
+.token-control input{width:250px;font:12px ui-monospace,monospace}
+.textarea-row>div:first-child{flex:0 0 285px}
+.setting-row textarea{flex:1;min-height:160px;font:12px/1.85 ui-monospace,"Microsoft YaHei",monospace}
+.manage-tabs{display:flex;gap:6px;border-bottom:1px solid var(--line)}
+.manage-tab{border:0;border-bottom:2px solid transparent;background:none;color:var(--muted);padding:10px 12px;font-size:13px}
+.manage-tab.active{border-color:var(--accent);color:var(--accent)}
+.manage-panel{display:grid;gap:13px}
+.manage-search{font-size:12px}
+.manage-tag-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px;margin:8px 0;border:1px solid var(--line);border-radius:7px}
+.manage-tag-row input{flex:1;min-width:140px}
+.manage-tag-row .action{font-size:11px;padding:5px 10px}
+.manage-name{flex:1;min-width:100px;font-size:12px;overflow-wrap:anywhere}
+.manage-handle{border:0;background:none;color:var(--faint);padding:5px;cursor:grab}
+.manage-tag-row.is-dragging{opacity:.5}
+.drop-before{box-shadow:inset 0 2px var(--accent)}
+.drop-after{box-shadow:inset 0 -2px var(--accent)}
+.manage-heading{font-size:13px;margin:4px 0 0}
+.manage-empty{font-size:12px;color:var(--muted)}
+fieldset{min-width:0;border:1px solid var(--line);border-radius:8px}
+legend{font-size:12px;color:var(--muted)}
+.quick-add{display:flex;gap:18px;padding:25px}
+.quick-icon{display:grid;place-items:center;flex-shrink:0;width:40px;height:40px;background:var(--accent-soft);color:var(--accent);border-radius:9px;font-size:24px}
+.quick-body{min-width:0;flex:1}
+.quick-body h2{margin:0 0 16px;font-size:18px}
+.quick-body .field-help{margin-top:12px}
+#quick-status{font-size:12px;color:var(--muted);margin:15px 0}
+.quick-fallback{display:flex;gap:16px;flex-wrap:wrap;align-items:center}
+.quick-fallback a{color:var(--accent);font-size:12px}
+.candidate{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;padding:16px;margin:12px 0;border:1px solid var(--line);border-radius:9px;background:var(--input);animation:panel-in .15s}
+.candidate-info{display:flex;flex-wrap:wrap;gap:7px 12px;align-items:baseline;min-width:0;overflow-wrap:anywhere}
+.candidate-info strong{font-size:16px}
+.candidate-info span,.candidate-info small{color:var(--muted);font-size:11px}
+.candidate-info small{flex-basis:100%}
+.candidate-info a{color:var(--accent);font-size:11px}
+.candidate-body{flex-basis:100%;min-width:0}
+.candidate-tools,.picker-actions{display:flex;gap:9px;align-items:center;flex-wrap:wrap;padding:8px 0}
+.candidate-tools .action{padding:5px 10px;font-size:11px}
+.candidate-tools small,.picker-status{font-size:11px;color:var(--muted)}
+.candidate-previews{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.pick{position:relative;display:flex;flex-direction:column;gap:5px;border:1px solid var(--line);border-radius:6px;padding:5px;background:var(--panel);cursor:pointer}
+.pick img{height:var(--pick-size,120px);width:auto;aspect-ratio:3/4;object-fit:contain;border-radius:3px}
+.pick input{position:absolute;left:9px;top:9px;margin:0;z-index:1}
+.pick:has(input:checked){border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.pick.is-added::after{content:'已加入';position:absolute;right:5px;bottom:25px;background:var(--accent);color:var(--accent-text);padding:2px 5px;border-radius:3px;font-size:9px;pointer-events:none}
+.pick a,.pick-id{font-size:10px;color:var(--accent);text-align:center;background:none;border:0;padding:0;cursor:pointer;text-decoration:underline}
+.work-picker{display:flex;flex-direction:column;gap:8px;padding:14px;margin-top:12px;border:1px solid var(--line);border-radius:9px;background:var(--input)}
+.picker-zoom,.picker-order{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted)}
+.picker-zoom input{width:130px}
+.picker-order select{width:190px;font-size:12px;padding:6px 8px}
+.test-preview{display:flex;flex-direction:column;gap:6px}
+.test-row{display:flex;align-items:baseline;gap:10px;padding:9px 12px;border:1px solid var(--line);border-radius:6px;font-size:12px}
+.test-row .test-seq{font-family:monospace;color:var(--accent)}
+.test-row small{color:var(--muted);overflow-wrap:anywhere}
+#viewer{width:min(1600px,96vw);max-height:94dvh}
+.viewer-image{display:flex;align-items:center;justify-content:center;min-height:200px;padding:16px;background:var(--bg);overflow:auto}
+.viewer-image img{max-width:100%;max-height:calc(94dvh - 170px);object-fit:contain}
+.viewer-bottom{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:15px 23px;font-size:12px;color:var(--muted)}
+.viewer-bottom p{flex:1;margin:0}
+.viewer-actions,.viewer-navigation{display:flex;align-items:center;gap:10px;flex-shrink:0}
+.viewer-actions a{color:var(--accent)}
+.viewer-navigation span{min-width:43px;text-align:center;font:11px ui-monospace,monospace}
+.viewer-navigation .action{padding:5px 10px}
+.activity-list{list-style:none;padding:0;margin:0;display:grid;gap:10px}
+.activity-list li{border:1px solid var(--line);border-radius:7px;padding:12px;font-size:12px;line-height:1.8;overflow-wrap:anywhere;white-space:pre-wrap}
+.activity-list time{display:block;font:10px ui-monospace,monospace;color:var(--faint);margin-bottom:5px}
+.command-results{display:grid;gap:4px;max-height:48vh;overflow:auto}
+.command-results button{display:flex;align-items:center;justify-content:space-between;background:none;border:0;border-radius:6px;padding:12px;text-align:left;color:var(--text);font-size:13px}
+.command-results button:hover,.command-results button:focus{background:var(--accent-soft);color:var(--accent)}
+.command-results small{color:var(--faint);font-size:10px}
+html[data-density=compact] .artist:not(.is-editing) :is(.thumb,.work-empty,.work-generate){height:min(var(--card-size),190px,calc((100vw - 112px)*.28))}
+html[data-density=compact] .artist{padding-top:13px}
+html[data-density=compact] .artist-info{margin-bottom:11px}
+html[data-density=compact] #gallery{gap:12px}
+@media(min-width:1200px){main{padding-left:36px;padding-right:36px}
+.artist{padding-left:20px;padding-right:20px}
+.works{gap:12px}
+}
+@media(max-width:760px){:root{--header:60px}
+.app-header{padding:0 16px;gap:15px}
+.connection{font-size:10px}
+.brand{font-size:15px}
+.brand-symbol{width:31px;height:31px}
+.brand small{font-size:7px}
+main{padding:24px 16px 10px}
+.collection-heading{gap:14px;margin-bottom:21px}
+h1{font-size:26px}
+.collection-actions{gap:6px}
+.collection-actions .action{font-size:11px;padding:8px 11px}
+.search-row{flex-wrap:wrap}
+.search{flex-basis:100%;order:-1}
+.sort-control{flex:1}
+.search-row>.action,.sort-control select{height:36px}
+.categories{gap:17px}
+.filter-panel{grid-template-columns:1fr;gap:18px}
+.filter-panel>.reset{margin:0}
+.artist{padding:14px 11px 10px}
+.works{gap:6px}
+.artist-info{gap:9px;margin-bottom:12px}
+.artist h2{font-size:16px}
+.artist-actions{gap:5px}
+.name-row{gap:6px;flex-wrap:wrap}
+.alias{font-size:10px}
+.artist-meta{gap:5px}
+.secondary span{font-size:9px}
+.view-toolbar{padding-top:18px}
+.view-actions{gap:12px!important}
+.intro{font-size:11px}
+.textarea-row{flex-direction:column}
+.textarea-row>div:first-child{flex:1}
+.setting-row textarea{width:100%}
+.token-control input{width:205px}
+.viewer-bottom{flex-wrap:wrap}
+.viewer-bottom p{flex-basis:100%}
+}
+@media(max-width:460px){.app-header{padding:0 12px;gap:8px}
+.connection{display:none}
+.header-actions{margin-left:auto;gap:2px}
+.header-actions .action{padding:6px 8px;font-size:10px}
+.header-actions .icon-button{width:29px;height:31px}
+.brand{font-size:14px}
+.brand small{font-size:6px}
+.brand-symbol{width:29px;height:29px}
+main{padding:22px 12px 10px}
+.collection-heading{align-items:flex-start}
+.collection-heading .eyebrow{font-size:8px}
+h1{font-size:23px}
+.collection-actions{flex-direction:column-reverse;align-items:stretch;gap:6px}
+.collection-actions .action{font-size:10px;padding:7px 9px}
+.intro{font-size:10px;line-height:1.8;max-width:185px}
+.search input{font-size:12px}
+.categories button{font-size:11px}
+.view-toolbar{font-size:11px;gap:4px}
+.view-actions{gap:9px!important}
+.view-toolbar>div{gap:6px}
+.action-menu summary{font-size:10px}
+#count{font-size:9px}
+.view-indicator{display:none}
+.artist{padding:12px 8px 9px;border-radius:9px}
+.artist-info{gap:4px}
+.artist h2{font-size:14px}
+.serial{font-size:8px}
+.alias{display:none}
+.artist-meta{margin-top:6px}
+.primary,.pending-badge,.score-badge{font-size:8px;padding:2px 4px}
+.secondary{display:none}
+.artist-actions .edit-button{font-size:9px;padding:5px 7px}
+.artist-actions a.edit-button{padding:5px}
+.card-menu>summary{font-size:17px;padding:4px}
+.works{gap:4px}
+.thumb,.work-empty,.work-generate{border-radius:4px;height:min(var(--card-size),calc((100vw - 68px)*.32))}
+.work figcaption{font-size:8px;margin-top:4px;flex-wrap:wrap;gap:0;min-height:25px}
+.slot-delete{font-size:8px;padding:2px}
+.work.is-test::before{font-size:7px;padding:1px 3px;left:3px;top:3px}
+.work-empty{font-size:8px;gap:2px}
+.work-empty::before{font-size:16px}
+.generate-button{font-size:8px;padding:4px 5px}
+.generate-seq,.gen-progress{font-size:8px}
+.gen-spinner{width:18px;height:18px}
+.artist-footer{margin-top:6px;padding-top:7px;gap:4px}
+.work-count{font-size:8px}
+.artist-notes{font-size:9px}
+.description,.sample-note{font-size:11px}
+.empty-state{min-height:430px;padding:60px 20px}
+.empty-preview{gap:4px}
+.empty-preview span{height:78px}
+.empty-state h2{font-size:19px}
+.empty-state>p:not(.eyebrow){font-size:12px}
+.edit-grid{grid-template-columns:1fr}
+.artist.is-editing .artist-info{gap:12px}
+.artist.is-editing .artist-actions{gap:6px}
+.artist.is-editing .artist-actions .action{font-size:11px}
+.viewer-bar{padding:14px 16px}
+.viewer-bar h2{font-size:15px}
+.form-body{padding:18px 16px;gap:15px}
+.form-footer{padding:14px 16px}
+.setting-row{flex-wrap:wrap;gap:12px;padding:16px 0}
+.setting-row>div:first-child{flex-basis:calc(100% - 65px)}
+.setting-row>input,.setting-row>select,.size-pair,.token-control{width:100%}
+.token-control input{flex:1;min-width:0}
+.size-pair{justify-content:flex-start}
+.size-pair select{flex:1}
+.size-control input{width:180px}
+.range-control,.test-row{flex-wrap:wrap}
+.quick-add{padding:20px 16px}
+.quick-icon{display:none}
+.quick-body h2{font-size:16px}
+.quick-body>.inline-form{flex-direction:column;align-items:stretch}
+.candidate{padding:12px;align-items:stretch}
+.candidate>button{width:100%}
+.status-bar{padding:7px 10px;gap:6px;font-size:9px}
+.status-bar .reset{font-size:9px}
+footer{flex-wrap:wrap;font-size:9px}
+.menu-panel{width:220px}
+.artist-slot{scroll-margin-top:220px}
+}
+@keyframes panel-in{from{opacity:0;transform:translateY(7px)}
+to{opacity:1;transform:none}
+}
+@keyframes gen-spin{to{transform:rotate(360deg)}
+}
+@keyframes spin{to{transform:rotate(360deg)}
+}
+@keyframes morph-out{to{opacity:0;transform:scale(.995)}
+}
+@keyframes focus-flash{0%,40%{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+100%{box-shadow:none}
+}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
+}
 </style>
 
   
   
 </head>
 <body>
-  <header class="top"><a class="brand" href="#"><span class="brand-mark">画</span> 画师分类</a><div class="header-actions"><button id="extension-status" class="action">检测图片助手…</button><button id="opus-status" class="action" title="NovelAI 剩余额度">额度：未查询</button><button id="choose-folder" class="action" title="选择或切换数据文件夹">数据库文件夹</button><button id="settings-open" class="action" title="设置">设置</button><button id="gen-settings-open" class="action" title="NovelAI 生图参数">生图参数</button><button id="gen-queue" class="action" title="生图排队" hidden>排队 0</button></div></header>
-  <main>
-    <div class="heading"><div><p class="eyebrow">ARTIST INDEX</p><h1>从作品，找到画风。</h1><p class="intro" id="library-summary">正在打开画师库…</p></div><label class="search"><span>搜索画师</span><input id="search" type="search" placeholder="输入画师名字" autocomplete="off"></label></div>
-    <div class="toolbar"><button id="add-artist" class="action primary-action">＋ 添加画师</button><button id="manage-tags" class="action">管理标签</button><button id="batch-artists" class="action">批量采集画师</button><button id="batch-stop" class="action danger" hidden>停止采集</button><button id="test-import-open" class="action">导入测试风格图</button><button id="gen-batch-open" class="action">批量生成测试风格图</button><span class="toolbar-spacer"></span><button id="export-data" class="action">导出备份</button><button id="import-data" class="action">导入备份</button><input id="import-file" type="file" accept=".json" hidden></div>
-    <div class="storage-line"><span id="storage-status" role="status">正在读取保存的数据…</span><span class="storage-actions"><button id="resume-folder" class="action" hidden>继续使用上次的文件夹</button><span id="folder-name">点击顶部「数据库文件夹」，选择已有数据目录或空文件夹。</span></span></div>
-    <section class="filters" aria-label="分类筛选"><div id="categories" class="categories"></div><div class="tag-line"><span class="filter-label">画面感觉</span><div id="tags" class="tags"></div><button id="reset" class="reset">清除筛选</button></div><div class="tag-line"><span class="filter-label">参考分数</span><div id="scores" class="score-filter"></div></div></section>
-    <div class="result-line"><p id="count" aria-live="polite"></p></div>
-    <section id="gallery" aria-label="画师与作品"></section>
-    <div id="empty" hidden><h2>没有符合条件的画师</h2><p>试着减少标签，或清除筛选。</p></div>
-    
-    <section id="quick-add" class="quick-add" aria-labelledby="quick-title"><div class="quick-icon" aria-hidden="true">＋</div><div class="quick-body"><h2 id="quick-title">添加下一位画师</h2><form id="quick-form" class="inline-form"><input id="quick-input" aria-label="画师 ID 或主页 URL" placeholder="输入画师标签，或粘贴 Pixiv / X / Danbooru 画师主页 URL" autocomplete="off" maxlength="1200"><button id="quick-search" class="action primary-action">识别画师</button></form><p class="field-help">停下输入后自动查询 Danbooru。纯数字按 Danbooru 画师编号查询；Pixiv ID 请粘贴完整主页链接。</p><p id="quick-status" role="status" aria-live="polite">输入标签或链接，识别后点击候选画师添加。</p><div id="quick-results"></div><div class="quick-fallback"><a id="quick-site" target="_blank" rel="noopener noreferrer" hidden>打开 Danbooru 站内检索 ↗</a><button id="quick-manual" type="button" class="reset">不联网，手动填写</button></div></div></section>
-    <footer><span>本地编辑，不调用 AI；修改自动写入数据文件夹。</span><span id="sample-date"></span></footer>
-  </main><dialog id="test-import" class="small-dialog" aria-labelledby="test-import-title"><div class="viewer-bar"><h2 id="test-import-title">批量导入测试风格图片</h2><button id="close-test-import" type="button">关闭 ×</button></div><div class="form-body">
+  <a class="skip-link" href="#workspace">跳到画师与作品</a>
+  <header class="app-header"><a class="brand" href="#workspace"><span class="brand-symbol" aria-hidden="true">画</span><span>画师库<small>ARTIST ARCHIVE</small></span></a><div class="connection"><span id="connection-dot" aria-hidden="true"></span><span id="folder-name">尚未连接资料库</span></div><div class="header-actions"><button id="choose-folder" class="action">打开资料库</button><button id="theme-toggle" class="icon-button" aria-label="切换浅色外观" title="切换浅色外观">◐</button><button id="settings-open" class="action">设置</button></div></header>
+  <main id="workspace" tabindex="-1">
+    <div class="collection-heading"><div><p class="eyebrow">YOUR CREATIVE REFERENCE</p><h1>画师与作品<span class="title-dot">.</span></h1><p id="library-summary" class="intro">正在打开画师库…</p></div><div class="collection-actions"><button id="batch-artists" class="action">批量采集画师</button><button id="quick-open" class="action primary-action">＋ 添加画师</button></div></div>
+    <section class="library-controls" aria-label="查找画师">
+      <div class="search-row"><label class="search"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg><span class="sr-only">搜索画师、笔名、标签与备注</span><input id="search" type="search" placeholder="搜索画师、笔名、标签与备注" autocomplete="off" aria-keyshortcuts="/"><kbd>/</kbd></label><label class="sort-control"><span class="sr-only">画师排序</span><select id="library-sort"><option value="order">序号顺序</option><option value="name">名称 A–Z</option><option value="score">参考评分优先</option><option value="works">收录图片最多</option></select></label><button id="density-toggle" class="action" aria-pressed="false" title="切换图片显示密度">紧凑视图</button><button id="filter-toggle" class="action" aria-expanded="false" aria-controls="filter-panel">筛选 <span id="filter-number" hidden></span></button></div>
+      <div class="category-row"><nav id="categories" class="categories" aria-label="画师分类"></nav><button id="manage-tags" class="icon-button" title="管理分类与标签" aria-label="管理分类与标签">＋</button></div>
+      <div id="filter-panel" class="filter-panel" hidden><section aria-labelledby="tags-title"><h2 id="tags-title">画风标签 <small>多选时同时匹配</small></h2><div id="tags" class="tags"></div></section><section aria-labelledby="scores-title"><h2 id="scores-title">参考评分 <small>可多选</small></h2><div id="scores" class="score-filter"></div></section><button id="reset" class="reset">清除全部筛选</button></div>
+    </section>
+    <div id="active-filters" class="active-filters" aria-label="已应用的筛选条件" hidden></div>
+    <div class="view-toolbar"><div><span class="view-indicator" aria-hidden="true"></span><span id="view-title">全部画师</span><span id="count" role="status" aria-live="polite" aria-atomic="true"></span></div><div class="view-actions"><details id="test-menu" class="action-menu"><summary>测试风格图 <span aria-hidden="true">⌄</span></summary><div class="menu-panel"><p>与作品参考并排对比画风</p><button id="test-import-open">导入测试风格图</button><button id="gen-batch-open">批量生成测试风格图</button><button id="gen-settings-open">NovelAI 生图参数</button></div></details><details id="library-menu" class="action-menu"><summary>更多操作 <span aria-hidden="true">⌄</span></summary><div class="menu-panel"><button id="add-artist">手动添加画师</button><button id="export-data">导出资料备份</button><button id="import-data">从备份恢复资料</button><p>JSON 包含资料与图片链接。<br>完整备份请复制数据文件夹。</p><hr><button id="extension-status">检测图片助手…</button><button id="opus-status">额度：未查询</button><button id="command-open">快捷操作 <kbd>Ctrl K</kbd></button></div></details><input id="import-file" type="file" accept=".json" hidden></div></div>
+    <div id="task-controls" class="task-controls" hidden><span class="task-spinner" aria-hidden="true"></span><span id="task-label">后台任务进行中</span><button id="batch-stop" class="action danger" hidden>停止采集</button><button id="gen-queue" class="action" hidden>排队 0</button></div>
+    <section id="gallery" aria-label="画师与作品，每行五张图片"></section>
+    <section id="empty" class="empty-state" aria-labelledby="empty-title" hidden><div class="empty-preview" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></div><p class="eyebrow">A PLACE FOR YOUR INSPIRATION</p><h2 id="empty-title">让喜欢的画风，有迹可循</h2><p id="empty-description">连接资料库，开始整理画师与作品。已有文件夹可以继续使用，也可以选择空文件夹新建。</p><button id="empty-action" class="action primary-action">打开数据文件夹</button><button id="resume-folder" class="action" hidden>继续使用上次的文件夹</button></section>
+    <footer><span>作品参考与测试风格图并排展示 · 资料保存在本地</span><span id="sample-date"></span><button id="back-top" class="reset">返回顶部 ↑</button></footer>
+  </main>
+  <div class="status-bar"><span class="status-indicator" aria-hidden="true"></span><span id="storage-status" role="status" aria-live="polite" aria-atomic="true">正在读取资料库…</span><button id="status-toggle" class="reset">活动记录 ↗</button></div>
+  <dialog id="quick-dialog" class="small-dialog wide-dialog" aria-labelledby="quick-title"><div class="viewer-bar"><h2>添加画师</h2><button type="button" data-close-dialog aria-label="关闭添加画师">关闭 ×</button></div>    <section id="quick-add" class="quick-add" aria-labelledby="quick-title"><div class="quick-icon" aria-hidden="true">＋</div><div class="quick-body"><h2 id="quick-title">添加下一位画师</h2><form id="quick-form" class="inline-form"><input id="quick-input" aria-label="画师 ID 或主页 URL" placeholder="输入画师标签，或粘贴 Pixiv / X / Danbooru 画师主页 URL" autocomplete="off" maxlength="1200"><button id="quick-search" class="action primary-action">识别画师</button></form><p class="field-help">停下输入后自动查询 Danbooru。纯数字按 Danbooru 画师编号查询；Pixiv ID 请粘贴完整主页链接。</p><p id="quick-status" role="status" aria-live="polite">输入标签或链接，识别后点击候选画师添加。</p><div id="quick-results"></div><div class="quick-fallback"><a id="quick-site" target="_blank" rel="noopener noreferrer" hidden>打开 Danbooru 站内检索 ↗</a><button id="quick-manual" type="button" class="reset">不联网，手动填写</button></div></div></section></dialog>
+  <dialog id="activity-dialog" class="small-dialog" aria-labelledby="activity-title"><div class="viewer-bar"><h2 id="activity-title">本次活动记录</h2><button type="button" data-close-dialog>关闭 ×</button></div><div class="form-body"><p class="field-help">本次打开页面后的保存、采集、生成与连接状态。</p><ol id="activity-list" class="activity-list"></ol></div></dialog>
+  <dialog id="command-dialog" class="small-dialog" aria-labelledby="command-title"><div class="viewer-bar"><h2 id="command-title">快捷操作</h2><button type="button" data-close-dialog>关闭 ×</button></div><div class="form-body"><label class="sr-only" for="command-search">搜索操作</label><input id="command-search" type="search" placeholder="搜索操作：采集、设置、备份…" autocomplete="off" aria-controls="command-results"><div id="command-results" class="command-results"></div><p class="field-help">↑ ↓ 选择 · Enter 执行 · Esc 关闭</p></div></dialog>
+  <dialog id="test-import" class="small-dialog" aria-labelledby="test-import-title"><div class="viewer-bar"><h2 id="test-import-title">批量导入测试风格图片</h2><button id="close-test-import" type="button">关闭 ×</button></div><div class="form-body">
     <p class="field-help">选择多张图片并指定起始画师序号：第 1 张给该序号的画师，第 2 张给下一位，依次类推，每位画师最多 1 张。测试风格图片会和作品图放在一起，但始终排在作品后面显示，并在卡片上带「测试风格」角标。</p>
     <label class="action upload-label">选择图片<input id="test-files" type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif" multiple hidden></label>
     <p id="test-files-info" class="field-help">还没有选择图片。</p>
@@ -229,40 +521,40 @@ dialog[open]::backdrop{opacity:1}
     <p class="field-help">按画师序号段给每位画师排入「生成测试风格 N」的需求，走的是和卡片上「生成」按钮<strong>同一条队列</strong>：一条一条跑，两条之间隔 5±3 秒，排得越多跑得越久。<strong>每条都会消耗额度或点数</strong>；图片拿回来会直接回填到对应格子并写进画师目录。用人多、额度不确定时，按钮会先变红让你再点一次。</p>
     <div class="setting-row"><div><strong>画师序号段</strong><p class="field-help">卡片左上角的四位序号，也是画师目录名的前缀。打开时默认填成你当前筛选出来的那一段；只对序号落在这个区间里的画师排队。</p></div><div class="range-control">从 <input id="gen-batch-from" type="number" min="1" max="999999" step="1" aria-label="起始序号"> 到 <input id="gen-batch-to" type="number" min="1" max="999999" step="1" aria-label="结束序号"></div></div>
     <div class="setting-row"><div><strong>测试风格序号</strong><p class="field-help">要生成哪几号测试风格，可以写一个（<code>1</code>）、一串（<code>1,2</code>）或一段（<code>1-2</code>）；最多 20 个。</p></div><div class="range-control"><input id="gen-batch-seqs" type="text" value="1" aria-label="测试风格序号"></div></div>
-    <div class="setting-row"><div><strong>跳过已经有这个序号的画师</strong><p class="field-help">开启时，已经有该序号测试图的画师不再重复排队。重复生成不会覆盖旧图，而是把新图存成下一个序号，等于白花一次额度。</p></div><label class="switch"><input id="gen-batch-skip" type="checkbox" checked><span></span></label></div>
+    <div class="setting-row"><div><strong>跳过已经有这个序号的画师</strong><p class="field-help">开启时，已经有该序号测试图的画师不再重复排队。重复生成不会覆盖旧图，而是把新图存成下一个序号，等于白花一次额度。</p></div><label class="switch"><input id="gen-batch-skip" type="checkbox" checked aria-label="跳过已有相同测试序号的画师"><span></span></label></div>
     <div class="setting-row"><div><strong>将要排入</strong><p class="field-help" id="gen-batch-preview" role="status">正在计算…</p></div><div class="range-control"><button id="gen-batch-run" class="action primary-action" type="button">排入生成队列</button></div></div>
   </div></dialog>
   <dialog id="settings" class="small-dialog" aria-labelledby="settings-title"><div class="viewer-bar"><h2 id="settings-title">设置</h2><button id="close-settings" type="button">关闭 ×</button></div><div class="form-body settings-body">
-    <div class="setting-row"><div><strong>数据截至日期</strong><p class="field-help">统计「截至日期数量」时使用的日期，默认 2026-07-01。更改后已读取的数量保持不变，要点对应画师卡片上的「刷新」才会更新。</p></div><input id="history-date" type="date" value="2026-07-01" required></div>
-    <div class="setting-row"><div><strong>采集作品的排序</strong><p class="field-help">批量采集、识别候选与回填工具都按这个顺序取每位画师的作品。收藏最多与评分最高依赖站点的排序元标签，而排序元标签没有索引，作品特别多的画师可能超时失败；最新发布走编号索引，最稳。</p></div><select id="work-order" aria-label="采集作品的排序"></select></div>
-    <div class="setting-row"><div><strong>刷新所有画师数据</strong><p class="field-help">逐位到 Danbooru 核对当前正式名（画师改名后旧名会留在站点的其他名字里），同时刷新作品总数与截至日期前数量。名字改动会把画师目录一起改名，里面的缩略图与大图会搬过去。按每 25 位写盘一次，中途可以停下来。</p></div><button id="sync-all" class="action" type="button">开始刷新</button></div>
-    <div class="setting-row"><div><strong>保存大图</strong><p class="field-help">开启后，点开作品预览时会把这件作品的原图保存进画师目录的「大图」文件夹，之后预览直接读本地、不再联网，也能离线查看。关闭时原图只在本次预览中临时加载，关掉即释放。</p></div><label class="switch"><input id="save-large" type="checkbox"><span></span></label></div>
-    <div class="setting-row"><div><strong>预览图尺寸</strong><p class="field-help">调整主页面每位画师的作品预览图大小，每行显示几位画师会跟着自动变化；设置会记住。识别画师与编辑页的作品列表另有各自的「预览大小」滑动条。</p></div><div class="size-control"><input id="card-size" type="range" min="140" max="360" step="1" value="220"><span id="card-size-value">220</span></div></div>
-    <div class="setting-row"><div><strong>固定测试风格图</strong><p class="field-help">开启后，每张卡片右侧的 2 格固定留给「测试风格 1」「测试风格 2」，作品图排不到这两格上，也不会因为测试图变多被挤掉。固定格空着时里面会出现「生成」按钮，按下就用顶部「生图参数」里的设置向 NovelAI 要一张图，拿回来直接回填到对应格子里。</p></div><label class="switch"><input id="fixed-test" type="checkbox"><span></span></label></div>
-    <div class="setting-row"><div><strong>编辑画师时自动展开 danbooru 作品</strong><p class="field-help">开启后，一进入编辑态就自动按画师名字读取站点作品，省一次点击。名字为空的画师不会自动读，等填好名字再点「展开读取」。每位画师都要联网查询，所以默认关闭。</p></div><label class="switch"><input id="auto-open-works" type="checkbox"><span></span></label></div>
+    <div class="setting-row"><div><strong>数据截至日期</strong><p class="field-help">用于统计该日期之前发布的站点作品。修改日期后，请在编辑画师时刷新资料，或刷新整个画师库。</p></div><input id="history-date" type="date" value="2026-07-01" required aria-label="数据截至日期"></div>
+    <div class="setting-row"><div><strong>采集作品的排序</strong><p class="field-help">决定识别和采集时优先读取哪些作品。作品较多的画师若出现超时，可切换为「最新发布」。</p></div><select id="work-order" aria-label="采集作品的排序"></select></div>
+    <div class="setting-row"><div><strong>刷新所有画师数据</strong><p class="field-help">核对站点正式名称、作品总数和截至日期前数量。改名时会同步迁移本地图片；进度分批保存，可随时停止。</p></div><button id="sync-all" class="action" type="button">开始刷新</button></div>
+    <div class="setting-row"><div><strong>保存大图</strong><p class="field-help">开启后，预览作品会将在线原图保存到本地，之后可离线查看。关闭时只临时加载；已保存的原图仍然保留。</p></div><label class="switch"><input id="save-large" type="checkbox" aria-label="预览时保存原图"><span></span></label></div>
+    <div class="setting-row"><div><strong>作品预览高度</strong><p class="field-help">调整作品预览高度。五张图片始终同排、完整缩放显示；窄窗口和紧凑视图会限制高度。设置保存在本机。</p></div><div class="size-control"><input id="card-size" type="range" min="140" max="360" step="1" value="220" aria-label="作品预览高度"><span id="card-size-value">220</span></div></div>
+    <div class="setting-row"><div><strong>固定测试风格图</strong><p class="field-help">为测试风格 1、2 各保留一格，与三张作品参考对比。空格可直接生成；参数在「测试风格图」菜单中设置。</p></div><label class="switch"><input id="fixed-test" type="checkbox" aria-label="固定测试风格图"><span></span></label></div>
+    <div class="setting-row"><div><strong>编辑画师时自动展开 danbooru 作品</strong><p class="field-help">编辑时自动联网读取站点作品。关闭时，可在编辑区按需点击「展开读取」。</p></div><label class="switch"><input id="auto-open-works" type="checkbox" aria-label="编辑时自动读取站点作品"><span></span></label></div>
   </div></dialog>
   <dialog id="gen-settings" class="small-dialog wide-dialog" aria-labelledby="gen-title"><div class="viewer-bar"><h2 id="gen-title">生图参数</h2><button id="close-gen-settings" type="button">关闭 ×</button></div><div class="form-body settings-body">
     <p class="field-help">这里的参数只用于生成测试风格图，保存在本机浏览器里，不写进画师库数据文件，导出备份也不会带上。token 同样只存在本机，请勿分享。</p>
     <div class="setting-row"><div><strong>NovelAI token</strong><p class="field-help">在 novelai.net 登录后，Account → Get Persistent API Token 取得，形如 pst-…。只发往 image.novelai.net 与 api.novelai.net，请求由「画师库 · 图片助手」扩展代为发出。</p></div><div class="token-control"><input id="gen-token" type="password" autocomplete="off" spellcheck="false" placeholder="pst-…" aria-label="NovelAI token"><button id="gen-token-toggle" class="action" type="button">显示</button></div></div>
     <div class="setting-row"><div><strong>剩余额度</strong><p class="field-help" id="gen-account" role="status">还没有查询。</p></div><button id="gen-account-refresh" class="action" type="button">刷新额度</button></div>
-    <div class="setting-row"><div><strong>是否使用点数</strong><p class="field-help">关闭时只在 Opus 免费额度内生成：步数压到 28 以内、总像素压到 1024 × 1024 以内，一点 Anlas 都不花，但读不到剩余额度时就不允许生成。开启后按下面填的参数原样发出，超出免费范围的部分会消耗 Anlas（点数）。</p></div><label class="switch"><input id="gen-anlas" type="checkbox"><span></span></label></div>
+    <div class="setting-row"><div><strong>是否使用点数</strong><p class="field-help">关闭时只在 Opus 免费额度内生成：步数压到 28 以内、总像素压到 1024 × 1024 以内，一点 Anlas 都不花，但读不到剩余额度时就不允许生成。开启后按下面填的参数原样发出，超出免费范围的部分会消耗 Anlas（点数）。</p></div><label class="switch"><input id="gen-anlas" type="checkbox" aria-label="允许消耗 Anlas 点数"><span></span></label></div>
     <div class="setting-row"><div><strong>模型</strong><p class="field-help">默认 V5 Full。V5 会自动补上质量标签与 UC 预设文本，反向提示词接在预设文本之后。</p></div><select id="gen-model" aria-label="生图模型"></select></div>
-    <div class="setting-row"><div><strong>尺寸</strong><p class="field-help">先挑一个档位（竖图 832 × 1216、宽图、方图、大图、壁纸），要别的宽高就在右边自己填：填了就以你填的为准，并会向 64 对齐、单边限制在 64–2048。NovelAI 还限制总像素不超过 1536 × 2048，超了会在发送前提示你把一边调小。</p></div><div class="size-pair"><select id="gen-size" aria-label="生图尺寸"></select><input id="gen-width" type="number" min="64" max="2048" step="64" placeholder="宽"><input id="gen-height" type="number" min="64" max="2048" step="64" placeholder="高"></div></div>
+    <div class="setting-row"><div><strong>尺寸</strong><p class="field-help">先挑一个档位（竖图 832 × 1216、宽图、方图、大图、壁纸），要别的宽高就在右边自己填：填了就以你填的为准，并会向 64 对齐、单边限制在 64–2048。NovelAI 还限制总像素不超过 1536 × 2048，超了会在发送前提示你把一边调小。</p></div><div class="size-pair"><select id="gen-size" aria-label="生图尺寸"></select><input id="gen-width" type="number" min="64" max="2048" step="64" placeholder="宽" aria-label="图片宽度"><input id="gen-height" type="number" min="64" max="2048" step="64" placeholder="高" aria-label="图片高度"></div></div>
     <div class="setting-row"><div><strong>步数与引导</strong><p class="field-help">采样步数 1–50，默认 28；提示词引导强度（Prompt Guidance）0–20，默认 5。步数越高越慢。</p></div><div class="size-pair"><input id="gen-steps" type="number" min="1" max="50" step="1" placeholder="步数" aria-label="采样步数"><input id="gen-scale" type="number" min="0" max="20" step="0.5" placeholder="引导" aria-label="引导强度"></div></div>
     <div class="setting-row"><div><strong>Prompt Guidance Rescale</strong><p class="field-help">0–1，默认 0。引导强度调高之后画面容易过曝、发灰，把它往上推一点可以把高引导的副作用压回去；不动就填 0。</p></div><input id="gen-cfg-rescale" type="number" min="0" max="1" step="0.02" placeholder="0" aria-label="Prompt Guidance Rescale"></div>
     <div class="setting-row"><div><strong>采样器</strong><p class="field-help">默认 Euler Ancestral，是站点自带的默认值；换成别的只是口味不同。</p></div><select id="gen-sampler" aria-label="采样器"></select></div>
     <div class="setting-row"><div><strong>随机种子</strong><p class="field-help">留空就是每次随机；填一个数字可以复现同一张图。同一个种子配合同一套提示词才会得到相同结果。</p></div><input id="gen-seed" type="number" min="0" max="4294967295" step="1" placeholder="留空随机" aria-label="随机种子"></div>
     <div class="setting-row"><div><strong>UC 预设</strong><p class="field-help">NovelAI 自带的「不想看到的内容」预设，默认 Heavy。它拼出来的那段文字会加在下面反向提示词的前面。</p></div><select id="gen-uc" aria-label="UC 预设"></select></div>
-    <div class="setting-row"><div><strong>质量标签</strong><p class="field-help">控制是否在提示词后面自动补一段质量标签，默认开启（跟站点一致）：V5 / V4.5 是「very aesthetic, masterpiece, no text」，V4 是「no text, best quality, very aesthetic, absurdres」，V3 是「best quality, amazing quality, very aesthetic, absurdres」。关掉就一点都不加，也不会再发质量预设的提示字段。想自己写就在提示词模板里直接写，那部分永远是你说什么就是什么。</p></div><label class="switch"><input id="gen-quality" type="checkbox"><span></span></label></div>
-    <div class="setting-row"><div><strong>transparent BG</strong><p class="field-help">输出带原生 Alpha 的透明背景 PNG，只有 V5 模型支持；选别的模型时会在发送前拦下来。开启后会按站点客户端的做法发 tag_hint_transparent_background、straight_alpha 与 image_format=png。</p></div><label class="switch"><input id="gen-transparent" type="checkbox"><span></span></label></div>
+    <div class="setting-row"><div><strong>质量标签</strong><p class="field-help">控制是否在提示词后面自动补一段质量标签，默认开启（跟站点一致）：V5 / V4.5 是「very aesthetic, masterpiece, no text」，V4 是「no text, best quality, very aesthetic, absurdres」，V3 是「best quality, amazing quality, very aesthetic, absurdres」。关掉就一点都不加，也不会再发质量预设的提示字段。想自己写就在提示词模板里直接写，那部分永远是你说什么就是什么。</p></div><label class="switch"><input id="gen-quality" type="checkbox" aria-label="自动补充质量标签"><span></span></label></div>
+    <div class="setting-row"><div><strong>transparent BG</strong><p class="field-help">输出带原生 Alpha 的透明背景 PNG，只有 V5 模型支持；选别的模型时会在发送前拦下来。开启后会按站点客户端的做法发 tag_hint_transparent_background、straight_alpha 与 image_format=png。</p></div><label class="switch"><input id="gen-transparent" type="checkbox" aria-label="生成透明背景"><span></span></label></div>
     <div class="setting-row textarea-row"><div><strong>反向提示词</strong><p class="field-help">额外不想要的内容，会接在 UC 预设文本之后；留空就只用预设。文本越长越占位置，换行会被当成空格。</p></div><textarea id="gen-negative" rows="12" placeholder="例如：bad hands, extra fingers" aria-label="反向提示词"></textarea></div>
     <div class="setting-row textarea-row"><div><strong>提示词模板 · 测试风格 1</strong><p class="field-help">占最右那一格。用 {tag} 代表画师 tag，例如「{tag}, 1girl, solo」；要加前缀可以写 artist:{tag}。写错的 {变量} 会原样保留，方便发现。</p></div><textarea id="gen-prompt1" rows="12" aria-label="提示词模板 1"></textarea></div>
     <div class="setting-row textarea-row"><div><strong>提示词模板 · 测试风格 2</strong><p class="field-help">占右边第二格。两个模板可以用同一个画师 tag 换不同构图，方便对比画风。</p></div><textarea id="gen-prompt2" rows="12" aria-label="提示词模板 2"></textarea></div>
     <div class="setting-row"><div><strong>图片助手</strong><p class="field-help" id="gen-bridge" role="status">正在检测…</p></div><button id="gen-check" class="action" type="button">重新检测</button></div>
   </div></dialog>
-  <dialog id="viewer" aria-labelledby="viewer-title"><div class="viewer-bar"><h2 id="viewer-title"></h2><button id="close-viewer" aria-label="关闭图片">关闭 ×</button></div><div class="viewer-image"><img id="large-image" alt=""></div><div class="viewer-bottom"><p id="viewer-caption"></p><div class="viewer-actions"><button id="save-original" class="action" type="button">保存原图</button><a id="viewer-source" target="_blank" rel="noopener noreferrer">查看作品来源 ↗</a></div></div></dialog>
+  <dialog id="viewer" aria-labelledby="viewer-title"><div class="viewer-bar"><h2 id="viewer-title"></h2><button id="close-viewer" aria-label="关闭图片">关闭 ×</button></div><div class="viewer-image"><img id="large-image" alt=""></div><div class="viewer-bottom"><p id="viewer-caption"></p><div id="viewer-navigation" class="viewer-navigation" aria-label="浏览画师图片" hidden><button id="viewer-prev" class="action" type="button" aria-label="上一张图片，左方向键">←</button><span id="viewer-position" aria-live="polite"></span><button id="viewer-next" class="action" type="button" aria-label="下一张图片，右方向键">→</button></div><div class="viewer-actions"><button id="save-original" class="action" type="button">保存原图</button><a id="viewer-source" target="_blank" rel="noopener noreferrer">查看作品来源 ↗</a></div></div></dialog>
   <dialog id="tag-manager" class="small-dialog" aria-labelledby="tag-title"><div class="viewer-bar"><h2 id="tag-title">管理分类与标签</h2><button id="close-tags" type="button">关闭 ×</button></div><div class="form-body">
-    <div class="manage-tabs" role="tablist" aria-label="管理分类与标签"><button id="tab-category" class="manage-tab" type="button" role="tab" aria-selected="true" aria-controls="panel-category">主分类</button><button id="tab-tag" class="manage-tab" type="button" role="tab" aria-selected="false" aria-controls="panel-tag">画面感觉标签</button></div>
+    <div class="manage-tabs" role="tablist" aria-label="管理分类与标签"><button id="tab-category" class="manage-tab" type="button" role="tab" aria-selected="true" aria-controls="panel-category">主分类</button><button id="tab-tag" class="manage-tab" type="button" role="tab" aria-selected="false" aria-controls="panel-tag">画风标签</button></div>
     <div id="panel-category" class="manage-panel" role="tabpanel" aria-labelledby="tab-category">
     <p class="field-help">画师卡片上的大分类，也是筛选栏的第一排。重命名会同步更新已分类的画师；删除后这些画师回到「待判断」，画师和图片都不会丢。拖动行首的把手可以调整顺序。</p>
     <form id="category-form" class="inline-form"><input id="new-category" required maxlength="40" placeholder="例如：厚涂向、赛璐璐、像素风" aria-label="新分类名称"><button class="action primary-action">添加分类</button></form>
@@ -278,7 +570,7 @@ dialog[open]::backdrop{opacity:1}
     <p id="tag-empty" class="manage-empty" role="status" hidden></p>
     </div>
   </div></dialog>
-  <dialog id="batch-dialog" class="small-dialog" aria-labelledby="batch-title"><form id="batch-form"><div class="viewer-bar"><h2 id="batch-title">批量采集画师</h2><button type="button" id="close-batch">收起 ×</button></div><div class="form-body"><p class="field-help">每行一位，也可读取「画师表.txt」。自动跳过重名；新画师保持未分类。<strong>收起这个对话框不会中断采集</strong>——采集会在后台继续，进度同时显示在页面底部；要停下请点「停止采集」（或工具栏上的同名按钮），已经采集到的会保留，再次提交同一名单会自动跳过。</p><label class="action upload-label">读取 TXT 名单<input id="names-file" type="file" accept=".txt" hidden></label><textarea id="batch-names" rows="10" aria-label="一行一个画师名字" required></textarea><div class="setting-row"><div><strong>本次采集的作品排序</strong><p class="field-help">只对这一次导入生效，默认用「设置」里的排序。收藏最多与评分最高依赖站点的排序元标签，作品特别多的画师可能超时失败。</p></div><select id="batch-order" aria-label="本次采集的作品排序"></select></div><div class="setting-row"><div><strong>同时采集 3 张作品与数量</strong><p class="field-help">为每位新画师补齐 Danbooru 编号、作品总数，并保存 3 张作品的缩略图（按上面选的排序）。名字很多时会持续较久；中途点「取消」会保留已采集的进度，再次提交同一名单会自动跳过。</p></div><label class="switch"><input id="batch-works" type="checkbox" checked><span></span></label></div><div class="setting-row"><div><strong>同时生成测试风格图</strong><p class="field-help">开启后，导入完成时会为每位新画师排一条「生成测试风格 1」的需求，走和卡片上「生成」按钮同一条队列：一条一条跑，两条之间隔 5±3 秒。它不会拖慢导入本身——导入先照常跑完，生成在后台慢慢排。每条都会消耗额度或点数，所以超过 20 位画师时会先弹红按钮让你二次确认。默认关闭。</p></div><label class="switch"><input id="batch-generate" type="checkbox"><span></span></label></div><p id="batch-message" role="status"></p></div><div class="form-footer"><button id="batch-stop-dialog" class="action danger" type="button" hidden>停止采集</button><button id="batch-run" class="action primary-action">添加到画师库</button></div></form></dialog>
+  <dialog id="batch-dialog" class="small-dialog" aria-labelledby="batch-title"><form id="batch-form"><div class="viewer-bar"><h2 id="batch-title">批量采集画师</h2><button type="button" id="close-batch">收起 ×</button></div><div class="form-body"><p class="field-help">每行输入一位画师，也可读取 TXT 名单。跳过已完成采集的画师，并重试未完成项；新画师保持未分类。<strong>收起这个对话框不会中断采集</strong>——采集会在后台继续，进度同时显示在页面底部；要停下请点「停止采集」（或工具栏上的同名按钮），已经采集到的会保留，再次提交同一名单会自动跳过。</p><label class="action upload-label">读取 TXT 名单<input id="names-file" type="file" accept=".txt" hidden></label><textarea id="batch-names" rows="10" aria-label="一行一个画师名字" required></textarea><div class="setting-row"><div><strong>本次采集的作品排序</strong><p class="field-help">只对这一次导入生效，默认用「设置」里的排序。收藏最多与评分最高依赖站点的排序元标签，作品特别多的画师可能超时失败。</p></div><select id="batch-order" aria-label="本次采集的作品排序"></select></div><div class="setting-row"><div><strong>同时采集 3 张作品与数量</strong><p class="field-help">为每位新画师补齐 Danbooru 编号、作品总数，并保存 3 张作品的缩略图（按上面选的排序）。名字很多时会持续较久；中途点「停止采集」会保留已采集的进度，再次提交同一名单会自动跳过。</p></div><label class="switch"><input id="batch-works" type="checkbox" checked aria-label="同时采集作品与数量"><span></span></label></div><div class="setting-row"><div><strong>同时生成测试风格图</strong><p class="field-help">开启后，导入完成时会为每位新画师排一条「生成测试风格 1」的需求，走和卡片上「生成」按钮同一条队列：一条一条跑，两条之间隔 5±3 秒。它不会拖慢导入本身——导入先照常跑完，生成在后台慢慢排。每条都会消耗额度或点数，所以超过 20 位画师时会先弹红按钮让你二次确认。默认关闭。</p></div><label class="switch"><input id="batch-generate" type="checkbox" aria-label="同时生成测试风格图"><span></span></label></div><p id="batch-message" role="status"></p></div><div class="form-footer"><button id="batch-stop-dialog" class="action danger" type="button" hidden>停止采集</button><button id="batch-run" class="action primary-action">添加到画师库</button></div></form></dialog>
 <script>(function(root){
   'use strict';
   const MAX=100,NAME_MAX=60,DEFAULT_NAME='artist';
@@ -1165,13 +1457,14 @@ dialog[open]::backdrop{opacity:1}
       record.objectUrl=URL.createObjectURL(blob);
       if(typeof Image==='function'){try{const decoder=new Image();decoder.src=record.objectUrl;await decoder.decode();}catch{}}
       if(record.controller!==controller||!bindings.has(img))return;
-      if(img.src&&img.animate){
+      const motion=()=>typeof matchMedia!=='function'||!matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if(motion()&&img.src&&img.animate){
         const out=img.animate([{opacity:1},{opacity:0}],{duration:130,easing:'ease-in',fill:'forwards'});
         await out.finished.catch(()=>{});out.cancel();
         if(record.controller!==controller||!bindings.has(img))return;
       }
       img.src=record.objectUrl;img.title='';
-      img.animate?.([{opacity:0},{opacity:1}],{duration:240,easing:'ease-out'});
+      if(motion())img.animate?.([{opacity:0},{opacity:1}],{duration:240,easing:'ease-out'});
     }
     catch(error){if(error.name!=='AbortError'&&record.controller===controller){record.img.classList.add('image-failed');record.img.title=error.message;record.img.alt='图片未加载：'+error.message;record.error?.(error);}}
   }
@@ -1196,20 +1489,20 @@ dialog[open]::backdrop{opacity:1}
 })();
 </script><script>(() => {
   let observer,resize,current=[],make=null,keyOf=null,uids=[];
-  const mounted=new Map(),heights=new Map(),pinned=new Set(),slots=new Map(),painted=new Map();
+  const mounted=new Map(),heights=new Map(),pinned=new Set(),slots=new Map(),painted=new Map(),near=new Set();
   /* 系统里关了动效就一个都不放，宁可少点花活也别让人难受。 */
   const calm=()=>typeof matchMedia==='function'&&matchMedia('(prefers-reduced-motion: reduce)').matches;
   /* 一张卡片的「指纹」：指纹没变就不重画。重画会连图片一起重新取、重新淡入，
      那正是「随便动一下就整屏闪一下」的来源——保存、生图状态变化、搜索框敲字都会走到这里。 */
   const keyFor=artist=>keyOf?keyOf(artist):JSON.stringify(artist);
-  function clear(){observer?.disconnect();resize?.disconnect();for(const id of mounted.keys())ArtistImages.dispose('card:'+id);mounted.clear();slots.clear();painted.clear();uids=[];}
+  function clear(){observer?.disconnect();resize?.disconnect();for(const id of mounted.keys())ArtistImages.dispose('card:'+id);mounted.clear();slots.clear();painted.clear();heights.clear();pinned.clear();near.clear();uids=[];current=[];make=null;keyOf=null;}
   /* 需要的时候才重画这一张。 */
   function paint(slot){
     const uid=slot.dataset.uid,artist=current[Number(slot.dataset.index)];
     if(!artist||!make)return false;
     const key=keyFor(artist);
     if(painted.get(uid)===key)return false;
-    slot.replaceChildren(make(artist));mounted.set(uid,artist);painted.set(uid,key);return true;
+    ArtistImages.dispose('card:'+uid);slot.replaceChildren(make(artist));mounted.set(uid,artist);painted.set(uid,key);return true;
   }
   /* 立刻按卡片真实高度挂载。render() 重建占位用的是上一次量到的高度，
      刚加完作品会比旧高度高，照着旧占位滚动会落到错的位置。 */
@@ -1227,6 +1520,8 @@ dialog[open]::backdrop{opacity:1}
     if(calm())return;
     const top=container.getBoundingClientRect().top,limit=window.innerHeight||0;
     for(const slot of list){
+      // 屏幕外的占位不测量；动画只遍历已挂载的卡片和最前面的少量新占位。
+      if(!mounted.has(slot.dataset.uid)&&Number(slot.dataset.index)>7)continue;
       if(typeof slot.animate!=='function')continue;
       const rect=slot.getBoundingClientRect(),y=rect.top-top,from=before.get(slot.dataset.uid);
       if(from!==undefined){
@@ -1245,7 +1540,7 @@ dialog[open]::backdrop{opacity:1}
       /* 还是同一批画师、同样顺序，只是内容可能变了（刚保存了某一位）。
          只把指纹真的变了的那些重画；重建上千个占位会连整棵布局树一起丢掉，
          那正是保存后卡顿的来源。 */
-      for(const [uid,slot] of slots)if(mounted.has(uid))paint(slot);
+      for(const uid of mounted.keys())paint(slots.get(uid));
       return;
     }
     /* 记下每张「已经挂上了卡片」的占位现在在哪儿，一会儿要让它们滑到新位置去。
@@ -1254,26 +1549,38 @@ dialog[open]::backdrop{opacity:1}
     for(const [uid,slot] of slots)if(mounted.has(uid))before.set(uid,slot.getBoundingClientRect().top-top);
     observer?.disconnect();resize?.disconnect();
     const wanted=new Set(next);
-    for(const [uid,slot] of slots)if(!wanted.has(uid)){if(mounted.has(uid)){ArtistImages.dispose('card:'+uid);mounted.delete(uid);}slots.delete(uid);painted.delete(uid);}
+    for(const [uid,slot] of slots)if(!wanted.has(uid)){if(mounted.has(uid)){ArtistImages.dispose('card:'+uid);mounted.delete(uid);}slots.delete(uid);painted.delete(uid);near.delete(uid);}
     uids=next;
     resize=new ResizeObserver(entries=>{for(const entry of entries){const id=entry.target.dataset.uid;const h=entry.target.getBoundingClientRect().height;if(h>0)heights.set(id,h);}});
     observer=new IntersectionObserver(entries=>{for(const entry of entries){const slot=entry.target,id=slot.dataset.uid;
-      if(entry.isIntersecting)mountSlot(slot);
-      else if(mounted.has(id)&&!pinned.has(id)){const h=slot.getBoundingClientRect().height;heights.set(id,h);resize.unobserve(slot);ArtistImages.dispose('card:'+id);slot.replaceChildren();slot.style.height=h+'px';mounted.delete(id);painted.delete(id);}
-    }},{rootMargin:'1000px'});
-    const estimate=window.innerWidth<760?650:310;
+      if(entry.isIntersecting){near.add(id);mountSlot(slot);}else{near.delete(id);releaseSlot(slot);}
+    }},{rootMargin:'650px'});
+    const width=window.innerWidth,compact=document.documentElement?.dataset?.density==='compact';
+    const requested=typeof getComputedStyle==='function'?parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--card-size'))||280:280;
+    const estimate=Math.round(Math.min(requested,compact?190:360,(width-(width<=460?68:112))*(width<=460?.32:.34))+(width<=460?140:164));
     const list=next.map((uid,i)=>{const kept=slots.get(uid);
       /* 还在的画师接着用原来那块占位：卡片不用卸了再挂，图片也不用重取一遍。
          这条是删除/筛选之后不再整屏闪一下的关键。 */
-      if(kept){kept.dataset.index=i;return kept;}
-      const slot=document.createElement('div');slot.className='artist-slot';slot.dataset.uid=uid;slot.dataset.index=i;slot.style.height=(heights.get(uid)||estimate)+'px';slots.set(uid,slot);return slot;});
+      if(kept){kept.dataset.index=i;if(mounted.has(uid))resize.observe(kept);return kept;}
+      const slot=document.createElement('div');slot.className='artist-slot';slot.dataset.uid=uid;slot.dataset.index=i;slot.style.height=(heights.get(uid)||estimate)+'px';slots.set(uid,slot);slot.addEventListener?.('focusout',()=>queueMicrotask(()=>{if(!near.has(uid))releaseSlot(slot);}));return slot;});
     container.replaceChildren(...list);list.forEach(slot=>observer.observe(slot));
     /* 复用的占位里，内容真的变了的补画一下。 */
     for(const slot of list)if(mounted.has(slot.dataset.uid))paint(slot);
     animateChanges(container,list,before);
   }
+  function releaseSlot(slot){
+    const id=slot.dataset.uid;
+    if(!slots.has(id)||!mounted.has(id)||pinned.has(id)||slot.contains?.(document.activeElement))return;
+    const h=slot.getBoundingClientRect().height;heights.set(id,h);resize.unobserve(slot);ArtistImages.dispose('card:'+id);slot.replaceChildren();slot.style.height=h+'px';mounted.delete(id);painted.delete(id);
+  }
+  // 密度或窗口尺寸变化后，修正离屏占位；不重建可见卡片和编辑表单。
+  function remeasure(){
+    const samples=[];for(const id of mounted.keys()){const slot=slots.get(id);if(!pinned.has(id)&&!slot.querySelector?.('.is-editing'))samples.push(slot.getBoundingClientRect().height);}
+    if(!samples.length)return;const average=Math.round(samples.reduce((n,h)=>n+h,0)/samples.length);
+    for(const [id,slot] of slots)if(!mounted.has(id)){heights.set(id,average);slot.style.height=average+'px';}
+  }
   window.ArtistGallery={
-    render,clear,
+    render,clear,remeasure,
     mount(uid){return mountSlot(slots.get(uid));},
     pin(uid,value){if(value)pinned.add(uid);else pinned.delete(uid);},
     /* 卡片内容在别处就地更新完了（比如编辑态里那一排作品格），跟画廊说一声「这张已经是最新的」，
@@ -1408,10 +1715,21 @@ dialog[open]::backdrop{opacity:1}
   'use strict';
   const $=id=>document.getElementById(id);
   let host=null,current=null;
-  function init(options){host=options;}
+  function init(options){
+    host=options;$('viewer-prev').onclick=()=>step(-1);$('viewer-next').onclick=()=>step(1);
+    $('viewer').addEventListener?.('keydown',event=>{if(event.isComposing||event.target?.matches?.('input,textarea,select'))return;if(event.key==='ArrowLeft'||event.key==='ArrowRight'){event.preventDefault();step(event.key==='ArrowLeft'?-1:1);}});
+  }
+  function step(delta){
+    if(!current?.items||current.items.length<2)return;
+    const next=(current.position+delta+current.items.length)%current.items.length,work=current.items[next];
+    open({...current,work,caption:work.caption});
+  }
   function dispose(){current=null;}
-  function open({title,uid,work,caption,persist=false}){
-    current={uid,work,persist,folder:host.getFolder()};
+  function open({title,uid,work,caption,persist=false,items=null}){
+    const position=items?items.indexOf(work):-1;
+    current={title,uid,work,persist,items,position,folder:host.getFolder()};
+    $('viewer-navigation').hidden=position<0||items.length<2;
+    $('viewer-position').textContent=position>=0?(position+1)+' / '+items.length:'';
     ArtistImages.dispose('viewer');
     $('viewer-title').textContent=title;$('large-image').alt=title;
     $('viewer-caption').textContent='正在获取原图…';
@@ -1465,7 +1783,7 @@ dialog[open]::backdrop{opacity:1}
         refreshButton();
       }
       if(current!==request||!$('viewer').open)return;
-      img.onload=()=>{$('viewer-caption').textContent=note+(kept?'原图已保存到本地':'原图仅本次显示，不会保存到本地');};
+      img.onload=()=>{$('viewer-caption').textContent=note+(kept?'原图已保存到本地':local?.kind==='local'?'正在查看本地原图':local?.kind==='inline'?'正在查看库内图片':'原图仅本次显示，不会保存到本地');};
       ArtistImages.bind(img,uid,target,'viewer','large',error=>showMiddle(uid,work,caption,error));
     }catch(error){if(current===request&&error.name!=='AbortError')showMiddle(uid,work,caption,error);}
   }
@@ -1490,7 +1808,7 @@ dialog[open]::backdrop{opacity:1}
     $('viewer-caption').textContent=note+'原图未取到：'+error.message+'，改用中图显示';
     ArtistImages.bind($('large-image'),uid,{...work,largeUrl:middle},'viewer','large',e2=>{$('viewer-caption').textContent=note+'中图也未取到：'+e2.message+'（显示的是缩略图）';});
   }
-  const api={init,dispose,open,saveOriginal,refreshButton};
+  const api={init,dispose,open,step,saveOriginal,refreshButton};
   root.ArtistViewer=api;
   if(typeof module!=='undefined')module.exports=api;
 })(globalThis);
@@ -1586,6 +1904,126 @@ dialog[open]::backdrop{opacity:1}
   root.ArtistTestImages=api;
   if(typeof module!=='undefined')module.exports=api;
 })(globalThis);
+</script><script>/* 查询与统计只依赖资料快照，不触碰文件系统或 DOM。每个新快照只建一次索引。 */
+(() => {
+ 'use strict';
+ const collator=new Intl.Collator('zh-CN',{numeric:true,sensitivity:'base'});
+ function create(){
+  let source=null,length=0,entries=[],stats=null;const sorted=new Map();
+  function prepare(artists){
+   if(source===artists&&length===artists.length)return;
+   source=artists;length=artists.length;sorted.clear();
+   const counts=new Map([['全部',length],['待判断',0]]);let works=0,tests=0;
+   entries=artists.map((artist,index)=>{
+    const category=artist.category||'待判断';counts.set(category,(counts.get(category)||0)+1);
+    works+=artist.works.length;for(const work of artist.works)if(work.kind==='test')tests++;
+    const search=[artist.name,artist.alias,...(artist.aliases||[]),...artist.tags,artist.description,artist.note,artist.uid,String(artist.order??index+1)].filter(Boolean).join(' ').toLocaleLowerCase('zh-CN');
+    return {artist,index,search};
+   });
+   stats={total:length,images:works,tests,works:works-tests,counts};sorted.set('order',entries);
+  }
+  return {
+   summary(artists){prepare(artists);return stats;},
+   select(artists,{category='全部',tags=new Set(),scores=new Set(),query='',sort='order'}={}){
+    prepare(artists);const mode=['name','score','works'].includes(sort)?sort:'order';
+    if(!sorted.has(mode))sorted.set(mode,[...entries].sort((a,b)=>{
+     const delta=mode==='name'?collator.compare(a.artist.name,b.artist.name):mode==='score'?(b.artist.score||0)-(a.artist.score||0):b.artist.works.length-a.artist.works.length;
+     return delta||a.index-b.index;
+    }));
+    const words=query.trim().toLocaleLowerCase('zh-CN').split(/\s+/).filter(Boolean),activeTags=[...tags];
+    return sorted.get(mode).filter(({artist:a,search})=>(category==='全部'||(category==='待判断'?!a.category:a.category===category))&&activeTags.every(t=>a.tags.includes(t))&&(!scores.size||scores.has(a.score||0))&&words.every(word=>search.includes(word))).map(entry=>entry.artist);
+   },
+   clear(){source=null;length=0;entries=[];stats=null;sorted.clear();}
+  };
+ }
+ window.ArtistLibraryIndex={create};
+})();
+</script><script>/* 工作台只管理导航与呈现。数据写入和任务生命周期仍由 app 协调。 */
+(() => {
+ 'use strict';
+ const $=id=>document.getElementById(id),history=[],calm=()=>matchMedia('(prefers-reduced-motion: reduce)').matches;
+ const commands=[['choose-folder','连接 / 切换数据文件夹','资料库'],['quick-open','识别并添加画师','添加'],['add-artist','手动添加画师','添加'],['batch-artists','批量采集画师','采集'],['manage-tags','管理分类与标签','整理'],['settings-open','资料库设置','设置'],['gen-settings-open','NovelAI 生图参数','生成'],['test-import-open','导入测试风格图','导入'],['gen-batch-open','批量生成测试风格图','生成'],['export-data','导出资料备份','备份'],['import-data','恢复资料备份','备份'],['status-toggle','查看本次活动记录','状态']];
+ let connected=false,total=0,commandIndex=0,commandItems=[],initialized=false;
+ const element=(tag,text,cls)=>{const node=document.createElement(tag);if(text!==undefined)node.textContent=text;if(cls)node.className=cls;return node;};
+ function closeMenus(){document.querySelectorAll('.action-menu[open]').forEach(menu=>menu.open=false);}
+ function openQuick(){if(!$('quick-dialog').open)$('quick-dialog').showModal();$('quick-input').focus();}
+ function status(message,error){
+  if(!message||history[0]?.message===message)return;
+  history.unshift({message,error,time:new Date()});if(history.length>80)history.length=80;
+  if($('activity-dialog').open)paintHistory();
+ }
+ function paintHistory(){
+  $('activity-list').replaceChildren(...history.map(entry=>{const li=element('li',undefined,entry.error?'error':'');const time=element('time',entry.time.toLocaleTimeString('zh-CN',{hour12:false}));time.dateTime=entry.time.toISOString();li.append(time,element('span',entry.message));return li;}));
+ }
+ function paintCommands(){
+  const query=$('command-search').value.trim().toLowerCase();commandItems=commands.filter(([,label,group])=>(label+' '+group).toLowerCase().includes(query));commandIndex=0;
+  $('command-results').replaceChildren(...commandItems.map(([id,label,group])=>{const button=element('button');button.type='button';button.append(element('span',label),element('small',group));button.disabled=$(id).disabled;button.onclick=()=>{$('command-dialog').close();$(id).click();};return button;}));
+  if(!commandItems.length)$('command-results').append(element('p','没有匹配的操作','field-help'));
+ }
+ function openCommands(){closeMenus();$('command-search').value='';paintCommands();$('command-dialog').showModal();$('command-search').focus();}
+ function captureFilterFocus(){
+  const active=document.activeElement,key=active?.dataset?.filterKey,parent=active?.parentElement?.id;
+  if(!key||!['categories','tags','scores','active-filters'].includes(parent))return ()=>{};
+  return ()=>{const next=[...$(parent).querySelectorAll('button')].find(node=>node.dataset.filterKey===key);(next||$('search')).focus({preventScroll:true});};
+ }
+ function update({connected:hasFolder,total:count,rows,category,editing,tasks,filterCount=0}){
+  connected=hasFolder;total=count;
+  $('filter-number').textContent=String(filterCount);$('filter-number').hidden=!filterCount;
+  $('connection-dot').classList.toggle('connected',connected);$('choose-folder').textContent=connected?'切换资料库':'打开资料库';
+  $('view-title').textContent=category==='全部'?'全部画师':category;
+  $('task-controls').hidden=!tasks;$('task-label').textContent=tasks||'后台任务进行中';
+  if(rows||editing)return;
+  $('empty-title').textContent=!connected?'让喜欢的画风，有迹可循':total?'没有符合条件的画师':'开始建立你的画风收藏';
+  $('empty-description').textContent=!connected?'选择已有数据文件夹，或用空文件夹开始整理。资料和图片保存在你的电脑上。':total?'换个关键词、减少标签或清除筛选，即可继续浏览。':'粘贴画师名字或主页链接来识别添加，也可以使用批量采集。';
+  $('empty-action').textContent=!connected?'打开数据文件夹':total?'清除全部筛选':'识别添加画师';
+ }
+ function init({saveEditor}){
+  if(initialized)return;initialized=true;
+  const motionPreference=matchMedia('(prefers-reduced-motion: reduce)');motionPreference.addEventListener('change',event=>{if(event.matches)document.getAnimations().forEach(animation=>animation.cancel());});
+  const densityKey='artist-library.density';
+  const setDensity=value=>{const compact=value==='compact';document.documentElement.dataset.density=compact?'compact':'comfortable';$('density-toggle').setAttribute('aria-pressed',String(compact));$('density-toggle').textContent=compact?'舒适视图':'紧凑视图';};
+  try{setDensity(localStorage.getItem(densityKey));}catch{setDensity('comfortable');}
+  $('density-toggle').onclick=()=>{const value=document.documentElement.dataset.density==='compact'?'comfortable':'compact';setDensity(value);try{localStorage.setItem(densityKey,value);}catch{}window.ArtistGallery.remeasure?.();};
+  $('quick-open').onclick=openQuick;$('empty-action').onclick=()=>$( !connected?'choose-folder':total?'reset':'quick-open').click();
+  $('status-toggle').onclick=()=>{paintHistory();$('activity-dialog').showModal();};$('back-top').onclick=()=>window.scrollTo({top:0,behavior:calm()?'auto':'smooth'});
+  $('filter-toggle').onclick=()=>{const open=$('filter-panel').hidden;$('filter-panel').hidden=!open;$('filter-toggle').setAttribute('aria-expanded',String(open));};
+  const themeKey='artist-library.appearance';
+  const setTheme=value=>{const light=value==='light';document.documentElement.dataset.theme=light?'light':'dark';$('theme-toggle').setAttribute('aria-label',light?'切换深色外观':'切换浅色外观');$('theme-toggle').title=light?'切换深色外观':'切换浅色外观';};
+  try{setTheme(localStorage.getItem(themeKey));}catch{setTheme('dark');}
+  $('theme-toggle').onclick=()=>{const value=document.documentElement.dataset.theme==='light'?'dark':'light';setTheme(value);try{localStorage.setItem(themeKey,value);}catch{}};
+  let resizeTimer;window.addEventListener('resize',()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>window.ArtistGallery.remeasure?.(),180);});
+  $('command-open').onclick=openCommands;$('command-search').oninput=paintCommands;
+  $('command-dialog').addEventListener('keydown',event=>{
+   if(event.isComposing)return;const items=[...$('command-results').querySelectorAll('button:not(:disabled)')];if(!items.length)return;
+   if(['ArrowDown','ArrowUp'].includes(event.key)){event.preventDefault();const current=items.indexOf(document.activeElement);commandIndex=current<0?(event.key==='ArrowDown'?0:items.length-1):(current+(event.key==='ArrowDown'?1:-1)+items.length)%items.length;items[commandIndex].focus();}
+   else if(event.key==='Enter'&&event.target===$('command-search')){event.preventDefault();items[0].click();}
+  });
+  document.addEventListener('keydown',event=>{
+   if(event.isComposing||event.defaultPrevented)return;
+   const modal=document.querySelector('dialog[open]'),editable=event.target.closest('input,textarea,select,[contenteditable=true]');
+   if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='k'&&!modal){event.preventDefault();openCommands();return;}
+   if(event.key==='Escape'&&!modal){const menu=document.querySelector('.action-menu[open]');if(menu){event.preventDefault();menu.open=false;menu.querySelector('summary').focus();}else if(!$('filter-panel').hidden){event.preventDefault();$('filter-panel').hidden=true;$('filter-toggle').setAttribute('aria-expanded','false');$('filter-toggle').focus();}return;}
+   if(modal)return;
+   if(event.key==='/'&&!editable&&!event.ctrlKey&&!event.metaKey&&!event.altKey){event.preventDefault();$('search').focus();$('search').select();}
+   if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='s'&&document.querySelector('.is-editing')){event.preventDefault();saveEditor();}
+  });
+  document.querySelectorAll('dialog').forEach(dialog=>{
+   dialog.querySelectorAll('[data-close-dialog]').forEach(button=>button.onclick=()=>dialog.close());
+   // 只有真正点到遮罩才关闭；点击内容内的空隙不算。拖拽从弹窗内部结束在遮罩上也不关闭。
+   let outside=false;
+   const isOutside=event=>{const r=dialog.getBoundingClientRect();return event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom;};
+   dialog.addEventListener('pointerdown',event=>outside=event.target===dialog&&isOutside(event));
+   dialog.addEventListener('click',event=>{if(outside&&event.target===dialog&&isOutside(event))dialog.close();outside=false;});
+  });
+  document.querySelectorAll('.upload-label').forEach(label=>{label.tabIndex=0;label.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();label.querySelector('input[type=file]')?.click();}});});
+  document.addEventListener('toggle',event=>{const menu=event.target;if(menu.matches?.('.action-menu')&&menu.open)document.querySelectorAll('.action-menu[open]').forEach(other=>{if(other!==menu)other.open=false;});},true);
+  document.addEventListener('click',event=>{const action=event.target.closest('.menu-panel button');if(!event.target.closest('.action-menu')||(action&&!action.classList.contains('is-armed')))closeMenus();});
+  const tabs=[$('tab-category'),$('tab-tag')];tabs.forEach((tab,index)=>tab.addEventListener('keydown',event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;event.preventDefault();const next=event.key==='Home'?0:event.key==='End'?1:1-index;tabs[next].click();tabs[next].focus();}));
+  for(const id of ['choose-folder','extension-status','empty-action','filter-toggle','theme-toggle','density-toggle','command-open','command-search','status-toggle','back-top','search','library-sort','reset'])$(id).disabled=false;
+  document.querySelectorAll('[data-close-dialog]').forEach(button=>button.disabled=false);
+ }
+ window.ArtistWorkspace={init,update,status,openQuick,captureFilterFocus};
+})();
 </script><script>(() => {
   'use strict';
   const defaultCategories=['二次元','写实 / 半写实','Q版 / 卡通','概念 / 设定','场景 / 环境'];
@@ -1610,11 +2048,14 @@ dialog[open]::backdrop{opacity:1}
   /* 卡片固定 5 格。开了「固定测试风格图」后最右 2 格归测试风格 1、2，作品图不能占用。 */
   const PREVIEW_SLOTS=5,RESERVED_SLOTS=2,UPLOAD_TYPES=['image/jpeg','image/png','image/webp','image/gif','image/avif'];
   const reservedOf=()=>data&&data.fixedTestSlots?RESERVED_SLOTS:0;
-  const state={category:'全部',tags:new Set(),scores:new Set(),query:''};
+  const state={category:'全部',tags:new Set(),scores:new Set(),query:'',sort:'order'};
+  const libraryIndex=window.ArtistLibraryIndex.create();
+  let filterSignature='',editorRevision=0;
+  const reducedMotion=()=>typeof matchMedia==='function'&&matchMedia('(prefers-reduced-motion: reduce)').matches;
   const PREF_KEY='artist-library.thumb-height',PREF_CARD='artist-library.card-size';
   const savePref=(key,value)=>{try{localStorage.setItem(key,String(value));}catch{}};
   const applyCardSize=value=>document.documentElement.style.setProperty('--card-size',(value||prefs.cardSize)+'px');
-  const prefs={thumbHeight:120,cardSize:220,listeners:new Set(),
+  const prefs={thumbHeight:120,cardSize:280,listeners:new Set(),
     setThumbHeight(value){this.thumbHeight=value;savePref(PREF_KEY,value);for(const fn of this.listeners)fn(value);},
     setCardSize(value){this.cardSize=value;savePref(PREF_CARD,value);applyCardSize(value);},
     subscribe(fn){this.listeners.add(fn);},unsubscribe(fn){this.listeners.delete(fn);}};
@@ -1631,9 +2072,10 @@ dialog[open]::backdrop{opacity:1}
   function paintQueue(){
     const node=$('gen-queue'),count=genQueue.pending;
     /* 排队数变了就轻轻弹一下，让「已经排上了」有个交代。 */
-    if(count!==queueCount){queueCount=count;if(typeof node.animate==='function')node.animate([{transform:'scale(.86)'},{transform:'scale(1)'}],{duration:220,easing:'ease-out'});}
+    if(count!==queueCount){queueCount=count;if(!reducedMotion()&&typeof node.animate==='function')node.animate([{transform:'scale(.86)'},{transform:'scale(1)'}],{duration:220,easing:'ease-out'});}
     node.hidden=count===0;
     node.textContent=count?`排队 ${count} · 清空`:'排队 0';
+    if(data)paintTasks();
     node.title=count?`还有 ${count} 条生成需求在排队，点一下全部取消（正在跑的那条会跑完）`:'';
   }
   function normalize(raw,backup=false){
@@ -1657,8 +2099,9 @@ dialog[open]::backdrop{opacity:1}
   /* 文案真的变了才轻轻淡一下：保存、生图、检测都会写状态栏，一直闪反而吵。 */
   function status(t,error=false){
     const node=$('storage-status');
-    if(node.textContent!==t&&typeof node.animate==='function')node.animate([{opacity:.45},{opacity:1}],{duration:200,easing:'ease-out'});
-    node.textContent=t;node.classList.toggle('error',error);
+    if(!reducedMotion()&&node.textContent!==t&&typeof node.animate==='function')node.animate([{opacity:.45},{opacity:1}],{duration:200,easing:'ease-out'});
+    node.textContent=t;node.classList.toggle('error',error);node.title=t;
+    window.ArtistWorkspace?.status(t,error);if(data)paintTasks();
   }
   /* 复制到剪贴板。file:// 下 clipboard API 通常可用，失败时退回选中文本再 execCommand 的老办法。 */
   async function copyText(text,what){
@@ -1716,7 +2159,7 @@ dialog[open]::backdrop{opacity:1}
     try{permission=await handle.queryPermission({mode:'readwrite'});}catch{}
     if(permission==='granted'){
       try{await adoptFolder(handle,{from:'上次的文件夹',remember:false});}
-      catch(error){status('上次的数据文件夹打不开：'+error.message+'；请点顶部「数据库文件夹」重新选择。',true);}
+      catch(error){status('上次的数据文件夹打不开：'+error.message+'；请点顶部的文件夹按钮重新选择。',true);}
       return;
     }
     if(permission!=='prompt'){$('resume-folder').hidden=true;await ArtistFolderMemory.forget();return;}
@@ -1727,11 +2170,11 @@ dialog[open]::backdrop{opacity:1}
       try{
         const granted=await handle.requestPermission({mode:'readwrite'});
         if(granted==='granted')await adoptFolder(handle,{from:'上次的文件夹',remember:false});
-        else{await ArtistFolderMemory.forget();button.hidden=true;status('没有继续使用上次的文件夹，请点顶部「数据库文件夹」重新选择。',true);}
+        else{await ArtistFolderMemory.forget();button.hidden=true;status('没有继续使用上次的文件夹，请点顶部的文件夹按钮重新选择。',true);}
       }catch(error){button.hidden=true;status('继续使用上次的文件夹失败：'+error.message+'；请重新选择。',true);}
       finally{button.disabled=false;}
     };
-    status(`记得你上次用的是「${name}」：点右边按钮继续用它，或点顶部「数据库文件夹」换一个。`);
+    status(`记得你上次用的是「${name}」：点「继续使用上次的文件夹」，或点顶部的文件夹按钮换一个。`);
   }
   // 所有落盘串行执行。异步任务传入更新函数，在轮到自己时合并最新数据。
   let saveTail=Promise.resolve(),pendingSaves=0,saveControls=[];
@@ -1758,7 +2201,7 @@ dialog[open]::backdrop{opacity:1}
     saveTail=operation.catch(()=>{});return operation;
   }
   function reset(){state.category='全部';state.tags.clear();state.scores.clear();state.query='';$('search').value='';}
-  function showImage(a,w){ArtistViewer.open({title:a.name,uid:a.uid,work:w,caption:w.caption,persist:true});}
+  function showImage(a,w){ArtistViewer.open({title:a.name,uid:a.uid,work:w,caption:w.caption,persist:true,items:a.works||(draft?.uid===a.uid?draft.works:null)});}
   /* 一格作品的稳定编号：重画之后靠它认出「还是这一格」，好让它滑到新位置而不是跳过去。
      既没有作品编号也没有来源链接的，只能拿它在列表里的位置凑合（这种一格本来也没什么可对的）。 */
   const workKey=(uid,w,slot)=>uid+':'+(w.kind==='test'?`test${w.testSeq||1}`:(w.id||w.url||'i'+slot));
@@ -1783,8 +2226,8 @@ dialog[open]::backdrop{opacity:1}
     const figure=el('figure','work'),open=btn('',()=>showImage(a,w),'thumb'),img=el('img');
     figure.dataset.work=workKey(a.uid,w,slot);
     if(w.kind==='test')figure.classList.add('is-test');
-    open.setAttribute('aria-label',`查看 ${a.name} 的${w.kind==='test'?'测试风格图片':'作品 '+(slot+1)}`);
-    img.alt=a.name+' 的作品';ArtistImages.bind(img,a.uid,w,'card:'+a.uid,'thumb');open.append(img);
+    open.setAttribute('aria-label',`查看 ${a.name} 的${w.kind==='test'?'测试风格图片 '+(w.testSeq||1):'作品 '+(slot+1)}`);
+    img.alt=a.name+' 的'+(w.kind==='test'?'测试风格 '+(w.testSeq||1):'作品 '+(slot+1));ArtistImages.bind(img,a.uid,w,'card:'+a.uid,'thumb');open.append(img);
     const caption=el('figcaption');caption.append(slotLabel(a,w,slot),deleteSlotButton(a,w));
     figure.append(open,caption);
     return figure;
@@ -1936,30 +2379,30 @@ dialog[open]::backdrop{opacity:1}
       if(box){box.classList.remove('is-generating');box.replaceChildren(...previous);unqueuedMark(box);}
     }finally{generating=false;}
   }
+  function chooseSlotImage(a,index){
+    const input=el('input');input.type='file';input.accept=UPLOAD_TYPES.join(',');input.multiple=true;
+    input.onchange=()=>{const files=[...input.files];if(files.length)dropImages(a,index,files);};input.click();
+  }
   function artistCard(a){
-    const article=el('article','artist'),info=el('div','artist-info'),top=el('div','artist-top');article.dataset.artist=a.name;
-    const numbers=el('div','artist-numbers'),countLabel=el('span','work-count','作品数量：'+(a.counts?.total??'未读取')+'（'+(a.counts?.beforeTotal??'未读取')+'）');
-    countLabel.title=a.counts?.beforeDate?'括号内数量使用的截至日期：'+a.counts.beforeDate+(a.counts.beforeDate!==data.cutoffDate?'；设置已变更，点击刷新后更新。':''):'括号内为截至日期数量，点击刷新读取。';
-    numbers.append(el('span','serial',String(seqOf(a)).padStart(4,'0')),countLabel);top.append(numbers);
-    const heading=el('h2'),nameButton=el('button','artist-name',a.name);nameButton.type='button';nameButton.title='点击复制画师 tag';
-    nameButton.onclick=()=>copyText(a.name,'画师 tag');heading.append(nameButton);info.append(top,heading);
-    if(a.alias)info.append(el('span','alias',a.alias));
-    if(a.basis)info.append(el('span','basis',a.basis));
-    if(a.description)info.append(el('p','description',a.description));
+    const article=el('article','artist'),info=el('div','artist-info'),identity=el('div','artist-identity'),row=el('div','name-row');
+    article.dataset.artist=a.name;article.setAttribute('aria-label','画师 '+a.name);
+    const heading=el('h2'),name=btn(a.name,()=>copyText(a.name,'画师 tag'),'artist-name');name.title='点击复制画师 tag';name.setAttribute('aria-label','复制画师 tag：'+a.name);heading.append(name);
+    row.append(el('span','serial',String(seqOf(a)).padStart(4,'0')),heading);if(a.alias)row.append(el('span','alias',a.alias));
     const meta=el('div','artist-meta');meta.append(el('span',a.category?'primary':'pending-badge',a.category||'待判断'));
-    if(a.tags.length){const ts=el('div','secondary');a.tags.forEach(t=>ts.append(el('span','',t)));meta.append(ts);}
-    const actions=el('div','artist-actions');actions.append(btn('编辑',()=>startEdit(a),'edit-button'),deleteArtistButton(a));if(a.artistUrl)actions.append(link('画师页面 ↗',a.artistUrl,'edit-button'));info.append(actions);
-    const works=el('div','works');if(!a.works.length){const empty=el('div','unavailable');empty.append(el('strong','',a.status||'还没有作品图片'),el('span','',a.note||'编辑画师，上传你想参考的作品。'));works.append(empty);}
-    const reserve=reservedOf(),slots=FolderStore.previewWorks(a,PREVIEW_SLOTS,reserve);
-    slots.forEach((w,i)=>{
-      /* 固定格空着的时候给一个「生成」入口：点了就用设置里的生图参数向 NovelAI 要一张测试风格图。 */
-      const node=w?workFigure(a,w,i):(i>=PREVIEW_SLOTS-reserve?generateSlot(a,PREVIEW_SLOTS-i):el('div','work work-empty'));
-      attachDrop(node,a,i);works.append(node);
+    if(a.tags.length){const tags=el('div','secondary');a.tags.forEach(t=>tags.append(el('span','',t)));meta.append(tags);}
+    if(Number.isSafeInteger(a.score)&&a.score>=1&&a.score<=5){const score=el('span','score-badge score-'+a.score,'参考 '+a.score+' / 5');score.setAttribute('aria-label','参考评分 '+a.score+' 分');meta.append(score);}
+    identity.append(row,meta);
+    const actions=el('div','artist-actions');actions.append(btn('编辑',()=>startEdit(a),'edit-button'));
+    if(a.artistUrl){const source=link('↗',a.artistUrl,'edit-button');source.setAttribute('aria-label','打开 '+a.name+' 的画师页面');source.title='画师页面';actions.append(source);}
+    const menu=el('details','action-menu card-menu'),summary=el('summary','','···'),panel=el('div','menu-panel');summary.setAttribute('aria-label',a.name+' 的更多操作');panel.append(deleteArtistButton(a));menu.append(summary,panel);actions.append(menu);info.append(identity,actions);
+    const works=el('div','works'),reserve=reservedOf(),slots=FolderStore.previewWorks(a,PREVIEW_SLOTS,reserve);
+    slots.forEach((w,i)=>{const node=w?workFigure(a,w,i):i>=PREVIEW_SLOTS-reserve?generateSlot(a,PREVIEW_SLOTS-i):btn('添加图片',()=>chooseSlotImage(a,i),'work work-empty');
+      if(!w&&i<PREVIEW_SLOTS-reserve){node.setAttribute('aria-label','为 '+a.name+' 的第 '+(i+1)+' 格添加图片');node.title='选择图片或拖入此格';}attachDrop(node,a,i);works.append(node);
     });
-    if(a.note)works.append(el('p','sample-note',a.note));
-    article.append(info,works,meta);
-    if(Number.isSafeInteger(a.score)&&a.score>=1&&a.score<=5)article.append(el('span','score-badge score-'+a.score,String(a.score)));
-    return article;
+    const footer=el('div','artist-footer'),count=el('span','work-count','站点作品 '+(a.counts?.total??'未读取')+' · 截至日期前 '+(a.counts?.beforeTotal??'未读取'));
+    count.title='本库收录 '+a.works.length+' 张图片；截至日期：'+(a.counts?.beforeDate||data.cutoffDate)+(a.counts?.beforeDate&&a.counts.beforeDate!==data.cutoffDate?'（设置已变更，请刷新资料）':'');footer.append(count);
+    if(a.description||a.note||a.basis){const notes=el('details','artist-notes');notes.append(el('summary','','画风与备注'));if(a.description)notes.append(el('p','description',a.description));if(a.note)notes.append(el('p','sample-note',a.note));if(a.basis)notes.append(el('p','basis',a.basis));footer.append(notes);}
+    article.append(info,works,footer);return article;
   }
   /* 认草稿有两种情况：新建时 rows 里放的就是 draft 本身；编辑已有画师时按 editingId 认，
      不能按 draft.uid——刷新同步到正式名之后 draft.uid 会和库里存的那条不一样。 */
@@ -1970,19 +2413,22 @@ dialog[open]::backdrop{opacity:1}
   function cardKey(a){
     const active=genQueue.current,waiting=active&&active.uid===a.uid;
     const editing=draft&&(a===draft||(editingId&&a.uid===editingId));
+    // 编辑器有自己的草稿生命周期：后台任务与筛选不能重建输入框或选图器。
+    if(editing)return 'edit/'+editorRevision;
     const queue=waiting?`run${genQueue.waiting?1:0}`:`q${genQueue.positionOf(item=>item.uid===a.uid)||0}`;
     return `${editing?'edit':'show'}/${reservedOf()}/${PREVIEW_SLOTS}/${queue}/${JSON.stringify(editing?draft:a)}`;
   }
   /* 卡片内容就地更新完了（编辑态里那一排作品格），同步一下指纹。 */
-  const markEditorPainted=()=>{if(draft)ArtistGallery.markPainted(draft.uid);};
+  const markEditorPainted=()=>{if(draft)ArtistGallery.markPainted(editingId||draft.uid);};
   function editingCard(a){
     const article=el('article','artist is-editing'),info=el('div','artist-info');
-    /* 顶部的数量：括号外是这本库里存了几张，括号里是站点上这位画师一共有多少张（与浏览态卡片同一个写法）。 */
-    const countText=()=>'作品数量：'+draft.works.length+'（'+(draft.counts?.total??'未读取')+'）';
+    /* 编辑态明确区分本库已收录图片与站点作品总数。 */
+    const countText=()=>'本库图片 '+draft.works.length+' · 站点作品 '+(draft.counts?.total??'未读取');
+    article.setAttribute('aria-label','编辑画师 '+(draft.name||'新画师'));
     const numbers=el('div','artist-numbers'),workCount=el('span','work-count',countText());numbers.append(el('span','serial',String(seqOf(draft)).padStart(4,'0')),workCount);info.append(numbers);
     const field=(label,node)=>{const wrap=el('label','edit-field');wrap.append(el('span','edit-label',label),node);return wrap;};
     const fieldBox=(label,node)=>{const wrap=el('div','edit-field edit-field-wide');wrap.append(el('span','edit-label',label),node);return wrap;};
-    const nameInput=el('input');nameInput.value=draft.name;nameInput.maxLength=160;nameInput.placeholder='画师名字（必填）';nameInput.oninput=()=>{
+    const nameInput=el('input');nameInput.value=draft.name;nameInput.required=true;nameInput.maxLength=160;nameInput.placeholder='画师名字（必填）';nameInput.oninput=()=>{
       /* 手改名字就让旧的编号、数量、笔名作废——它们都属于上一个名字。
          放在这里而不是保存时判断：程序自己同步到的正式名不该被当成改名（那正是刚取回的新数据）。 */
       if(draft.name!==nameInput.value){draft.counts=null;draft.danbooruId=null;draft.aliases=[];draft.alias=null;}
@@ -2055,18 +2501,20 @@ dialog[open]::backdrop{opacity:1}
     const descInput=el('textarea');descInput.rows=3;descInput.maxLength=5000;descInput.value=draft.description||'';descInput.placeholder='记录画风和特点';descInput.oninput=()=>draft.description=descInput.value;
     const noteInput=el('textarea');noteInput.rows=2;noteInput.maxLength=5000;noteInput.value=draft.note||'';noteInput.placeholder='备注';noteInput.oninput=()=>draft.note=noteInput.value;
     const grid=el('div','edit-grid');grid.append(field('画师名字',nameInput),field('主分类',categorySelect),field('画师页面链接',urlInput),scoreField,fieldBox('标签',tagEditor),aliasField);
-    editorError=el('p','error');info.append(grid,field('画风描述',descInput),field('备注',noteInput),editorError);
+    editorError=el('p','error');editorError.setAttribute('role','alert');info.append(grid,field('画风描述',descInput),field('备注',noteInput),editorError);
     const actions=el('div','artist-actions');actions.append(btn('保存',saveDraft,'action primary-action'),btn('取消',cancelEdit,'action'),btn('刷新',refreshCurrentArtist,'action'));
     const remove=removeButton();if(!editingId)remove.hidden=true;actions.append(remove);info.append(actions);
     const works=el('div','works');
     /* 作品格单独可重画：从 Danbooru 勾一张就补一张，不动整张卡片——
        重画整张会把下面正在挑作品的候选列表一起冲掉。 */
     paintEditorWorks=()=>{
+      ArtistImages.dispose('editor');
       workCount.textContent=countText();
       works.replaceChildren(...draft.works.map((w,i)=>{
         const figure=el('figure','work'),thumb=btn('',()=>showImage({uid:draft.uid,name:draft.name},w),'thumb'),img=el('img');
         figure.dataset.work=workKey(draft.uid,w,i);
         if(w.kind==='test')figure.classList.add('is-test');
+        thumb.setAttribute('aria-label','预览 '+draft.name+' 的图片 '+(i+1));
         img.alt=draft.name+' 的作品';ArtistImages.bind(img,draft.uid,w,'editor','thumb');thumb.append(img);
         const caption=el('figcaption');caption.append(el('span','',w.kind==='test'?`测试风格 ${w.testSeq||1}`:'作品 '+(i+1)));
         caption.append(btn('移除',()=>{const settle=rememberWorkSlots();draft.works.splice(i,1);paintEditorWorks();markEditorPainted();settle();},'danger-link'));
@@ -2082,33 +2530,45 @@ dialog[open]::backdrop{opacity:1}
     article.append(info,works,expand);return article;
   }
   /* 当前筛选条件下的画师。渲染按它出卡片；「批量生成测试风格图」也按它填默认序号段。 */
-  function currentRows(){
-    const activeTags=[...state.tags];
-    return data.artists.filter(a=>(state.category==='全部'||(state.category==='待判断'?!a.category:a.category===state.category))&&activeTags.every(t=>a.tags.includes(t))&&(state.scores.size===0||state.scores.has(a.score||0))&&a.name.toLowerCase().includes(state.query));
+  function currentRows(){return libraryIndex.select(data.artists,state);}
+  function paintTasks(){
+    const tasks=[batchRunning?'正在采集画师':'',syncingAll?'正在刷新资料':'',generating?'正在生成测试图':'',genQueue.pending?'等待生成 '+genQueue.pending+' 项':''].filter(Boolean).join(' · ');
+    $('task-controls').hidden=!tasks;$('task-label').textContent=tasks;
+    return tasks;
   }
   function render(){
-    $('history-date').value=data.cutoffDate;
-    $('save-large').checked=data.saveLargeImages===true;
-    $('work-order').value=data.workOrder;
-    /* 分类计数一趟走完：原来是每个分类各过滤一遍全部画师，八个分类就是八趟。 */
-    const counts=new Map([['全部',data.artists.length],['待判断',0]]);for(const c of data.categories)counts.set(c,0);
-    for(const a of data.artists){if(a.category&&counts.has(a.category))counts.set(a.category,counts.get(a.category)+1);else if(!a.category)counts.set('待判断',counts.get('待判断')+1);}
-    $('categories').replaceChildren(...['全部',...data.categories,'待判断'].map(c=>{const b=btn(c,()=>{state.category=c;render();},c===state.category?'active':'');b.setAttribute('aria-pressed',String(c===state.category));b.append(el('span','n',counts.get(c)||0));return b;}));
-    $('tags').replaceChildren(...data.tags.map(t=>{const b=btn(t,()=>{state.tags.has(t)?state.tags.delete(t):state.tags.add(t);render();},state.tags.has(t)?'active':'');b.setAttribute('aria-pressed',String(state.tags.has(t)));return b;}));
-    /* 分数精确匹配、可多选；0 代表未评分 */
-    const toggleScore=value=>{state.scores.has(value)?state.scores.delete(value):state.scores.add(value);render();};
-    $('scores').replaceChildren(...[1,2,3,4,5].map(n=>{
-      const on=state.scores.has(n),b=btn(String(n),()=>toggleScore(n),`score-pick score-${n}${on?' active':''}`);
-      b.setAttribute('aria-pressed',String(on));b.setAttribute('aria-label',n+' 分');b.title=n+' 分';return b;
-    }),(()=>{const on=state.scores.has(0),b=btn('未评分',()=>toggleScore(0),`score-any${on?' active':''}`);b.setAttribute('aria-pressed',String(on));return b;})());
-    const rows=currentRows();
+    const restoreFocus=window.ArtistWorkspace?.captureFilterFocus();
+    $('history-date').value=data.cutoffDate;$('save-large').checked=data.saveLargeImages===true;$('work-order').value=data.workOrder;
+    const summary=libraryIndex.summary(data.artists),counts=summary.counts;
+    const signature=JSON.stringify([data.categories,data.tags,[...counts],state.category,[...state.tags],[...state.scores]]);
+    // 任务进度或搜索变化不重新创建筛选按钮；选择变化时恢复到同一个按钮。
+    if(signature!==filterSignature){
+      filterSignature=signature;
+      $('categories').replaceChildren(...['全部',...data.categories,'待判断'].map(c=>{
+        const b=btn(c,()=>{state.category=c;render();},c===state.category?'active':'');b.dataset.filterKey='category:'+c;b.setAttribute('aria-pressed',String(c===state.category));b.append(el('span','n',counts.get(c)||0));return b;
+      }));
+      $('tags').replaceChildren(...data.tags.map(t=>{const b=btn(t,()=>{state.tags.has(t)?state.tags.delete(t):state.tags.add(t);render();},state.tags.has(t)?'active':'');b.dataset.filterKey='tag:'+t;b.setAttribute('aria-pressed',String(state.tags.has(t)));return b;}));
+      const toggleScore=value=>{state.scores.has(value)?state.scores.delete(value):state.scores.add(value);render();};
+      $('scores').replaceChildren(...[1,2,3,4,5,0].map(n=>{const on=state.scores.has(n),label=n?n+' 分':'未评分',b=btn(n?String(n):label,()=>toggleScore(n),(n?'score-pick score-'+n:'score-any')+(on?' active':''));b.dataset.filterKey='score:'+n;b.setAttribute('aria-pressed',String(on));b.setAttribute('aria-label',label);b.title=label;return b;}));
+    }
+    const chips=[];
+    const chip=(key,label,remove)=>{const b=btn(label+' ×',()=>{remove();render();},'filter-chip');b.dataset.filterKey=key;b.setAttribute('aria-label','移除筛选：'+label);chips.push(b);};
+    if(state.category!=='全部')chip('category',state.category,()=>state.category='全部');
+    for(const tag of state.tags)chip('tag:'+tag,tag,()=>state.tags.delete(tag));
+    for(const score of state.scores)chip('score:'+score,score?score+' 分':'未评分',()=>state.scores.delete(score));
+    if(state.query)chip('query','搜索：'+state.query,()=>{state.query='';$('search').value='';});
+    $('active-filters').replaceChildren(...chips);$('active-filters').hidden=!chips.length;
+    const rows=currentRows(),matched=rows.length;
     if(draft&&!editingId)rows.push(draft);
-    /* 列表换人之后的动效由画廊负责：活下来的卡片从旧位置滑到新位置，新来的在原位淡入。
-       这里不再给整屏再加一层入场动画——两层叠在一起，就是之前「一改东西整页闪一下」的观感。 */
-    const gallery=$('gallery');
-    ArtistGallery.render(gallery,rows,card,cardKey);
-    $('count').textContent=`找到 ${rows.length} / ${data.artists.length} 位 · 连续滚动，按需加载${state.tags.size>1?' · 同时包含所选标签':''}`;$('empty').hidden=rows.length!==0;
-    $('library-summary').textContent=`${data.artists.length} 位画师 · ${data.artists.reduce((n,a)=>n+a.works.length,0)} 张作品 · 由你自由整理`;$('sample-date').textContent=data.date?'初始样本日期：'+data.date:'';
+    else if(draft&&editingId&&!rows.some(a=>a.uid===editingId)){const editing=data.artists.find(a=>a.uid===editingId);if(editing)rows.unshift(editing);}
+    ArtistGallery.render($('gallery'),rows,card,cardKey);
+    $('count').textContent=matched+' / '+summary.total+(draft?' · 编辑中':'');
+    $('empty').hidden=rows.length!==0;
+    $('library-summary').textContent=summary.total+' 位画师 · '+summary.works+' 张作品参考 · '+summary.tests+' 张测试风格图';
+    $('sample-date').textContent=data.date?'样本日期 '+data.date:'';
+    const tasks=paintTasks();
+    window.ArtistWorkspace?.update({connected:!!folder,total:summary.total,rows:rows.length,category:state.category,editing:!!draft,tasks,filterCount:chips.length});
+    restoreFocus?.();
   }
   let editorPicker=null,editorHost=null,editorError=null,editorToggle=null,editorExpand=null,paintEditorWorks=null;
   function setEditorError(message){if(editorError)editorError.textContent=message;}
@@ -2118,7 +2578,7 @@ dialog[open]::backdrop{opacity:1}
   function focusEditorWorks(){
     if(!draft)return;
     requestAnimationFrame(()=>{
-      document.querySelector('.artist-slot[data-uid="'+(editingId||draft.uid)+'"] .works')?.scrollIntoView({block:'nearest',behavior:'smooth'});
+      document.querySelector('.artist-slot[data-uid="'+(editingId||draft.uid)+'"] .works')?.scrollIntoView({block:'nearest',behavior:reducedMotion()?'auto':'smooth'});
     });
   }
   /* 勾选即加入：候选列表里勾一张，这里就把它的预览图存进草稿的作品列表，并就地补上那一格。
@@ -2155,7 +2615,7 @@ dialog[open]::backdrop{opacity:1}
     requestAnimationFrame(()=>{
       ArtistGallery.mount(uid);
       const slot=find();if(!slot)return;
-      slot.scrollIntoView({block:'center',behavior:'smooth'});
+      slot.scrollIntoView({block:'center',behavior:reducedMotion()?'auto':'smooth'});
       /* 平滑滚动期间上下方的卡片会按需挂载与释放，文档高度一直在变，目标位置会跟着漂。
          等滚动结束再校验一次：已经对齐就不动它，偏了才瞬时补齐，不叠第二层动画。 */
       setTimeout(()=>{
@@ -2169,15 +2629,16 @@ dialog[open]::backdrop{opacity:1}
     const article=uid?document.querySelector('.artist-slot[data-uid="'+uid+'"] article'):null;
     if(!article){then();return;}
     article.classList.add('is-morphing');
-    setTimeout(then,130);
+    setTimeout(then,reducedMotion()?0:130);
   }
   function startEdit(a){
     if(busy)return;
+    $('quick-dialog').close();
     const previous=editingId;
     closeEditor();
     editingId=a?.uid||null;
     draft=a?clone(a):{uid:uid(),name:'',category:null,score:null,aliases:[],alias:null,tags:[],artistUrl:'',description:'',note:'',works:[]};
-    if(editingId)ArtistGallery.pin(editingId,true);
+    editorRevision++;ArtistGallery.pin(editingId||draft.uid,true);
     morphAway(previous||editingId,()=>{render();focusEditingCard();autoOpenPicker();});
   }
   /* 设置里开了「编辑画师时自动展开 danbooru 作品」：一进编辑态就把候选列表拉出来。
@@ -2191,7 +2652,7 @@ dialog[open]::backdrop{opacity:1}
     if(busy||uploading)return;
     morphAway(editingId,()=>{closeEditor();render();});
   }
-  function closeEditor(){if(editingId)ArtistGallery.pin(editingId,false);closeWorkPicker();editingId=null;draft=null;editorError=null;editorToggle=null;editorExpand=null;paintEditorWorks=null;}
+  function closeEditor(){if(draft)ArtistGallery.pin(editingId||draft.uid,false);ArtistImages.dispose('editor');closeWorkPicker();editingId=null;draft=null;editorError=null;editorToggle=null;editorExpand=null;paintEditorWorks=null;}
   /* 从候选里挑出唯一可信的那一位：名字完全一致优先，只有一位候选时也接受。
      其余情况返回 null —— 宁可没有编号，也不写错。 */
   const pickCandidate=(found,name)=>{
@@ -2299,7 +2760,7 @@ dialog[open]::backdrop{opacity:1}
         }
       }
     }finally{busy=false;}
-    render();
+    closeWorkPicker();editorRevision++;render();
     status(notes.length?'已刷新 '+name+'：'+notes.join('；')+'。保存后才会落盘。':'已刷新 '+name+' 的作品数量与笔名。保存后才会落盘。',bad);
   }
   async function saveDraft(){
@@ -2373,7 +2834,8 @@ dialog[open]::backdrop{opacity:1}
     const parts=[];
     if(typeof onMove==='function'){
       const handle=el('button','manage-handle','⠿');handle.type='button';handle.draggable=true;
-      handle.setAttribute('aria-label','拖动排序：'+name);
+      handle.setAttribute('aria-label','调整顺序：'+name+'，上下方向键移动');
+      handle.onkeydown=event=>{if(!['ArrowUp','ArrowDown'].includes(event.key)||busy)return;event.preventDefault();onMove(index,index+(event.key==='ArrowUp'?-1:1));};
       handle.ondragstart=event=>{dragging={name,index};row.classList.add('is-dragging');event.dataTransfer?.setData('text/plain',name);};
       handle.ondragend=()=>{dragging=null;row.classList.remove('is-dragging');clearDropMarks();};
       row.ondragover=event=>{if(!dragging||dragging.name===name)return;event.preventDefault();clearDropMarks();row.classList.add(dragging.index<index?'drop-after':'drop-before');};
@@ -2394,7 +2856,7 @@ dialog[open]::backdrop{opacity:1}
     const isCategory=which!=='tag';
     $('tab-category').classList[isCategory?'add':'remove']('active');
     $('tab-tag').classList[isCategory?'remove':'add']('active');
-    $('tab-category').setAttribute('aria-selected',String(isCategory));
+    $('tab-category').setAttribute('aria-selected',String(isCategory));$('tab-category').tabIndex=isCategory?0:-1;$('tab-tag').tabIndex=isCategory?-1:0;
     $('tab-tag').setAttribute('aria-selected',String(!isCategory));
     $('panel-category').hidden=!isCategory;
     $('panel-tag').hidden=isCategory;
@@ -2656,6 +3118,7 @@ dialog[open]::backdrop{opacity:1}
     if(!value){status('选中的文字是空的，没有可识别的画师。',true);return;}
     cancelLookup();clearCandidates();
     const input=$('quick-input');input.value=value;
+    window.ArtistWorkspace?.openQuick();
     const section=$('quick-add');
     if(section?.scrollIntoView)section.scrollIntoView({block:'center'});
     if(input.focus)input.focus();
@@ -2906,7 +3369,7 @@ dialog[open]::backdrop{opacity:1}
     finally{enqueueBulk=false;}
     paintQueue();render();
     node.textContent=`已排入 ${queued} 条${skipped?`，跳过 ${skipped} 条（已经在队列里）`:''}。`;
-    status(`已排入 ${queued} 条生成需求${skipped?`（${skipped} 条已在队列里）`:''}：一条一条跑，两条之间隔 5±3 秒，顶部「排队 N」可以一次清空。`);
+    status(`已排入 ${queued} 条生成需求${skipped?`（${skipped} 条已在队列里）`:''}：一条一条跑，两条之间隔 5±3 秒，任务栏的「排队 N」可以取消等待项。`);
     $('gen-batch').close();
   }
   /* 打开时默认就填你当前看到的那一段：采集完切到「待判断」之后，最常见的就是给这批新人生成。 */
@@ -2956,8 +3419,8 @@ dialog[open]::backdrop{opacity:1}
     $('gen-check').onclick=()=>checkExtension();
     $('history-date').onchange=async()=>{const date=$('history-date').value;if(!/^\d{4}-\d{2}-\d{2}$/.test(date)){ $('history-date').value=data.cutoffDate;return;}const next=clone(data);next.cutoffDate=date;await save(next,'已保存截至日期；下次保存画师时会按新日期更新该画师的数量。');};
     $('work-order').onchange=async()=>{const value=$('work-order').value;if(!WORK_ORDERS.includes(value)){ $('work-order').value=data.workOrder;return;}const next=clone(data);next.workOrder=value;await save(next,'已改为按「'+WORK_ORDER_LABELS[value]+'」采集作品');};
-    $('add-artist').onclick=()=>startEdit(null);$('quick-form').onsubmit=e=>{e.preventDefault();detectArtist();};$('quick-input').oninput=quickChanged;$('quick-input').oncompositionend=quickChanged;bindExtensionMessages();
-    $('quick-manual').onclick=()=>{cancelLookup();startEdit(null);const value=$('quick-input').value.trim();if(value&&draft){try{const p=ArtistLookup.plan(value);if(p.kind==='name')draft.name=p.query;else if(p.kind==='url')draft.artistUrl=p.query;render();}catch{}}};
+    $('add-artist').onclick=()=>startEdit(null);$('quick-form').onsubmit=e=>{e.preventDefault();detectArtist();};$('quick-input').oninput=quickChanged;$('quick-input').addEventListener('compositionend',quickChanged);bindExtensionMessages();
+    $('quick-manual').onclick=()=>{cancelLookup();startEdit(null);const value=$('quick-input').value.trim();if(value&&draft){try{const p=ArtistLookup.plan(value);if(p.kind==='name')draft.name=p.query;else if(p.kind==='url')draft.artistUrl=p.query;editorRevision++;render();}catch{}}};
     $('manage-tags').onclick=()=>{if(!busy){manageFilter.category='';manageFilter.tag='';$('category-search').value='';$('tag-search').value='';showManageTab('category');listCategories();listTags();$('tag-manager').showModal();}};$('close-tags').onclick=()=>$('tag-manager').close();
     $('tab-category').onclick=()=>showManageTab('category');$('tab-tag').onclick=()=>showManageTab('tag');
     $('sync-all').onclick=()=>{if(syncingAll){syncAllStop=true;return null;}return syncAllArtists();};
@@ -2966,16 +3429,19 @@ dialog[open]::backdrop{opacity:1}
     $('category-form').onsubmit=async e=>{e.preventDefault();if(busy)return;const name=$('new-category').value.trim();if(!name)return;if(data.categories.includes(name)){alert('这个分类已存在。');return;}const next=clone(data);next.categories.push(name);await save(next);$('new-category').value='';listCategories();};$('tag-form').onsubmit=async e=>{e.preventDefault();if(busy)return;const t=$('new-tag').value.trim();if(!t)return;if(data.tags.includes(t)){alert('这个标签已存在。');return;}const next=clone(data);next.tags.push(t);await save(next);$('new-tag').value='';listTags();};
     $('batch-artists').onclick=()=>{if(busy&&!batchRunning)return;/* 采集还在跑时只是把对话框收起来，别把进度和名单抹掉 */if(!batchRunning){$('batch-names').value='';$('batch-message').textContent='';$('batch-order').value=data.workOrder;disarmBatch();}$('batch-dialog').showModal();};$('close-batch').onclick=()=>$('batch-dialog').close();/* 收起 ≠ 取消：采集继续跑，要停请点「停止采集」 */$('batch-dialog').addEventListener('close',()=>disarmBatch());$('batch-stop').onclick=$('batch-stop-dialog').onclick=()=>{if(!batchRunning)return;batchStop=true;status('正在停止采集：当前这一位采集完就停，已经采集到的会保留。');};$('batch-form').onsubmit=batch;$('names-file').onchange=async e=>{try{const f=e.target.files[0];if(f){if(f.size>5*1024*1024)throw Error('TXT 名单不能超过 5 MB。');$('batch-names').value=await f.text();}}catch(error){$('batch-message').textContent=error.message;}finally{e.target.value='';}};
     $('export-data').onclick=exportData;$('import-data').onclick=()=>{if(!busy)$('import-file').click();};$('import-file').onchange=importData;
-    let searchTimer;$('search').oninput=e=>{state.query=e.target.value.trim().toLowerCase();clearTimeout(searchTimer);searchTimer=setTimeout(render,150);};$('reset').onclick=()=>{reset();render();};$('close-viewer').onclick=()=>$('viewer').close();
+    let searchTimer;
+    const searchChanged=e=>{if(e.isComposing)return;state.query=e.target.value.trim().toLowerCase();clearTimeout(searchTimer);searchTimer=setTimeout(render,120);};
+    $('search').oninput=searchChanged;$('search').addEventListener('compositionend',searchChanged);
+    $('library-sort').onchange=()=>{state.sort=$('library-sort').value;render();};$('reset').onclick=()=>{reset();render();};$('close-viewer').onclick=()=>$('viewer').close();
     ArtistViewer.init({getData:()=>data,getFolder:()=>folder,save,notify:status});
     $('viewer').addEventListener('close',()=>{ArtistImages.dispose('viewer');ArtistViewer.dispose();});$('save-original').onclick=()=>ArtistViewer.saveOriginal();
-    document.querySelectorAll('dialog').forEach(dialog=>dialog.addEventListener('click',event=>{if(event.target===dialog)dialog.close();}));
+    // 遮罩点击、键盘导航与导航焦点交由工作台统一处理。
     $('extension-status').onclick=checkExtension;
     /* 图片拖到格子以外的地方时，浏览器默认会直接打开那个文件、把当前页面顶掉（没保存的改动就没了）。
        在窗口这一层兜住：整页都不接受文件拖放，只有格子上的处理器会把事件拿走。 */
     window.addEventListener('dragover',event=>event.preventDefault());
     window.addEventListener('drop',event=>event.preventDefault());
-    window.addEventListener('beforeunload',e=>{if(volatile||busy||generating||syncingAll||batchRunning||!genQueue.idle){e.preventDefault();e.returnValue='';}});render();document.querySelectorAll('button,input,textarea,select').forEach(b=>b.disabled=true);$('choose-folder').disabled=false;$('extension-status').disabled=false;$('choose-folder').onclick=connectFolder;checkExtension().then(autoAccount);restoreFolder();
+    window.addEventListener('beforeunload',e=>{if(volatile||busy||generating||syncingAll||batchRunning||!genQueue.idle){e.preventDefault();e.returnValue='';}});render();document.querySelectorAll('button,input,textarea,select').forEach(b=>b.disabled=true);$('choose-folder').disabled=false;$('extension-status').disabled=false;$('choose-folder').onclick=connectFolder;window.ArtistWorkspace?.init({saveEditor:()=>{if(!busy&&!uploading&&draft)saveDraft();}});checkExtension().then(autoAccount);restoreFolder();
   }
   init();
 })();

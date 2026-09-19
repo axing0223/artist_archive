@@ -22,13 +22,14 @@
       record.objectUrl=URL.createObjectURL(blob);
       if(typeof Image==='function'){try{const decoder=new Image();decoder.src=record.objectUrl;await decoder.decode();}catch{}}
       if(record.controller!==controller||!bindings.has(img))return;
-      if(img.src&&img.animate){
+      const motion=()=>typeof matchMedia!=='function'||!matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if(motion()&&img.src&&img.animate){
         const out=img.animate([{opacity:1},{opacity:0}],{duration:130,easing:'ease-in',fill:'forwards'});
         await out.finished.catch(()=>{});out.cancel();
         if(record.controller!==controller||!bindings.has(img))return;
       }
       img.src=record.objectUrl;img.title='';
-      img.animate?.([{opacity:0},{opacity:1}],{duration:240,easing:'ease-out'});
+      if(motion())img.animate?.([{opacity:0},{opacity:1}],{duration:240,easing:'ease-out'});
     }
     catch(error){if(error.name!=='AbortError'&&record.controller===controller){record.img.classList.add('image-failed');record.img.title=error.message;record.img.alt='图片未加载：'+error.message;record.error?.(error);}}
   }
