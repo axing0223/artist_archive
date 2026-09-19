@@ -1827,3 +1827,39 @@ test('顶部额度分开显示张数、百分比与点数，重复点击合并�
  const first=getEl(elements,'opus-status').onclick(),second=getEl(elements,'opus-status').onclick();assert.equal(calls,1);release(info);await Promise.all([first,second]);
  assert.equal(getEl(elements,'quota-images').textContent,'约 1038 张');assert.equal(getEl(elements,'quota-percent').textContent,'60%');assert.equal(getEl(elements,'quota-points').textContent,'12345 点');
 });
+
+
+test('删除前面的画师后，只改变排序序号不应让后面的卡片重新取图',async()=>{
+ const {state}=await boot(),artist=bareArtist({uid:'0002-tester-manual',order:2});
+ const before=state.keyOf(artist);
+ assert.equal(state.keyOf({...artist,order:1}),before,'卡片显示的是稳定画师编号，排序下标不影响内容');
+ assert.notEqual(state.keyOf({...artist,note:'已修改'}),before,'实际显示的内容变化仍需更新');
+});
+
+
+for(const action of ['保存','删除画师'])test(action+'提前呈现后写盘失败：保留修改、恢复操作并允许重试',async()=>{
+ const {elements,state,ctx,dir}=await connectedApp();await runBatch(elements,'a\nb',false);
+ findText(lastRender(state)[0],'编辑').onclick();await wait(150);
+ const editor=lastRender(state)[0],note=findByPlaceholder(editor,'备注');note.value='尚未落盘的备注';note.oninput();
+ const button=findText(editor,action);if(action==='删除画师')await button.onclick();
+ const original=ctx.FolderStore.write,started=gate(),release=gate();let writes=0;
+ ctx.FolderStore.write=async()=>{writes++;started.resolve();await release.promise;throw Error('模拟磁盘不可写');};
+ const saving=button.onclick();await started.promise;
+ try{
+  assert.ok(lastRender(state).every(card=>!card.className.includes('is-editing')),'写盘未完成时已收起编辑器');
+  assert.equal(state.rows.length,action==='保存'?2:1);
+  assert.equal(elements.get('gallery').inert,true,'包括新挂载卡片在内的列表操作被锁定');
+  assert.equal(elements.get('storage-status').textContent,'正在保存…');
+  await button.onclick();findText(lastRender(state)[0],'编辑').onclick();
+  assert.equal(writes,1,'连续点击不会重复写入');assert.ok(lastRender(state).every(card=>!card.className.includes('is-editing')));
+ }finally{release.resolve();await saving;ctx.FolderStore.write=original;}
+ assert.equal(elements.get('gallery').inert,false);
+ assert.match(elements.get('storage-status').textContent,/文件保存失败.*修改暂留本页/);
+ assert.equal((await ctx.FolderStore.read(dir)).artists.length,2,'失败不能伪造磁盘成功');
+ // 后续保存从当前内存快照继续，不能丢失刚才未落盘的修改。
+ elements.get('save-large').checked=true;await elements.get('save-large').onchange();
+ const stored=await ctx.FolderStore.read(dir);
+ assert.equal(stored.artists.length,action==='保存'?2:1);
+ if(action==='保存')assert.equal(stored.artists[0].note,'尚未落盘的备注');
+ assert.equal(stored.saveLargeImages,true);
+});

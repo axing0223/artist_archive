@@ -37,12 +37,18 @@
       const rect=slot.getBoundingClientRect(),y=rect.top-top,from=before.get(slot.dataset.uid);
       if(from!==undefined){
         const delta=from-y;
-        if(Math.abs(delta)<1||y>limit+600||y+rect.height<-600)continue;
+        if(Math.abs(delta)<1||rect.top>limit+600||rect.top+rect.height<-600)continue;
         slot.animate([{transform:`translateY(${delta}px)`},{transform:'none'}],{duration:260,easing:'cubic-bezier(.22,.61,.36,1)'});
-      }else if(y<limit+200&&y>-400){
+      }else if(rect.top<limit+200&&rect.top>-400){
         slot.animate([{opacity:0,transform:'translateY(16px) scale(.985)'},{opacity:1,transform:'none'}],{duration:300,easing:'cubic-bezier(.22,.61,.36,1)'});
       }
     }
+  }
+  function positions(container){
+    const before=new Map();if(calm())return before;
+    const top=container.getBoundingClientRect().top;
+    for(const uid of mounted.keys())before.set(uid,slots.get(uid).getBoundingClientRect().top-top);
+    return before;
   }
   function render(container,rows,makeCard,key){
     const next=rows.map(a=>a.uid),same=uids.length>0&&next.length===uids.length&&next.every((uid,i)=>uid===uids[i]);
@@ -51,13 +57,17 @@
       /* 还是同一批画师、同样顺序，只是内容可能变了（刚保存了某一位）。
          只把指纹真的变了的那些重画；重建上千个占位会连整棵布局树一起丢掉，
          那正是保存后卡顿的来源。 */
-      for(const uid of mounted.keys())paint(slots.get(uid));
+      const changed=[...mounted.keys()].filter(uid=>painted.get(uid)!==keyFor(current[Number(slots.get(uid).dataset.index)]));
+      if(!changed.length)return;
+      const before=positions(container);
+      for(const uid of changed)paint(slots.get(uid));
+      // 编辑态收起也会改变高度；只测量可见卡片，沿用列表增减时的位移动画。
+      animateChanges(container,[...mounted.keys()].map(uid=>slots.get(uid)),before);
       return;
     }
     /* 记下每张「已经挂上了卡片」的占位现在在哪儿，一会儿要让它们滑到新位置去。
        空占位不记：那只是一块灰底，跳不跳没人看得出来。 */
-    const top=container.getBoundingClientRect().top,before=new Map();
-    for(const [uid,slot] of slots)if(mounted.has(uid))before.set(uid,slot.getBoundingClientRect().top-top);
+    const before=positions(container);
     observer?.disconnect();resize?.disconnect();
     const wanted=new Set(next);
     for(const [uid,slot] of slots)if(!wanted.has(uid)){if(mounted.has(uid)){ArtistImages.dispose('card:'+uid);mounted.delete(uid);}slots.delete(uid);painted.delete(uid);near.delete(uid);}

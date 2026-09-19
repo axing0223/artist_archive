@@ -151,24 +151,33 @@
     status(`记得你上次用的是「${name}」：点「继续使用上次的文件夹」，或点顶部的文件夹按钮换一个。`);
   }
   // 所有落盘串行执行。异步任务传入更新函数，在轮到自己时合并最新数据。
-  let saveTail=Promise.resolve(),pendingSaves=0,saveControls=[];
-  function save(next,message='已保存到数据文件夹'){
+  let saveTail=Promise.resolve(),pendingSaves=0;
+  const saveControls=new Map();
+  function lockSaveControls(){
+    // 惰性挂载的卡片也不可在写盘中再次修改；inert 不阻止页面滚动。
+    $('gallery').inert=true;
+    for(const node of document.querySelectorAll('button,input,textarea,select')){
+      if(!saveControls.has(node))saveControls.set(node,node.disabled);
+      node.disabled=true;
+    }
+  }
+  // onApplied 在数据校验合并后呈现本次操作，界面无需等待文件系统往返。
+  function save(next,message='已保存到数据文件夹',onApplied){
     const targetFolder=folder;
     if(pendingSaves++===0){
       busy=true;
-      saveControls=[...document.querySelectorAll('button,input,textarea,select')].map(e=>[e,e.disabled]);
-      saveControls.forEach(([e])=>e.disabled=true);
+      lockSaveControls();
     }
     const operation=saveTail.then(async()=>{
       try{
         if(targetFolder!==folder)throw Error('数据文件夹已经切换，未写入旧任务');
         data=typeof next==='function'?next(clone(data)):next;
-        status('正在保存…');data=await write(data,targetFolder);volatile=false;
+        status('正在保存…');onApplied?.();data=await write(data,targetFolder);volatile=false;
         const warnings=FolderStore.takeWarnings(),label=typeof message==='function'?message():message;status(warnings.length?label+'；'+warnings.join('；'):label,warnings.length>0);
         return true;
       }catch(error){volatile=true;status('文件保存失败：'+error.message+'；修改暂留本页，请导出备份。',true);return false;}
       finally{
-        if(--pendingSaves===0){saveControls.forEach(([e,disabled])=>e.disabled=disabled);saveControls=[];busy=false;}
+        if(--pendingSaves===0){saveControls.forEach((disabled,node)=>node.disabled=disabled);saveControls.clear();$('gallery').inert=false;busy=false;}
         render();
       }
     });
@@ -391,7 +400,8 @@
     // 编辑器有自己的草稿生命周期：后台任务与筛选不能重建输入框或选图器。
     if(editing)return 'edit/'+editorRevision;
     const queue=waiting?`run${genQueue.waiting?1:0}`:`q${genQueue.positionOf(item=>item.uid===a.uid)||0}`;
-    return `${editing?'edit':'show'}/${reservedOf()}/${PREVIEW_SLOTS}/${queue}/${JSON.stringify(editing?draft:a)}`;
+    // 删除导致 order 连续重排，但卡片显示稳定 uid 序号，不必让相邻作品重载。
+    return `show/${reservedOf()}/${PREVIEW_SLOTS}/${queue}/${JSON.stringify({...a,order:seqOf(a)})}`;
   }
   /* 卡片内容就地更新完了（编辑态里那一排作品格），同步一下指纹。 */
   const markEditorPainted=()=>{if(draft)ArtistGallery.markPainted(editingId||draft.uid);};
@@ -543,6 +553,8 @@
     const tasks=paintTasks();
     window.ArtistWorkspace?.update({connected:!!folder,total:summary.total,rows:rows.length,category:state.category,editing:!!draft,tasks,filterCount:chips.length});
     restoreFocus?.();
+    // 提前渲染或异步挂载产生的新控件也必须服从串行保存锁。
+    if(pendingSaves)lockSaveControls();
   }
   let editorPicker=null,editorHost=null,editorError=null,editorToggle=null,editorExpand=null,paintEditorWorks=null,editorFocusVersion=0;
   function focusFirstArtist(){
@@ -755,8 +767,6 @@
     /* 旧编号、数量、笔名的作废放在名字输入框里做，这里只负责把改过的名字落到 uid 上。 */
     draft.name=name;draft.artistUrl=url(draft.artistUrl);draft.tags=unique(draft.tags);draft.basis='';draft.status='';draft.works.forEach(w=>w.url=url(w.url));
     const edited=clone(draft),editing=editingId;
-    await new Promise(resolve=>morphAway(editing,resolve));
-    closeEditor();
     await save(next=>{
       const i=next.artists.findIndex(a=>a.uid===editing);
       if(editing&&i<0)throw Error('这位画师已经被删除或改名，请重新打开编辑');
@@ -768,16 +778,14 @@
         next.artists[i]=edited;
       }
       next.artists.forEach((a,j)=>a.order=j+1);next.tags=unique([...next.tags,...edited.tags]);return next;
-    },'已保存 '+name);
+    },'已保存 '+name,()=>{closeEditor();render();});
   }
 
   /* 删除画师。编辑态的「删除画师」和浏览卡片上的那个都走这里：删的是 uid 这一位；
      正在编辑的就是他时，顺手把编辑态收掉。 */
   async function removeArtist(uid=editingId){
     if(busy||uploading||!uid)return;
-    await new Promise(resolve=>morphAway(uid,resolve));
-    if(uid===editingId)closeEditor();
-    await save(next=>{next.artists=next.artists.filter(a=>a.uid!==uid);next.artists.forEach((a,i)=>a.order=i+1);return next;},'已删除画师');
+    await save(next=>{next.artists=next.artists.filter(a=>a.uid!==uid);next.artists.forEach((a,i)=>a.order=i+1);return next;},'已删除画师',()=>{if(uid===editingId)closeEditor();render();});
   }
   function confirmButton(label,armedLabel,onConfirm,cls='danger'){
     let armed=false,timer=null;

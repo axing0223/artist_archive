@@ -8,7 +8,8 @@
     "test": "node --test tests.mjs artist-id.test.mjs work-picker.test.mjs app-smoke.test.mjs image-performance.test.mjs extension-probe.test.mjs novelai.test.mjs image-gen.test.mjs generate-queue.test.mjs host-direct.test.mjs folder-memory.test.mjs build.test.mjs viewer.test.mjs library-index.test.mjs",
     "test:browser": "node browser-smoke.mjs",
     "preview": "node ui-preview.mjs",
-    "test:ui": "node browser-ui.mjs"
+    "test:ui": "node browser-ui.mjs",
+    "test:edit-performance": "node browser-edit-performance.mjs"
   },
   "engines": {
     "node": ">=20"

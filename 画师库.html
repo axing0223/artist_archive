@@ -1588,12 +1588,18 @@ to{opacity:1;transform:none}
       const rect=slot.getBoundingClientRect(),y=rect.top-top,from=before.get(slot.dataset.uid);
       if(from!==undefined){
         const delta=from-y;
-        if(Math.abs(delta)<1||y>limit+600||y+rect.height<-600)continue;
+        if(Math.abs(delta)<1||rect.top>limit+600||rect.top+rect.height<-600)continue;
         slot.animate([{transform:`translateY(${delta}px)`},{transform:'none'}],{duration:260,easing:'cubic-bezier(.22,.61,.36,1)'});
-      }else if(y<limit+200&&y>-400){
+      }else if(rect.top<limit+200&&rect.top>-400){
         slot.animate([{opacity:0,transform:'translateY(16px) scale(.985)'},{opacity:1,transform:'none'}],{duration:300,easing:'cubic-bezier(.22,.61,.36,1)'});
       }
     }
+  }
+  function positions(container){
+    const before=new Map();if(calm())return before;
+    const top=container.getBoundingClientRect().top;
+    for(const uid of mounted.keys())before.set(uid,slots.get(uid).getBoundingClientRect().top-top);
+    return before;
   }
   function render(container,rows,makeCard,key){
     const next=rows.map(a=>a.uid),same=uids.length>0&&next.length===uids.length&&next.every((uid,i)=>uid===uids[i]);
@@ -1602,13 +1608,17 @@ to{opacity:1;transform:none}
       /* 还是同一批画师、同样顺序，只是内容可能变了（刚保存了某一位）。
          只把指纹真的变了的那些重画；重建上千个占位会连整棵布局树一起丢掉，
          那正是保存后卡顿的来源。 */
-      for(const uid of mounted.keys())paint(slots.get(uid));
+      const changed=[...mounted.keys()].filter(uid=>painted.get(uid)!==keyFor(current[Number(slots.get(uid).dataset.index)]));
+      if(!changed.length)return;
+      const before=positions(container);
+      for(const uid of changed)paint(slots.get(uid));
+      // 编辑态收起也会改变高度；只测量可见卡片，沿用列表增减时的位移动画。
+      animateChanges(container,[...mounted.keys()].map(uid=>slots.get(uid)),before);
       return;
     }
     /* 记下每张「已经挂上了卡片」的占位现在在哪儿，一会儿要让它们滑到新位置去。
        空占位不记：那只是一块灰底，跳不跳没人看得出来。 */
-    const top=container.getBoundingClientRect().top,before=new Map();
-    for(const [uid,slot] of slots)if(mounted.has(uid))before.set(uid,slot.getBoundingClientRect().top-top);
+    const before=positions(container);
     observer?.disconnect();resize?.disconnect();
     const wanted=new Set(next);
     for(const [uid,slot] of slots)if(!wanted.has(uid)){if(mounted.has(uid)){ArtistImages.dispose('card:'+uid);mounted.delete(uid);}slots.delete(uid);painted.delete(uid);near.delete(uid);}
@@ -2218,24 +2228,33 @@ to{opacity:1;transform:none}
     status(`记得你上次用的是「${name}」：点「继续使用上次的文件夹」，或点顶部的文件夹按钮换一个。`);
   }
   // 所有落盘串行执行。异步任务传入更新函数，在轮到自己时合并最新数据。
-  let saveTail=Promise.resolve(),pendingSaves=0,saveControls=[];
-  function save(next,message='已保存到数据文件夹'){
+  let saveTail=Promise.resolve(),pendingSaves=0;
+  const saveControls=new Map();
+  function lockSaveControls(){
+    // 惰性挂载的卡片也不可在写盘中再次修改；inert 不阻止页面滚动。
+    $('gallery').inert=true;
+    for(const node of document.querySelectorAll('button,input,textarea,select')){
+      if(!saveControls.has(node))saveControls.set(node,node.disabled);
+      node.disabled=true;
+    }
+  }
+  // onApplied 在数据校验合并后呈现本次操作，界面无需等待文件系统往返。
+  function save(next,message='已保存到数据文件夹',onApplied){
     const targetFolder=folder;
     if(pendingSaves++===0){
       busy=true;
-      saveControls=[...document.querySelectorAll('button,input,textarea,select')].map(e=>[e,e.disabled]);
-      saveControls.forEach(([e])=>e.disabled=true);
+      lockSaveControls();
     }
     const operation=saveTail.then(async()=>{
       try{
         if(targetFolder!==folder)throw Error('数据文件夹已经切换，未写入旧任务');
         data=typeof next==='function'?next(clone(data)):next;
-        status('正在保存…');data=await write(data,targetFolder);volatile=false;
+        status('正在保存…');onApplied?.();data=await write(data,targetFolder);volatile=false;
         const warnings=FolderStore.takeWarnings(),label=typeof message==='function'?message():message;status(warnings.length?label+'；'+warnings.join('；'):label,warnings.length>0);
         return true;
       }catch(error){volatile=true;status('文件保存失败：'+error.message+'；修改暂留本页，请导出备份。',true);return false;}
       finally{
-        if(--pendingSaves===0){saveControls.forEach(([e,disabled])=>e.disabled=disabled);saveControls=[];busy=false;}
+        if(--pendingSaves===0){saveControls.forEach((disabled,node)=>node.disabled=disabled);saveControls.clear();$('gallery').inert=false;busy=false;}
         render();
       }
     });
@@ -2458,7 +2477,8 @@ to{opacity:1;transform:none}
     // 编辑器有自己的草稿生命周期：后台任务与筛选不能重建输入框或选图器。
     if(editing)return 'edit/'+editorRevision;
     const queue=waiting?`run${genQueue.waiting?1:0}`:`q${genQueue.positionOf(item=>item.uid===a.uid)||0}`;
-    return `${editing?'edit':'show'}/${reservedOf()}/${PREVIEW_SLOTS}/${queue}/${JSON.stringify(editing?draft:a)}`;
+    // 删除导致 order 连续重排，但卡片显示稳定 uid 序号，不必让相邻作品重载。
+    return `show/${reservedOf()}/${PREVIEW_SLOTS}/${queue}/${JSON.stringify({...a,order:seqOf(a)})}`;
   }
   /* 卡片内容就地更新完了（编辑态里那一排作品格），同步一下指纹。 */
   const markEditorPainted=()=>{if(draft)ArtistGallery.markPainted(editingId||draft.uid);};
@@ -2610,6 +2630,8 @@ to{opacity:1;transform:none}
     const tasks=paintTasks();
     window.ArtistWorkspace?.update({connected:!!folder,total:summary.total,rows:rows.length,category:state.category,editing:!!draft,tasks,filterCount:chips.length});
     restoreFocus?.();
+    // 提前渲染或异步挂载产生的新控件也必须服从串行保存锁。
+    if(pendingSaves)lockSaveControls();
   }
   let editorPicker=null,editorHost=null,editorError=null,editorToggle=null,editorExpand=null,paintEditorWorks=null,editorFocusVersion=0;
   function focusFirstArtist(){
@@ -2822,8 +2844,6 @@ to{opacity:1;transform:none}
     /* 旧编号、数量、笔名的作废放在名字输入框里做，这里只负责把改过的名字落到 uid 上。 */
     draft.name=name;draft.artistUrl=url(draft.artistUrl);draft.tags=unique(draft.tags);draft.basis='';draft.status='';draft.works.forEach(w=>w.url=url(w.url));
     const edited=clone(draft),editing=editingId;
-    await new Promise(resolve=>morphAway(editing,resolve));
-    closeEditor();
     await save(next=>{
       const i=next.artists.findIndex(a=>a.uid===editing);
       if(editing&&i<0)throw Error('这位画师已经被删除或改名，请重新打开编辑');
@@ -2835,16 +2855,14 @@ to{opacity:1;transform:none}
         next.artists[i]=edited;
       }
       next.artists.forEach((a,j)=>a.order=j+1);next.tags=unique([...next.tags,...edited.tags]);return next;
-    },'已保存 '+name);
+    },'已保存 '+name,()=>{closeEditor();render();});
   }
 
   /* 删除画师。编辑态的「删除画师」和浏览卡片上的那个都走这里：删的是 uid 这一位；
      正在编辑的就是他时，顺手把编辑态收掉。 */
   async function removeArtist(uid=editingId){
     if(busy||uploading||!uid)return;
-    await new Promise(resolve=>morphAway(uid,resolve));
-    if(uid===editingId)closeEditor();
-    await save(next=>{next.artists=next.artists.filter(a=>a.uid!==uid);next.artists.forEach((a,i)=>a.order=i+1);return next;},'已删除画师');
+    await save(next=>{next.artists=next.artists.filter(a=>a.uid!==uid);next.artists.forEach((a,i)=>a.order=i+1);return next;},'已删除画师',()=>{if(uid===editingId)closeEditor();render();});
   }
   function confirmButton(label,armedLabel,onConfirm,cls='danger'){
     let armed=false,timer=null;
