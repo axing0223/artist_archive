@@ -21,6 +21,14 @@
 .token-control{display:flex;align-items:center;gap:8px;flex-shrink:0}.token-control input{width:260px;font-family:ui-monospace,Consolas,monospace;font-size:13px}
 .works{grid-template-columns:repeat(auto-fill,minmax(var(--card-size,220px),1fr))}.thumb{height:var(--card-size,220px)}
 .work.is-test{position:relative}.work.is-test::after{content:'测试风格';position:absolute;top:0;left:0;z-index:1;background:#e08b1f;color:#fff;font-size:11px;line-height:1;padding:4px 7px;border-radius:7px 0 7px 0}
+/* 外部图片拖进格子：虚线高亮，鼠标显示可放下 */
+.work.is-drop-target{outline:2px dashed var(--accent);outline-offset:3px;border-radius:9px}
+.work.is-drop-target .thumb,.work.is-drop-target.work-empty,.work.is-drop-target.work-generate{background:#eef3ff}
+.work-id{color:#8c929d;text-decoration:none;border-bottom:1px dotted #c3c9d6}
+.work-id:hover{color:var(--accent);border-bottom-color:var(--accent)}
+.slot-delete{border:0;background:none;padding:0;color:#a3a9b6;font-size:12px;cursor:pointer;white-space:nowrap}
+.slot-delete:hover{color:#b4453c;text-decoration:underline}
+.slot-delete.is-armed,.slot-delete.is-armed:hover{background:#d9483c;color:#fff;border-radius:5px;padding:2px 8px;text-decoration:none}
 .test-preview{display:flex;flex-direction:column;gap:6px}.work-empty{border:1px dashed #e3e7ef;border-radius:7px;height:var(--card-size,220px);background:#fafbfd}
 .work-generate{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;border:1px dashed #c9d4f5;border-radius:7px;height:var(--card-size,220px);background:#f7f9ff}
 .work-generate.is-armed{border-color:#e08b1f;background:#fff8ec}

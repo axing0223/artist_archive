@@ -20,7 +20,7 @@
   const httpsValue=v=>typeof v==='string'&&v.startsWith('https://')?v:null;
   const seqOf=a=>ArtistId.parse(a.uid)?.seq??a.order;
   /* 卡片固定 5 格。开了「固定测试风格图」后最右 2 格归测试风格 1、2，作品图不能占用。 */
-  const PREVIEW_SLOTS=5,RESERVED_SLOTS=2;
+  const PREVIEW_SLOTS=5,RESERVED_SLOTS=2,UPLOAD_TYPES=['image/jpeg','image/png','image/webp','image/gif','image/avif'];
   const reservedOf=()=>data&&data.fixedTestSlots?RESERVED_SLOTS:0;
   const state={category:'全部',tags:new Set(),scores:new Set(),query:''};
   const PREF_KEY='artist-library.thumb-height',PREF_CARD='artist-library.card-size';
@@ -79,6 +79,60 @@
   }
   function reset(){state.category='全部';state.tags.clear();state.scores.clear();state.query='';$('search').value='';}
   function showImage(a,w){ArtistViewer.open({title:a.name,uid:a.uid,work:w,caption:w.caption,persist:true});}
+  /* 一格作品：图 + 左下角说明 + 右下角删除。 */
+  function workFigure(a,w,slot){
+    const figure=el('figure','work'),open=btn('',()=>showImage(a,w),'thumb'),img=el('img');
+    if(w.kind==='test')figure.classList.add('is-test');
+    open.setAttribute('aria-label',`查看 ${a.name} 的${w.kind==='test'?'测试风格图片':'作品 '+(slot+1)}`);
+    img.alt=a.name+' 的作品';ArtistImages.bind(img,a.uid,w,'card:'+a.uid,'thumb');open.append(img);
+    const caption=el('figcaption');caption.append(slotLabel(a,w,slot),deleteSlotButton(a,w));
+    figure.append(open,caption);
+    return figure;
+  }
+  /* 左下角：有 Danbooru 编号就做成可点的 #编号，点开对应作品页；测试风格图只写序号，不给链接。 */
+  function slotLabel(a,w,slot){
+    if(w.kind==='test')return el('span','',`测试风格 ${w.testSeq||1}`);
+    const id=String(w.id||'').trim(),href=url(w.url)||(id?`https://danbooru.donmai.us/posts/${encodeURIComponent(id)}`:'');
+    if(id&&href){const node=link('#'+id,href,'work-id');node.title='在 Danbooru 打开这件作品';return node;}
+    if(href)return link('来源 ↗',href,'work-id');
+    return el('span','',w.id?'#'+w.id:'作品 '+(slot+1));
+  }
+  const deleteSlotButton=(a,w)=>confirmButton('删除','再点一次删除',()=>deleteSlotWork(a,w),'slot-delete');
+  async function deleteSlotWork(a,w){
+    const index=Array.isArray(a.works)?a.works.indexOf(w):-1;
+    if(index<0){status('这一格已经不在库里了。',true);return;}
+    const isTest=w.kind==='test',what=isTest?`测试风格 ${w.testSeq||1}`:`作品 #${w.id||index+1}`;
+    const next=clone(data),target=next.artists.find(item=>item.uid===a.uid);
+    if(!target||!target.works[index]){status('这一格已经不在库里了。',true);return;}
+    target.works.splice(index,1);
+    await save(next,`已删除「${a.name}」的${what}`);
+  }
+  /* 外部拖图进来：落到哪一格就换成哪一格（测试格按该格的序号，作品格换掉那一格）。 */
+  function attachDrop(node,a,index){
+    const mark=on=>node.classList.toggle('is-drop-target',on);
+    node.addEventListener('dragover',event=>{if(!event.dataTransfer)return;event.preventDefault();event.dataTransfer.dropEffect='copy';mark(true);});
+    node.addEventListener('dragleave',()=>mark(false));
+    node.addEventListener('drop',event=>{mark(false);const files=[...(event.dataTransfer?.files||[])];if(!files.length)return;event.preventDefault();dropImages(a,index,files);});
+  }
+  async function dropImages(a,index,files){
+    if(busy||uploading||generating)return;
+    if(!folder){status('请先选择「数据」文件夹，拖进来的图片要有地方保存。',true);return;}
+    uploading=true;status(`正在处理拖进来的 ${files.length} 张图片…`);
+    try{
+      const added=[],skipped=[];
+      for(const file of files){
+        if(!UPLOAD_TYPES.includes(file.type)||file.size>FolderStore.MAX_IMAGE_BYTES){skipped.push(file.name||'未命名');continue;}
+        const original=await readImage(file);
+        added.push({id:'',url:'',caption:'',thumb:await thumbnail(original),large:original,thumbUrl:null,largeUrl:null});
+      }
+      if(!added.length)throw Error('拖进来的不是支持的图片（只收 JPG、PNG、WebP、GIF、AVIF，单张不超过 50 MB）。');
+      const next=clone(data),target=next.artists.find(item=>item.uid===a.uid);
+      if(!target)throw Error('这位画师已经不在库里了。');
+      target.works=FolderStore.placeWork(target,index,added,{limit:PREVIEW_SLOTS,reserve:reservedOf()});
+      await save(next,`已把 ${added.length} 张图片放进「${a.name}」从第 ${index+1} 格起的位置${skipped.length?`；跳过 ${skipped.length} 个不支持的文件：${skipped.slice(0,3).join('、')}`:''}`);
+    }catch(error){status('拖入失败：'+error.message,true);}
+    finally{uploading=false;}
+  }
   /* 空着的固定格：一个「生成」按钮，外加它对应的测试风格序号。
      按钮自己承担二次确认（第一次点亮、第二次才真发），不再弹系统对话框。 */
   function generateSlot(a,seq){
@@ -151,8 +205,9 @@
     const reserve=reservedOf(),slots=FolderStore.previewWorks(a,PREVIEW_SLOTS,reserve);
     slots.forEach((w,i)=>{
       /* 固定格空着的时候给一个「生成」入口：点了就用设置里的生图参数向 NovelAI 要一张测试风格图。 */
-      if(!w){works.append(i>=PREVIEW_SLOTS-reserve?generateSlot(a,PREVIEW_SLOTS-i):el('div','work work-empty'));return;}
-      const figure=el('figure','work'),b=btn('',()=>showImage(a,w),'thumb'),img=el('img');if(w.kind==='test')figure.classList.add('is-test');b.setAttribute('aria-label',`查看 ${a.name} 的${w.kind==='test'?'测试风格图片':'作品 '+(i+1)}`);img.alt=a.name+' 的作品';ArtistImages.bind(img,a.uid,w,'card:'+a.uid,'thumb');b.append(img);const caption=el('figcaption');caption.append(el('span','',w.kind==='test'?`测试风格 ${w.testSeq||1}`:w.id?'#'+w.id:'作品 '+(i+1)));if(w.url)caption.append(link('来源 ↗',w.url));figure.append(b,caption);works.append(figure);});
+      const node=w?workFigure(a,w,i):(i>=PREVIEW_SLOTS-reserve?generateSlot(a,PREVIEW_SLOTS-i):el('div','work work-empty'));
+      attachDrop(node,a,i);works.append(node);
+    });
     if(a.note)works.append(el('p','sample-note',a.note));
     article.append(info,works,meta);
     if(Number.isSafeInteger(a.score)&&a.score>=1&&a.score<=5)article.append(el('span','score-badge score-'+a.score,String(a.score)));
@@ -486,7 +541,7 @@
     if(busy||uploading||!draft)return;uploading=true;setEditorError('正在处理图片…');
     try{const added=[];
       for(const f of e.target.files){
-        if(!['image/jpeg','image/png','image/webp','image/gif','image/avif'].includes(f.type)||f.size>50*1024*1024)throw Error('请选择不超过 50 MB 的 JPG、PNG、WebP、GIF 或 AVIF 图片。');
+        if(!UPLOAD_TYPES.includes(f.type)||f.size>FolderStore.MAX_IMAGE_BYTES)throw Error('请选择不超过 50 MB 的 JPG、PNG、WebP、GIF 或 AVIF 图片。');
         const original=await readImage(f);
         added.push({id:'',url:'',caption:'',thumb:await thumbnail(original),large:original,thumbUrl:null,largeUrl:null});
       }
@@ -825,6 +880,10 @@
     $('viewer').addEventListener('close',()=>{ArtistImages.dispose('viewer');ArtistViewer.dispose();});$('save-original').onclick=()=>ArtistViewer.saveOriginal();
     document.querySelectorAll('dialog').forEach(dialog=>dialog.addEventListener('click',event=>{if(event.target===dialog)dialog.close();}));
     $('extension-status').onclick=checkExtension;
+    /* 图片拖到格子以外的地方时，浏览器默认会直接打开那个文件、把当前页面顶掉（没保存的改动就没了）。
+       在窗口这一层兜住：整页都不接受文件拖放，只有格子上的处理器会把事件拿走。 */
+    window.addEventListener('dragover',event=>event.preventDefault());
+    window.addEventListener('drop',event=>event.preventDefault());
     window.addEventListener('beforeunload',e=>{if(volatile||busy){e.preventDefault();e.returnValue='';}});render();document.querySelectorAll('button,input,textarea,select').forEach(b=>b.disabled=true);$('choose-folder').disabled=false;$('extension-status').disabled=false;$('choose-folder').onclick=connectFolder;checkExtension().then(autoAccount);
   }
   init();

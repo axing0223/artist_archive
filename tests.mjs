@@ -300,6 +300,52 @@ test('固定测试风格图：右侧 2 格留给序号 1、2，作品图只占�
  assert.deepEqual(mark(store.previewWorks({works:works(3)},5,0)),['1','2','3','空','空'],'reserve 为 0 时行为与从前一致');
  assert.equal(store.previewWorks({works:[]},5,9).filter(Boolean).length,0,'保留格数超过格子数也不会越界');
 });
+test('拖进来的图片落到格子上：测试格按序号、作品格替换、空格子插到正确位置',()=>{
+ const img=n=>({id:'',url:'',caption:'',thumb:'data:image/jpeg;base64,x'+n,large:null,thumbUrl:null,largeUrl:null});
+ const works=n=>Array.from({length:n},(_,i)=>({id:String(i+1)}));
+ const marks=list=>list.map(w=>w?(w.kind==='test'?'测'+w.testSeq:(w.thumb?'新':w.id)):'空');
+ const order=list=>marks(list),layout=(list,reserve=2)=>marks(store.previewWorks({works:list},5,reserve));
+ /* 固定测试格：拖到最右那格就变成测试风格 1 */
+ let next=store.placeWork({works:works(2)},4,[img(1)],{limit:5,reserve:2});
+ assert.deepEqual(layout(next),['1','2','空','空','测1'],'拖到最右的固定格 → 测试风格 1');
+ assert.deepEqual(order(next),['1','2','测1']);
+ /* 拖到已有测试图的固定格 → 替换那张，序号不变 */
+ next=store.placeWork({works:[...works(2),{id:'',kind:'test',testSeq:1,thumb:'旧的'}]},4,[img(2)],{limit:5,reserve:2});
+ assert.deepEqual(layout(next),['1','2','空','空','测1'],'替换固定格里的测试图');
+ assert.equal(next.length,3,'替换而不是新增');
+ assert.equal(next[2].kind,'test');assert.equal(next[2].testSeq,1,'序号仍然是 1');
+ assert.equal(next[2].thumb,'data:image/jpeg;base64,x2','换成新拖进来的那张');
+ /* 作品格：拖到空格子排到该位置，顺序不乱 */
+ next=store.placeWork({works:works(2)},2,[img(3)],{limit:5,reserve:2});
+ assert.deepEqual(order(next),['1','2','新'],'拖到第 3 格（空位）就排在那里');
+ assert.deepEqual(layout(next),['1','2','新','空','空']);
+ /* 没开固定格、中间被测试图占了一格：多张图往右填时会跳过那一格 */
+ next=store.placeWork({works:[works(1)[0],{id:'',kind:'test',testSeq:3,thumb:'测试'}]},1,[img(1),img(2)],{limit:5,reserve:0});
+ assert.deepEqual(layout(next,0),['1','新','测3','新','空'],'第 2 张跳过测试图占的格子，落到第 4 格');
+ /* 作品格：拖到已有作品的格子 → 换掉那一格 */
+ next=store.placeWork({works:works(3)},1,[img(4)],{limit:5,reserve:2});
+ assert.deepEqual(order(next),['1','新','3'],'换掉第 2 格，长度不变');
+ assert.equal(next.length,3);
+ /* 一次拖多张：从这一格往右依次填，填到固定测试格就按那里的序号 */
+ next=store.placeWork({works:works(1)},0,[img(5),img(6),img(7),img(8),img(9)],{limit:5,reserve:2});
+ assert.deepEqual(layout(next),['新','新','新','测2','测1'],'第 4、5 张落到两个固定测试格上');
+ assert.equal(next[3].kind,'test');assert.equal(next[3].testSeq,2);
+ assert.equal(next[4].kind,'test');assert.equal(next[4].testSeq,1);
+ next=store.placeWork({works:works(3)},0,[img(1),img(2),img(3)],{limit:5,reserve:2});
+ assert.deepEqual(layout(next),['新','新','新','空','空'],'左边 3 格换完就没有空位了');
+ next=store.placeWork({works:works(5)},0,[img(1),img(2)],{limit:5,reserve:0});
+ assert.deepEqual(layout(next,0),['新','新','3','4','5'],'没开固定格时左边 5 格都是作品格');
+ next=store.placeWork({works:works(5)},4,[img(1),img(2),img(3)],{limit:5,reserve:2});
+ assert.equal(next.length,8,'格子用完了就追加到作品列表末尾');
+ assert.equal(next[5].kind,'test','第一张进最右的固定测试格');assert.equal(next[5].testSeq,1);
+ assert.equal(next[6].kind,undefined,'后面两张按普通作品追加');assert.equal(next[6].thumb,'data:image/jpeg;base64,x2');
+ /* 没开固定格但那一格已经是测试图：按测试图处理，不当成作品格 */
+ next=store.placeWork({works:[...works(4),{id:'',kind:'test',testSeq:1,thumb:'旧的'}]},4,[img(9)],{limit:5,reserve:0});
+ assert.equal(next.length,5);assert.equal(next[4].kind,'test');assert.equal(next[4].testSeq,1);assert.equal(next[4].thumb,'data:image/jpeg;base64,x9');
+ assert.deepEqual(store.placeWork({works:works(2)},0,[],{limit:5}),[{id:'1'},{id:'2'}],'没拖东西就原样返回');
+ assert.deepEqual(store.placeWork(null,0,[img(1)]).length,1,'空画师也能放图');
+ assert.equal(store.placeWork({works:[]},99,[img(1)],{limit:5,reserve:2})[0].kind,'test','格子号越界也要落在有效格子上');
+});
 test('导入用的测试风格序号：默认 1，已被占用就往后顺延',()=>{
  const test=seq=>({id:'',kind:'test',testSeq:seq});
  assert.equal(store.nextTestSeq([],1),1);

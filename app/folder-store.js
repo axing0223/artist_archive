@@ -63,6 +63,30 @@
     }
     return slots;
   }
+  /* 把拖进来的图片落到第 index 格，返回新的 works 数组（不改原对象）。
+     规则：那一格是测试格（固定测试格，或现在正显示测试图）就按该格的序号替换；
+     是作品格就换掉那一格的图；空格子按从左往右的顺序插进去；
+     一张拖不下就往右依次填，5 格都用完了就追加到作品列表末尾。 */
+  function placeWork(artist,index,added,{limit=5,reserve=0}={}){
+    const works=Array.isArray(artist?.works)?artist.works.slice():[],incoming=(Array.isArray(added)?added:[]).filter(Boolean);
+    if(!incoming.length)return works;
+    const fixed=Math.max(0,Math.min(reserve,limit)),cut=limit-fixed;
+    let at=Math.max(0,Math.min(Number.isSafeInteger(index)?index:0,limit-1));
+    for(const raw of incoming){
+      if(at>=limit){works.push({...raw});at++;continue;}
+      const slots=previewWorks({works},limit,reserve);
+      /* 已经被别的测试图占掉的格子跳过（只可能出现在没开固定格的时候）。 */
+      while(at>index&&at<cut&&slots[at]&&slots[at].kind==='test')at++;
+      if(at>=limit){works.push({...raw});at++;continue;}
+      const current=slots[at]||null,isTest=at>=cut||!!(current&&current.kind==='test');
+      const entry=isTest?{...raw,kind:'test',testSeq:Math.max(1,limit-at)}:{...raw};
+      if(current){const seat=works.indexOf(current);if(seat>=0)works[seat]=entry;else works.push(entry);}
+      /* 空格子：作品是从左往右填的，所以空格子一定在所有已显示作品之后，直接排到末尾就是它。 */
+      else works.push(entry);
+      at++;
+    }
+    return works;
+  }
   function imageOf(work,size){
     if(!work||!SIZES.includes(size))return null;
     const file=work[size],url=work[size+'Url'];
@@ -207,6 +231,6 @@
     for(const oldUid of moved.values())if(ArtistId.valid(oldUid)&&!ids.has(oldUid)&&!removed.has(oldUid))try{await artists.removeEntry(oldUid,{recursive:true});removed.add(oldUid);}catch(error){if(error.name!=='NotFoundError')warn('旧目录 '+oldUid+' 删除失败（'+error.message+'）');}
     return result;
   }
-  root.FolderStore={read,write,readImage,saveImage,imageOf,previewWorks,nextTestSeq,testImageName,validWork,exportTo,remember,rename,empty,takeWarnings,IMAGE_KINDS,SIZES,FOLDER_OF,MAX_IMAGE_BYTES};
+  root.FolderStore={read,write,readImage,saveImage,imageOf,previewWorks,placeWork,nextTestSeq,testImageName,validWork,exportTo,remember,rename,empty,takeWarnings,IMAGE_KINDS,SIZES,FOLDER_OF,MAX_IMAGE_BYTES};
   if(typeof module!=='undefined')module.exports=root.FolderStore;
 })(globalThis);

@@ -9,7 +9,13 @@ class El{
     this.classList={
       add:cls=>{const list=String(this.className).split(/\s+/).filter(Boolean);if(!list.includes(cls))this.className=[...list,cls].join(' ');},
       remove:cls=>{this.className=String(this.className).split(/\s+/).filter(name=>name&&name!==cls).join(' ');},
-      toggle:()=>{},
+      /* toggle 要认第二个参数，不然「按条件加类」的代码在测试里永远看不出效果。 */
+      toggle:(cls,force)=>{
+        const list=String(this.className).split(/\s+/).filter(Boolean),on=force===undefined?!list.includes(cls):!!force;
+        this.className=(on?[...new Set([...list,cls])]:list.filter(name=>name!==cls)).join(' ');
+        return on;
+      },
+      contains:cls=>String(this.className).split(/\s+/).includes(cls),
     };
     this.hidden=false;this.value='';this.type='';this.checked=false;this.title='';this.placeholder='';this.href='';this.disabled=false;
     this.onclick=null;this.oninput=null;this.onchange=null;this.onerror=null;this.onload=null;
@@ -22,7 +28,8 @@ class El{
   remove(){const parent=this.parentNode;if(parent)parent.children=parent.children.filter(child=>child!==this);this.parentNode=null;}
   setAttribute(key,value){this[key]=value;}
   removeAttribute(key){delete this[key];}
-  addEventListener(){}
+  addEventListener(type,fn){(this.listeners??={});(this.listeners[type]??=[]).push(fn);}
+  fire(type,event={}){if(typeof event.preventDefault!=='function'){event.defaultPrevented=false;event.preventDefault=()=>{event.defaultPrevented=true;};}for(const fn of this.listeners?.[type]||[])fn(event);return event;}
   querySelectorAll(){return [];}
 }
 async function boot(){
@@ -39,7 +46,7 @@ async function boot(){
 class FileUrl extends URL{}
 FileUrl.createObjectURL=()=>'blob:x';FileUrl.revokeObjectURL=()=>{};
   const ctx={
-    window:{addEventListener(){},innerWidth:1200,innerHeight:800},document,localStorage,navigator:{clipboard:{writeText:async text=>{state.copied.push(text);}}},
+    window:{innerWidth:1200,innerHeight:800,listeners:{},addEventListener(type,fn){(this.listeners[type]??=[]).push(fn);}},document,localStorage,navigator:{clipboard:{writeText:async text=>{state.copied.push(text);}}},
     IntersectionObserver:IO,ResizeObserver:RO,Option,
     crypto:{randomUUID:()=>'uuid-'+Math.random().toString(36).slice(2)},
     fetch:async()=>{throw Error('测试中不应联网');},
@@ -725,6 +732,60 @@ test('固定测试风格图：已有的测试图回自己的固定格，只剩�
   assert.equal(children[3].className,'work work-generate','序号 2 还没生成，留一个生成入口');
   assert.equal(findByClass(children[3],'generate-seq').textContent,'测试风格 2');
   assert.equal(String(children[4].className).includes('is-test'),true,'序号 1 的测试图占最右格');
+});
+test('卡片格子左下角：#编号可点开对应的 Danbooru 作品页，测试风格图不给链接',async()=>{
+  const {state}=await boot();
+  const card=state.card(bareArtist({works:[{id:'12345',url:'https://danbooru.donmai.us/posts/12345',thumb:null}]}));
+  const mark=findByClass(card,'work-id');
+  assert.ok(mark,'有编号的作品要给出可点的编号');
+  assert.equal(mark.textContent,'#12345');
+  assert.equal(mark.href,'https://danbooru.donmai.us/posts/12345');
+  assert.equal(mark.target,'_blank');assert.equal(mark.rel,'noopener noreferrer');
+  /* 没有存 url 但知道编号时，按编号拼出作品页 */
+  const built=state.card(bareArtist({works:[{id:'777',url:'',thumb:null}]}));
+  assert.equal(findByClass(built,'work-id').href,'https://danbooru.donmai.us/posts/777');
+  /* 测试风格图只有序号文字，不是链接 */
+  const test=state.card(bareArtist({works:[{id:'',kind:'test',testSeq:2,thumb:null}]}));
+  assert.equal(findByClass(test,'work-id'),null,'测试风格图不该有编号链接');
+  assert.ok(findText(test,'测试风格 2'),'测试风格图只写序号');
+});
+test('卡片格子右下角：删除按钮要点两次，第二次才真的删掉这一格',async()=>{
+  const {elements,state}=await boot();
+  await createArtist(state,elements,'tester');
+  const artist=state.rows[0];artist.works.push({id:'1',url:'',thumb:null},{id:'2',url:'',thumb:null});
+  const button=findByClass(state.card(artist),'slot-delete');
+  assert.ok(button,'右下角要有删除按钮');
+  assert.equal(button.textContent,'删除');
+  await button.onclick();
+  assert.equal(button.textContent,'再点一次删除','第一次点击只进入确认态');
+  assert.equal(String(button.className).includes('is-armed'),true);
+  assert.equal(artist.works.length,2,'还没真的删');
+  await button.onclick();
+  assert.equal(state.rows[0].works.length,1,'第二次点击才删掉这一格');
+  assert.equal(state.rows[0].works[0].id,'2','删的是被点的那一格');
+});
+test('拖图片到格子上：格子接住了拖放，整页兜底不会让浏览器打开这个文件',async()=>{
+  const {elements,state,ctx}=await boot();
+  await wait(10);
+  const box=findByClass(state.card(bareArtist({works:[]})),'work-empty');
+  assert.ok(box,'空格子也要能接住拖放');
+  assert.equal(typeof box.listeners?.dragover?.[0],'function','格子要监听 dragover');
+  assert.equal(typeof box.listeners?.drop?.[0],'function','格子要监听 drop');
+  const over={dataTransfer:{dropEffect:''}};
+  box.fire('dragover',over);
+  assert.equal(over.defaultPrevented,true,'不 preventDefault 的话浏览器不会触发 drop');
+  assert.equal(over.dataTransfer.dropEffect,'copy');
+  assert.equal(String(box.className).includes('is-drop-target'),true,'悬停时要高亮');
+  box.fire('dragleave');
+  assert.equal(String(box.className).includes('is-drop-target'),false,'移开要取消高亮');
+  /* 没选数据文件夹时拖进来：不发请求，把原因说清楚 */
+  const drop={dataTransfer:{files:[{name:'a.png',type:'image/png',size:100}]}};
+  box.fire('drop',drop);
+  assert.equal(drop.defaultPrevented,true);
+  assert.match(String(getEl(elements,'storage-status').textContent),/数据.*文件夹/);
+  /* 整页兜底：window 上挂着 dragover/drop 的 preventDefault */
+  assert.equal(typeof ctx.window.listeners?.dragover?.[0],'function','窗口层要兜住拖放，免得浏览器直接打开文件');
+  assert.equal(typeof ctx.window.listeners?.drop?.[0],'function');
 });
 test('生图参数独立成一个对话框，入口在顶部「设置」右边',async()=>{
   const html=await fs.readFile('app/index.html','utf8');
