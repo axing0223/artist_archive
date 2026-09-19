@@ -16,152 +16,84 @@ class Element{
   }
   append(...nodes){for(const node of nodes)this.children.push(node);}
   replaceChildren(...nodes){this.children=nodes.slice();}
-  setAttribute(){}
+  setAttribute(key,value){this[key]=value;}
+  addEventListener(type,fn){(this.listeners||={})[type]=fn;}
+  focus(){this.focused=true;}
+  scrollIntoView(){this.scrolled=true;}
 }
 const setup=async posts=>{
   const bound=[];
-  const context={document:{createElement:tag=>new Element(tag)},ArtistLookup:{posts},ArtistImages:{bind:(img,uid,work)=>bound.push(work.id),dispose(){}}};
+  const context={AbortController,document:{createElement:tag=>new Element(tag)},ArtistLookup:{posts},ArtistImages:{bind:(img,uid,work)=>bound.push(work.id),dispose(){}}};
   vm.runInNewContext(await fs.readFile('app/work-picker.js','utf8'),context);
   return {context,bound};
 };
 const page=ids=>ids.map(id=>({id,thumbUrl:'https://cdn.donmai.us/180x180/'+id+'.jpg'}));
-test('勾上即加入、取消即移出，加载更多只补新格子不重建旧的',async()=>{
-  const calls=[],added=[];
-  const {context,bound}=await setup(async(tag,{page:number})=>{calls.push({tag,page:number});return number===1?page(Array.from({length:20},(_,i)=>String(i+1))):page(['21','22']);});
-  const container=new Element();
-  const picker=context.WorkPicker.mount(container,{uid:'u1',tag:'artist_a',exclude:new Set(['2']),
-    onAdd:async work=>{added.push(work.id);},onRemove:async work=>{added.splice(added.indexOf(work.id),1);}});
-  await picker.ready;
-  const [status,grid,tools]=container.children;
-  assert.deepEqual(calls,[{tag:'artist_a',page:1}],'首屏只取第一页');
-  assert.equal(grid.children.length,19,'库中已有的 #2 不再列出');
-  assert.equal(bound.length,19,'每张都绑定了缩略图');
-  assert.deepEqual([...picker.added()],[],'默认一张都不加');
-  assert.equal(tools.children[1].textContent.includes('已加入 0 / 本页 19'),true);
-  assert.equal(status.textContent.includes('19 张作品'),true);
-  const firstLabel=grid.children[0],firstBox=firstLabel.children[0];
-  firstBox.checked=true;await firstBox.onchange();
-  assert.deepEqual(added,['1'],'勾上就完成加入');
-  assert.deepEqual([...picker.added()],['1']);
-  assert.equal(firstLabel.className.includes('is-added'),true,'加过的格子要留标记');
-  firstBox.checked=false;await firstBox.onchange();
-  assert.deepEqual(added,[],'取消勾选就移出');
-  assert.equal(firstLabel.className.includes('is-added'),false);
-  await tools.children[2].onclick();
-  assert.deepEqual(added.slice().sort(),Array.from({length:20},(_,i)=>String(i+1)).filter(id=>id!=='2').sort(),'全选＝全部加入（#2 本来就不在列表里）');
-  await tools.children[3].onclick();
-  assert.deepEqual(added,[],'全不选＝全部移出');
-  /* 加载更多：只追加新格子。已经在列表里的格子必须还是原来那个节点——
-     整体重建会让已经读出来的图全部重新淡入一遍，看着就是闪一下。 */
-  const before=grid.children.slice();
-  await tools.children[4].onclick();
-  assert.deepEqual(calls,[{tag:'artist_a',page:1},{tag:'artist_a',page:2}]);
-  assert.equal(grid.children.length,21);
-  assert.equal(grid.children[0],before[0],'旧格子不能重建');
-  assert.equal(grid.children[18],before[18],'旧格子不能重建');
-  assert.equal(tools.children[4].hidden,true,'取满不足一页后隐藏加载更多');
-  assert.equal(tools.children[0].className,'picker-zoom','预览大小滑动条也在这一行工具栏里');
-  assert.equal(picker.tools,tools,'工具栏暴露给调用方，便于固定放入自己的按钮');
+
+const all=(node,cls)=>[...(String(node.className).split(/\s+/).includes(cls)?[node]:[]),...node.children.flatMap(child=>all(child,cls))];
+const get=(node,cls)=>all(node,cls)[0];
+const buttons=node=>{const nav=get(node,'picker-pagination');return {previous:nav.children[0],next:nav.children[2]};};
+const ids=(start,count)=>page(Array.from({length:count},(_,i)=>String(start+i)));
+const tick=()=>new Promise(resolve=>setImmediate(resolve));
+const gate=()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b;});return {promise,resolve,reject};};
+
+test('分页每页最多21张，排除已有作品后补足，返回旧页不重复请求',async()=>{
+ const calls=[];const {context}=await setup(async(tag,options)=>{calls.push(options);return options.page<3?ids((options.page-1)*21+1,21):ids(43,2);});
+ const host=new Element(),picker=context.WorkPicker.mount(host,{uid:'u',tag:'artist',exclude:new Set(['2'])});await picker.ready;
+ assert.equal(get(host,'candidate-previews').children.length,21);assert.equal(all(host,'pick').length,21);assert.equal(all(host,'pick')[20].children[2].textContent,'#22');
+ assert.equal(calls.length,2,'排除已收录作品后补齐21张');assert.ok(calls.every(call=>call.limit===21));
+ await buttons(host).next.onclick();assert.equal(all(host,'pick').length,21);assert.equal(all(host,'pick')[0].children[2].textContent,'#23');
+ const count=calls.length;await buttons(host).previous.onclick();assert.equal(calls.length,count,'旧页读取已缓存元数据');
+ await buttons(host).next.onclick();await buttons(host).next.onclick();assert.equal(all(host,'pick').length,1);assert.equal(get(host,'candidate-previews').children.length,21,'末页不足时保持3×7网格');assert.equal(buttons(host).next.disabled,true);
+ assert.equal(get(host,'picker-page').textContent,'第 3 / 3 页');assert.equal(all(host,'picker-zoom').length,0);assert.equal(host.children.length,2,'仅顶部状态栏和作品网格');
+ picker.dispose();assert.equal(host.children.length,0);
 });
-test('加入失败时勾选退回，并如实说明失败原因',async()=>{
-  const {context}=await setup(async()=>page(['1']));
-  const container=new Element();
-  const picker=context.WorkPicker.mount(container,{uid:'u4',tag:'artist_f',onAdd:async()=>{throw Error('缩略图下载失败');}});
-  await picker.ready;
-  const label=container.children[1].children[0],box=label.children[0];
-  box.checked=true;await box.onchange();
-  assert.equal(box.checked,false,'失败要把勾退回去，不能让人以为加上了');
-  assert.equal(container.children[0].textContent.includes('加入失败：缩略图下载失败'),true);
-  assert.deepEqual([...picker.added()],[]);
-  assert.equal(label.className.includes('is-added'),false);
+
+test('勾选即加入，跨页返回保留勾选，取消选择移出作品',async()=>{
+ const {context}=await setup(async(tag,{page:p})=>p===1?ids(1,21):ids(22,2));const added=[];
+ const host=new Element(),picker=context.WorkPicker.mount(host,{uid:'u',tag:'a',onAdd:async w=>added.push(w.id),onRemove:async w=>added.splice(added.indexOf(w.id),1)});await picker.ready;
+ let box=all(host,'pick')[0].children[0];box.checked=true;await box.onchange();await buttons(host).next.onclick();box=all(host,'pick')[0].children[0];box.checked=true;await box.onchange();
+ assert.deepEqual(added,['1','22']);assert.deepEqual([...picker.added()],['1','22']);await buttons(host).previous.onclick();box=all(host,'pick')[0].children[0];assert.equal(box.checked,true);box.checked=false;await box.onchange();assert.deepEqual(added,['22']);
 });
-test('点作品编号触发放大回调，销毁后释放图片绑定',async()=>{
-  const disposed=[];
-  const {context}=await setup(async()=>page(['7']));
-  context.ArtistImages.dispose=group=>disposed.push(group);
-  const container=new Element(),seen=[];
-  const picker=context.WorkPicker.mount(container,{uid:'u2',tag:'artist_b',onPreview:work=>seen.push(work.id)});
-  await picker.ready;
-  const label=container.children[1].children[0],idButton=label.children[2];
-  idButton.onclick();
-  assert.deepEqual(seen,['7'],'点编号放大而不是跳转站点');
-  picker.dispose();
-  assert.deepEqual(disposed,['picker:u2']);
-  assert.equal(container.children.length,0,'销毁后清空容器');
+
+test('仅勾选模式跨页保留完整selected结果，不会误加已加入标记',async()=>{
+ const {context}=await setup(async(tag,{page:p})=>p===1?ids(1,21):ids(22,1));const host=new Element(),picker=context.WorkPicker.mount(host,{uid:'u',tag:'a'});await picker.ready;
+ const choose=async()=>{const label=all(host,'pick')[0],box=label.children[0];box.checked=true;await box.onchange();assert.equal(label.classList.contains('is-added'),false);};
+ await choose();await buttons(host).next.onclick();await choose();assert.deepEqual([...picker.selected()].map(w=>w.id),['1','22']);assert.match(get(host,'picker-count').textContent,/已选 2/);
 });
-test('预览尺寸滑动条改变缩略图大小，识别区与编辑页保持同步',async()=>{
-  const {context}=await setup(async()=>page(['1','2']));
-  const zoom={thumbHeight:120,listeners:new Set(),
-    setThumbHeight(value){this.thumbHeight=value;for(const fn of this.listeners)fn(value);},
-    subscribe(fn){this.listeners.add(fn);},unsubscribe(fn){this.listeners.delete(fn);}};
-  const first=new Element(),second=new Element();
-  const a=context.WorkPicker.mount(first,{uid:'z1',tag:'t',zoom}),b=context.WorkPicker.mount(second,{uid:'z2',tag:'t',zoom});
-  await Promise.all([a.ready,b.ready]);
-  const rangeA=first.children[2].children[0].children[1],rangeB=second.children[2].children[0].children[1],gridA=first.children[1],gridB=second.children[1];
-  assert.equal(rangeA.value,'120','滑动条初值来自共享偏好');
-  assert.equal(gridA.style.getProperty('--pick-size'),'120px');
-  rangeA.value='180';rangeA.oninput();
-  assert.equal(zoom.thumbHeight,180);
-  assert.equal(gridA.style.getProperty('--pick-size'),'180px');
-  assert.equal(gridB.style.getProperty('--pick-size'),'180px','另一处的预览同步跟着变');
-  assert.equal(rangeB.value,'180','另一处的滑动条位置也同步');
-  a.dispose();
-  rangeB.value='90';rangeB.oninput();
-  assert.equal(zoom.thumbHeight,90);
-  b.dispose();
+
+test('加入失败还原勾选，异步加入期间不能翻页或换排序',async()=>{
+ const request=gate();const {context}=await setup(async()=>ids(1,21));const host=new Element(),picker=context.WorkPicker.mount(host,{uid:'u',tag:'a',onAdd:()=>request.promise,orderOptions:[{label:'最新',value:'id_desc'}]});await picker.ready;
+ const box=all(host,'pick')[0].children[0];box.checked=true;const pending=box.onchange();assert.equal(buttons(host).next.disabled,true);assert.equal(get(host,'picker-order').children[1].disabled,true);request.reject(Error('下载失败'));await pending;
+ assert.equal(box.checked,false);assert.equal(buttons(host).next.disabled,false);assert.match(get(host,'picker-message').textContent,/加入失败：下载失败/);assert.equal(picker.added().length,0);
 });
-test('换排序先不动旧列表，新的一批到了再整体换掉，已加入的照旧打勾',async()=>{
-  const calls=[],added=[];let focused=0;
-  class Option{constructor(text,value){this.textContent=text;this.value=value;}}
-  const context={document:{createElement:tag=>new Element(tag)},Option,
-    ArtistLookup:{posts:async(tag,options)=>{calls.push({tag,...options});return page(['1','2','3']);}},
-    ArtistImages:{bind(){},dispose(){}}};
-  vm.runInNewContext(await fs.readFile('app/work-picker.js','utf8'),context);
-  const container=new Element();
-  const picker=context.WorkPicker.mount(container,{uid:'o1',tag:'artist_d',order:'favcount',
-    orderOptions:[{value:'favcount',label:'收藏最多'},{value:'score',label:'评分最高'}],
-    onAdd:async work=>{added.push(work.id);},onRemove:async work=>{added.splice(added.indexOf(work.id),1);},onOrderChanged:()=>{focused++;}});
-  await picker.ready;
-  const grid=container.children[1],tools=container.children[2],orderBar=tools.children[1],select=orderBar.children[1];
-  assert.equal(orderBar.className,'picker-order','排序选择器与预览大小同一行');
-  assert.equal(select.value,'favcount','初值来自调用方传进来的排序');
-  assert.equal(select.children.map(option=>option.value).join(','),'favcount,score');
-  assert.deepEqual(calls,[{tag:'artist_d',limit:20,page:1,order:'favcount'}],'首屏按传入的排序取');
-  await tools.children[3].onclick();
-  assert.deepEqual(added.slice().sort(),['1','2','3'],'先都加入，验证换排序不会把它们丢掉');
-  select.value='score';await select.onchange();
-  assert.deepEqual(calls[1],{tag:'artist_d',limit:20,page:1,order:'score'},'换排序后重新从第一页取');
-  assert.deepEqual([...picker.added()].sort(),['1','2','3'],'已经加入的作品不因为换排序被丢掉');
-  assert.equal(focused,1,'换完排序要把视线交回画师作品');
-  assert.equal(String(container.children[0].textContent).includes('评分最高'),true,'提示里说明按哪个排序');
-  assert.equal(grid.children.length,3,'新的一批整体换掉旧列表');
-  assert.equal(grid.children[0].children[0].checked,true,'重新列出来的已加入作品照旧打着勾');
-  assert.equal(grid.children[0].className.includes('is-added'),true);
-  assert.equal(tools.children.length,6,'带排序选项时才有那个排序控件');
+
+test('切换排序保留旧列表直到成功，旧请求晚到不能覆盖新排序',async()=>{
+ const first=gate(),second=gate();const {context}=await setup(async(tag,{order})=>order==='score'?first.promise:order==='favcount'?second.promise:ids(1,2));
+ const host=new Element(),picker=context.WorkPicker.mount(host,{uid:'u',tag:'a',orderOptions:[{label:'最新',value:'id_desc'},{label:'评分',value:'score'},{label:'收藏',value:'favcount'}]});await picker.ready;
+ const select=get(host,'picker-order').children[1];select.value='score';const pending1=select.onchange();assert.equal(all(host,'pick')[0].children[2].textContent,'#1');select.value='favcount';const pending2=select.onchange();second.resolve(ids(99,2));await pending2;first.resolve(ids(55,2));await pending1;
+ assert.equal(all(host,'pick')[0].children[2].textContent,'#99');assert.equal(select.value,'favcount');assert.equal(get(host,'candidate-previews').focused,true);
 });
-test('没给 onAdd 时是纯勾选器，工具栏位置不变',async()=>{
-  const {context}=await setup(async()=>page(['1','2']));
-  const container=new Element();
-  const picker=context.WorkPicker.mount(container,{uid:'o2',tag:'artist_e'});
-  await picker.ready;
-  const tools=container.children[2];
-  assert.equal(tools.children.length,5,'只有预览大小、计数、全选、全不选、加载更多');
-  assert.equal(tools.children[0].className,'picker-zoom');
-  assert.equal(tools.children[1].textContent.includes('已选'),true,'计数紧跟在预览大小后面');
-  /* 没有 onAdd 就只做勾选：勾选数量由 selected() 交给调用方，不打「已加入」标记。 */
-  const label=container.children[1].children[0],box=label.children[0];
-  box.checked=true;await box.onchange();
-  assert.deepEqual([...picker.selected()].map(work=>work.id),['1'],'selected() 交出勾上的作品');
-  assert.equal(label.className.includes('is-added'),false,'没真的加进去就不该打「已加入」标记');
-  await tools.children[3].onclick();
-  assert.deepEqual([...picker.selected()],[],'全不选清空勾选');
-  picker.dispose();
+
+test('翻页失败保留当前页，重试后恢复；末页不会跳到空页',async()=>{
+ let fail=true;const {context}=await setup(async(tag,{page:p})=>{if(p===1)return ids(1,21);if(fail)throw Error('429');return [];});const host=new Element(),picker=context.WorkPicker.mount(host,{uid:'u',tag:'a'});await picker.ready;
+ await buttons(host).next.onclick();assert.equal(get(host,'picker-page').textContent,'第 1 页');assert.equal(all(host,'pick').length,21);assert.match(get(host,'picker-message').textContent,/429/);
+ fail=false;await get(host,'picker-status').children.find(n=>n.textContent==='重试').onclick();assert.equal(get(host,'picker-page').textContent,'第 1 / 1 页');assert.equal(buttons(host).next.disabled,true);
 });
-test('作品列表读取失败时如实提示，不抛到调用方',async()=>{
-  const {context}=await setup(async()=>{throw Error('作品列表读取失败（429）。');});
-  const container=new Element();
-  const picker=context.WorkPicker.mount(container,{uid:'u3',tag:'artist_c'});
-  await picker.ready;
-  assert.equal(container.children[0].textContent,'作品读取失败：作品列表读取失败（429）。');
-  assert.deepEqual([...picker.added()],[],'读取失败时没有可加入的作品');
+
+test('分页键只在选择器内生效，表单输入与组合键不会翻页',async()=>{
+ const {context}=await setup(async(tag,{page:p})=>p===1?ids(1,21):ids(22,2));const host=new Element(),picker=context.WorkPicker.mount(host,{uid:'u',tag:'a'});await picker.ready;
+ const key=(key,extra={})=>host.listeners.keydown({key,preventDefault(){},stopPropagation(){},...extra});
+ key('d',{target:{closest:()=>({})}});await tick();assert.equal(get(host,'picker-page').textContent,'第 1 页');key('d',{ctrlKey:true});await tick();assert.equal(get(host,'picker-page').textContent,'第 1 页');
+ key('d');await tick();assert.equal(get(host,'picker-page').textContent,'第 2 / 2 页');key('ArrowLeft');await tick();assert.equal(get(host,'picker-page').textContent,'第 1 / 2 页');key('ArrowRight');await tick();key('a');await tick();assert.equal(get(host,'picker-page').textContent,'第 1 / 2 页');
+});
+
+test('销毁后未完成请求不重建DOM，当前页旧图片绑定会及时释放',async()=>{
+ const pending=gate(),disposed=[];const {context}=await setup(async(tag,{page:p})=>p===1?ids(1,21):pending.promise);context.ArtistImages.dispose=group=>disposed.push(group);
+ const host=new Element(),picker=context.WorkPicker.mount(host,{uid:'u',tag:'a'});await picker.ready;const count=disposed.length;const loading=buttons(host).next.onclick();picker.dispose();pending.resolve(ids(22,2));await loading;
+ assert.equal(host.children.length,0);assert.equal(disposed.length,count+1);assert.match(disposed.at(-1),/^picker:u:/);
+});
+
+test('作品编号预览与初次失败重试均保持可用',async()=>{
+ let fail=true;const seen=[];const {context}=await setup(async()=>{if(fail)throw Error('读取失败');return ids(7,1);});const host=new Element(),picker=context.WorkPicker.mount(host,{uid:'u',tag:'a',onPreview:w=>seen.push(w.id)});await picker.ready;
+ assert.match(get(host,'picker-message').textContent,/作品读取失败/);fail=false;await get(host,'picker-status').children.find(n=>n.textContent==='重试').onclick();all(host,'pick')[0].children[2].onclick();assert.deepEqual(seen,['7']);
 });

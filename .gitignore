@@ -20,3 +20,6 @@ Desktop.ini
 
 # 构建生成的扩展内画师库镜像（源在 app/）
 图片取图扩展/app/
+
+# 本地界面验收产物
+.ui-artifacts/

@@ -341,3 +341,33 @@ test('回归：同路径测试图替换后清缓存并刷新已显示图片',asy
  assert.equal(img.src,'blob:1');bytes='replacement';api.invalidate?.(uid,work.thumb);await new Promise(r=>setImmediate(r));
  assert.equal(await(await api.fetch(uid,work,'thumb')).text(),'replacement');assert.equal(img.src,'blob:2');assert.ok(revoked.includes('blob:1'));
 });
+
+test('长列表首次渲染的动画测量局限在附近占位，不扫描两千个离屏节点',async()=>{
+ const kit=stage();let measured=0;const rect=kit.Element.prototype.getBoundingClientRect;kit.Element.prototype.getBoundingClientRect=function(){measured++;return rect.call(this);};
+ vm.runInNewContext(await fs.readFile('app/virtual-gallery.js','utf8'),kit.context);
+ kit.window.ArtistGallery.render(kit.gallery,Array.from({length:2000},(_,i)=>({uid:String(i)})),()=>new kit.Element());
+ assert.ok(measured<30,'测量 '+measured+' 次，必须与屏幕附近节点数量有关');
+});
+test('卡片内容变化重画前释放原图片绑定，避免脱离 DOM 的图片留在缓存管理器里',async()=>{
+ const kit=stage();vm.runInNewContext(await fs.readFile('app/virtual-gallery.js','utf8'),kit.context);
+ kit.window.ArtistGallery.render(kit.gallery,[{uid:'a',value:1}],()=>new kit.Element());mountAll(kit.observers,kit.gallery);kit.disposed.length=0;
+ kit.window.ArtistGallery.render(kit.gallery,[{uid:'a',value:2}],()=>new kit.Element());
+ assert.deepEqual(kit.disposed,['card:a']);
+ kit.window.ArtistGallery.render(kit.gallery,[{uid:'a',value:2}],()=>new kit.Element());assert.equal(kit.disposed.length,1,'未变卡片不释放或重新加载');
+});
+
+
+test('编辑卡片收起但顺序不变时，下方卡片也从原位置平滑移动',async()=>{
+ const kit=stage(),{gallery,observers,window}=kit;
+ vm.runInNewContext(await fs.readFile('app/virtual-gallery.js','utf8'),kit.context);
+ const rows=[{uid:'a',editing:true},{uid:'b'}];
+ const make=artist=>{const slot=gallery.children.find(node=>node.dataset.uid===artist.uid);if(slot)slot.cardHeight=artist.editing?700:320;return new kit.Element();};
+ window.ArtistGallery.render(gallery,rows,make);mountAll(observers,gallery);
+ const sibling=gallery.children[1],card=sibling.children[0];
+ window.ArtistGallery.render(gallery,[{uid:'a',editing:false},rows[1]],make);
+ assert.equal(sibling.children[0],card,'相邻卡片保持 DOM 和图片绑定');
+ assert.equal(sibling.animations.length,1,'同顺序下高度改变也要移动');
+ assert.equal(sibling.animations[0].frames[0].transform,'translateY(380px)');
+ clearAnimations(gallery);window.ArtistGallery.render(gallery,[{uid:'a',editing:false},rows[1]],make);
+ assert.equal(sibling.animations.length,0,'落盘后的重复渲染不重新播放移动动画');
+});
