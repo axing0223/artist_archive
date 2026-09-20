@@ -18,6 +18,8 @@
   function release(record){record.controller?.abort();record.controller=null;if(record.objectUrl)URL.revokeObjectURL(record.objectUrl);record.objectUrl=null;record.img.removeAttribute('src');}
   async function show(record){if(record.controller||record.objectUrl)return;const controller=new AbortController();record.controller=controller;record.img.classList.remove('image-failed');
     try{const blob=await fetchBlob(record.uid,record.work,record.size,controller.signal);if(record.controller!==controller||!bindings.has(record.img))return;
+      // 加载过程中刚完成落盘时，把这份相同内容同步到本地路径缓存。
+      if(record.persisted)cache.set(key(record.uid,record.work,record.size),blob);
       const img=record.img;
       record.objectUrl=URL.createObjectURL(blob);
       if(typeof Image==='function'){try{const decoder=new Image();decoder.src=record.objectUrl;await decoder.decode();}catch{}}
@@ -40,6 +42,16 @@
     if(existing){observer.unobserve(img);existing.controller?.abort();if(existing.objectUrl)URL.revokeObjectURL(existing.objectUrl);bindings.delete(img);}
     const record={img,uid,work,group,size,error};bindings.set(img,record);img.decoding='async';img.onerror=()=>{if(record.objectUrl){img.classList.add('image-failed');img.title='图片内容无法解码';}};observer.observe(img);
   }
+  // 仅由写盘成功的调用方传入同一作品的保存结果；更新引用而不撤销已显示的 Blob。
+  function adoptPersisted(img,work){
+    const record=bindings.get(img);if(!record)return false;
+    const before=FolderStore.imageOf(record.work,record.size),after=FolderStore.imageOf(work,record.size);
+    if(before?.kind!=='inline'||after?.kind!=='local')return false;
+    const blob=cache.get(key(record.uid,record.work,record.size));
+    record.work=work;record.persisted=true;
+    if(blob)cache.set(key(record.uid,work,record.size),blob);
+    return true;
+  }
   function invalidate(uid,path){
     const ref=uid+':'+path,version=revisions.get(ref)||0,id='local:'+epoch+':'+ref+':'+version;
     cache.delete(id);failures.delete(id);revisions.set(ref,version+1);
@@ -50,5 +62,5 @@
   function unbind(img){const r=bindings.get(img);if(r){observer.unobserve(img);release(r);bindings.delete(img);}}
   function dispose(group){for(const [img,r] of bindings)if(r.group===group)unbind(img);}
   function clear(){cache.clear();failures.clear();for(const r of bindings.values()){release(r);observer.unobserve(r.img);observer.observe(r.img);}}
-  window.ArtistImages={bind,unbind,dispose,fetch:fetchBlob,clear,invalidate,setFolder(value){for(const img of [...bindings.keys()])unbind(img);cache.clear();failures.clear();revisions.clear();epoch++;folder=value;},stats(){return {bytes:cache.bytes,entries:cache.items.size,active:queue.active,queued:queue.waiting.length,bound:bindings.size};},async dataUrl(uid,w,size='thumb',signal){const blob=await fetchBlob(uid,w,size,signal);return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(blob);});}};
+  window.ArtistImages={bind,unbind,adoptPersisted,dispose,fetch:fetchBlob,clear,invalidate,setFolder(value){for(const img of [...bindings.keys()])unbind(img);cache.clear();failures.clear();revisions.clear();epoch++;folder=value;},stats(){return {bytes:cache.bytes,entries:cache.items.size,active:queue.active,queued:queue.waiting.length,bound:bindings.size};},async dataUrl(uid,w,size='thumb',signal){const blob=await fetchBlob(uid,w,size,signal);return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(blob);});}};
 })();

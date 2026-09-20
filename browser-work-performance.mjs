@@ -61,7 +61,7 @@ try{
  if(result.exceptionDetails)throw Error(result.exceptionDetails.exception?.description||result.exceptionDetails.text);
  assert.deepEqual(errors,[],'页面不应出现未处理异常');
  console.log(JSON.stringify(result.result.value,null,2));
- assert.ok(result.result.value.every(row=>row.responseMs<300&&row.dimmedOtherImages===0&&row.removedExistingSlots===0&&row.replacedRetainedImages===0),'局部操作应及时更新，不能让整页图片变暗、重新挂载或重载未改作品');
+ assert.ok(result.result.value.every(row=>row.responseMs<300&&row.dimmedOtherImages===0&&row.removedExistingSlots===0&&row.replacedRetainedImages===0&&row.savedPreviewReplaced===0),'局部操作应及时更新，不能让整页图片变暗、重新挂载或重载未改作品');
 }finally{
  if(send&&ws?.readyState===WebSocket.OPEN)await send('Browser.close').catch(()=>{});
  ws?.close();
@@ -104,6 +104,9 @@ async function browserChecks({writeDelay}){
   const track=()=>{if(changed())responseMs??=performance.now()-start;if(!done||responseMs===null)requestAnimationFrame(track);};requestAnimationFrame(track);trigger();
   await until(()=>writeStarted);await delay(30);
   if(!done){check($('gallery').inert,'及时呈现时仍需保留保存锁');check($('storage-status').textContent==='正在保存…','文件完成前不能宣告保存成功');}
+  const addedPreview=action==='添加作品'?target.querySelectorAll('.works img')[3]:null;
+  if(addedPreview)await until(()=>addedPreview.src&&addedPreview.naturalWidth>0);
+  const addedSource=addedPreview?.src;
   const dimmedOtherImages=others.filter(img=>Number(getComputedStyle(img.closest('button')).opacity)<.99).length;
   await until(()=>done&&responseMs!==null);await delay(350);observer.disconnect();
   check(ArtistImages.stats().bound===document.querySelectorAll('#gallery img').length,'移除作品必须释放图片绑定，不能累积已脱离页面的图片');
@@ -121,7 +124,8 @@ async function browserChecks({writeDelay}){
    target.querySelector('.work').dispatchEvent(new DragEvent('drop',{dataTransfer:transfer,bubbles:true,cancelable:true}));await until(()=>done);await delay(50);
    const moved=await FolderStore.read(folder);check(moved.artists[0].works.length===1&&moved.artists[0].works[0].id==='','移位后拖放必须替换当前格，不能使用旧下标追加');
   }
-  results.push({action,responseMs:Math.round(responseMs),dimmedOtherImages,removedExistingSlots,replacedRetainedImages});FolderStore.write=originalWrite;
+  const savedPreviewReplaced=addedPreview&&(!addedPreview.isConnected||target.querySelectorAll('.works img')[3]!==addedPreview||addedPreview.src!==addedSource)?1:0;
+  results.push({action,savedPreviewReplaced,responseMs:Math.round(responseMs),dimmedOtherImages,removedExistingSlots,replacedRetainedImages});FolderStore.write=originalWrite;
  }
  // 编辑态移除、从站点勾选添加/取消也必须保留其余作品绑定。
  [...document.querySelector('.artist-actions').children].find(node=>node.textContent==='编辑').click();await until(()=>document.querySelector('.is-editing'));await delay(500);
@@ -137,5 +141,14 @@ async function browserChecks({writeDelay}){
  check(retained.every((img,i)=>img.isConnected&&img.src===before[i]),'取消候选作品不能重载编辑器已有作品');
  await [...editor.querySelector('.artist-actions').children].find(node=>node.textContent==='保存').onclick();
  check((await FolderStore.read(folder)).artists[0].works.map(w=>w.id).join(',')==='2,3','编辑后的作品结果应正确落盘');
+ // 写盘失败后保留临时预览；另一项设置触发重试（会克隆数据）也不能再闪一次。
+ const card=document.querySelector('.artist-slot'),transfer=new DataTransfer();transfer.items.add(new File([await new Promise(r=>canvas.toBlob(r,'image/png'))],'retry.png',{type:'image/png'}));
+ FolderStore.write=async()=>{await delay(500);throw Error('模拟写盘失败');};
+ card.querySelectorAll('.works > .work')[2].dispatchEvent(new DragEvent('drop',{dataTransfer:transfer,bubbles:true,cancelable:true}));
+ await until(()=>card.querySelectorAll('.works img[src]').length===3);const retryPreview=card.querySelectorAll('.works img')[2],retrySource=retryPreview.src;
+ await until(()=>$('storage-status').textContent.includes('文件保存失败'));FolderStore.write=originalWrite;
+ $('save-large').checked=true;await $('save-large').onchange();await delay(300);
+ check(retryPreview.isConnected&&retryPreview.src===retrySource,'写盘失败后通过其他操作重试，也应保持临时预览的节点和图片地址');
+ check((await FolderStore.read(folder)).artists[0].works.length===3,'失败后重试必须实际保存新图片');
  return results;
 }

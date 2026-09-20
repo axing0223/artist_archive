@@ -90,11 +90,26 @@
   async function write(value,targetFolder=folder){
     if(!targetFolder)throw Error('请先选择数据文件夹');
     const saved=await FolderStore.write(targetFolder,value);
-    // 文件可能同名覆盖。逐张使缓存失效，已显示的图片也要重新读取。
-    for(let i=0;i<value.artists.length;i++)for(let j=0;j<value.artists[i].works.length;j++)for(const kind of FolderStore.IMAGE_KINDS){
-      if(value.artists[i].works[j][kind]?.startsWith('data:'))ArtistImages.invalidate?.(saved.artists[i].uid,saved.artists[i].works[j][kind]);
+    const normalized=normalize(saved),persisted=new Map(),byArtist=new Map();
+    // 真正覆盖了同路径文件仍需使旧缓存失效；新预览则沿用已经显示的相同内容。
+    for(let i=0;i<value.artists.length;i++)for(let j=0;j<value.artists[i].works.length;j++){
+      const before=value.artists[i].works[j],artist=normalized.artists[i],work=artist.works[j];
+      for(const kind of FolderStore.IMAGE_KINDS)if(before[kind]?.startsWith('data:'))ArtistImages.invalidate?.(artist.uid,work[kind]);
+      if(before.thumb?.startsWith('data:')){
+        const entry={before,artist,work};persisted.set(before,entry);
+        const entries=byArtist.get(artist.uid)||[];entries.push(entry);byArtist.set(artist.uid,entries);
+      }
     }
-    return normalize(saved);
+    if(persisted.size)for(const figure of document.querySelectorAll('#gallery .work[data-work]')){
+      const record=workRecords.get(figure);if(!record)continue;
+      // 失败后重试或排队保存可能克隆数据，但卡片指纹未变，仍持有上一份等值对象。
+      const next=persisted.get(record.work)||(byArtist.get(record.artist.uid)||[]).find(({before})=>
+        Object.keys(before).length===Object.keys(record.work).length&&Object.keys(before).every(key=>before[key]===record.work[key]));
+      if(next&&ArtistImages.adoptPersisted(record.img,next.work)){
+        record.artist=next.artist;record.work=next.work;record.stamp=workStamp(next.artist,next.work);
+      }
+    }
+    return normalized;
   }
   /* 真正把一个目录句柄接上：不管是刚选的还是从记忆里取回来的，都走这里。 */
   async function adoptFolder(chosen,{from='刚选择',remember=true}={}){

@@ -406,3 +406,21 @@ test('局部卡片更新成功时不销毁整张卡的图片组',async()=>{
  window.ArtistGallery.render(gallery,[{uid:'a',value:2}],()=>{throw Error('不应整卡重建');},null,patch);
  assert.equal(patches,1);assert.equal(node.value,2);assert.equal(gallery.children[0].children[0],node);assert.deepEqual(kit.disposed,[]);
 });
+
+
+for(const loaded of [false,true])test('临时预览写盘后沿用图片与缓存：'+(loaded?'已经显示':'仍在加载'),async()=>{
+ const observers=[],revoked=[];let reads=0,created=0;const window={};
+ class IO{constructor(fn){this.fn=fn;observers.push(this);}observe(){}unobserve(){}}
+ const context={window,ImageResources:{ByteCache,Queue},IntersectionObserver:IO,AbortController,DOMException,Date,Map,
+  URL:{createObjectURL:()=>`blob:${++created}`,revokeObjectURL:value=>revoked.push(value)},
+  FolderStore:{imageOf:store.imageOf,blobOf:store.blobOf,readImage:async()=>{reads++;return new Blob(['replacement']);}}};
+ vm.runInNewContext(await fs.readFile('app/image-loader.js','utf8'),context);
+ const api=window.ArtistImages,uid='0001-a-manual',before={id:'1',thumb:'data:image/png;base64,AQID'},after={id:'1',thumb:'缩略图/a.png'};
+ const img={classList:{add(){},remove(){}},removeAttribute(){this.src=undefined;}};api.setFolder({});api.bind(img,uid,before,'card:'+uid);
+ observers[0].fn([{target:img,isIntersecting:true}]);if(loaded)await new Promise(r=>setImmediate(r));
+ assert.equal(api.adoptPersisted(img,after),true);
+ await new Promise(r=>setImmediate(r));assert.equal(img.src,'blob:1');assert.equal(created,1);assert.deepEqual(revoked,[]);
+ assert.equal((await api.fetch(uid,after,'thumb')).size,3);assert.equal(reads,0,'刚刚保存的同一份图片不再读盘解码');
+ api.invalidate(uid,after.thumb);await new Promise(r=>setImmediate(r));
+ assert.equal(reads,1,'之后真的覆盖同路径图片仍必须失效缓存');assert.equal(img.src,'blob:2');assert.ok(revoked.includes('blob:1'));
+});
