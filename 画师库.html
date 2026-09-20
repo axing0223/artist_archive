@@ -231,7 +231,6 @@ footer .reset{font-size:12px}
 .alias-choice,.alias-drop{border:0;background:none;color:var(--muted);font-size:14px;padding:5px 7px;text-align:left;overflow-wrap:anywhere}
 .alias-drop:hover{color:var(--danger)}
 .artist.is-focus-flash{animation:focus-flash 2s ease-out}
-.artist.is-morphing{animation:morph-out .12s ease-in forwards}
 dialog{border:1px solid var(--line);border-radius:14px;background:var(--panel);color:var(--text);padding:0;box-shadow:var(--shadow);max-width:96vw;width:min(960px,94vw);max-height:88dvh;overflow:auto;overscroll-behavior:contain}
 dialog::backdrop{background:#080b14aa;backdrop-filter:blur(5px)}
 dialog{opacity:0;transform:translateY(12px) scale(.985);transition:opacity .18s ease,transform .18s ease,display .18s allow-discrete,overlay .18s allow-discrete}
@@ -480,8 +479,6 @@ to{opacity:1;transform:none}
 @keyframes gen-spin{to{transform:rotate(360deg)}
 }
 @keyframes spin{to{transform:rotate(360deg)}
-}
-@keyframes morph-out{to{opacity:0;transform:scale(.995)}
 }
 @keyframes focus-flash{0%,40%{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
 100%{box-shadow:none}
@@ -1577,8 +1574,21 @@ to{opacity:1;transform:none}
     if(!artist||!make)return false;
     const key=keyFor(artist);
     if(painted.get(uid)===key)return false;
+    /* 卡片高度会变（进出编辑态就是典型）：先按住旧高度，再动画到新高度。
+       下面的卡片顺着文档流被一起推开，而不是整块瞬间跳上去。 */
+    const before=mounted.has(uid)?slot.getBoundingClientRect().height:0;
     if(!patch?.(slot.children[0],artist)){ArtistImages.dispose('card:'+uid);slot.replaceChildren(make(artist));}
-    mounted.set(uid,artist);painted.set(uid,key);return true;
+    mounted.set(uid,artist);painted.set(uid,key);
+    if(before>0&&!calm()&&typeof slot.animate==='function'){
+      const after=slot.getBoundingClientRect().height;
+      if(Math.abs(after-before)>1){
+        slot.style.height=before+'px';
+        const grow=slot.animate([{height:before+'px'},{height:after+'px'}],{duration:280,easing:'cubic-bezier(.22,.61,.36,1)'});
+        const settle=()=>{if(slot.style.height)slot.style.height='';};
+        grow.onfinish=settle;grow.oncancel=settle;
+      }
+    }
+    return true;
   }
   /* 立刻按卡片真实高度挂载。render() 重建占位用的是上一次量到的高度，
      刚加完作品会比旧高度高，照着旧占位滚动会落到错的位置。 */
@@ -2777,23 +2787,18 @@ to{opacity:1;transform:none}
       },420);
     });
   }
-  function morphAway(uid,then){
-    const article=uid?document.querySelector('.artist-slot[data-uid="'+uid+'"] article'):null;
-    if(!article){then();return;}
-    article.classList.add('is-morphing');
-    setTimeout(then,reducedMotion()?0:130);
-  }
   function startEdit(a){
     if(busy)return;
     $('quick-dialog').close();
-    const previous=editingId;
     closeEditor();
     editingId=a?.uid||null;
     /* 草稿也要带上「将要拿到的序号」：卡片顶部按它显示，缺了就画出 undefined。
        真正的序号在保存时才发，这里只是给它一个可读的占位。 */
     draft=a?clone(a):{uid:uid(),order:ArtistId.nextSeq(data.artists),name:'',category:null,score:null,aliases:[],alias:null,tags:[],artistUrl:'',description:'',note:'',works:[]};
     editorRevision++;ArtistGallery.pin(editingId||draft.uid,true);
-    morphAway(previous||editingId,()=>{render();focusEditingCard();autoOpenPicker();});
+    /* 同一张卡片就地变成编辑态：高度由画廊那边平滑展开，下面的卡片顺着文档流被一起推开。
+       以前是先给旧卡片一个淡出、等 130ms 再重画，看着就是「旧卡消失、新卡出现」。 */
+    render();focusEditingCard();autoOpenPicker();
   }
   /* 设置里开了「编辑画师时自动展开 danbooru 作品」：一进编辑态就把候选列表拉出来。
      名字还空着的（新建画师）先不动——那时展开只会弹一句「先填名字」；等填好名字再点按钮即可。 */
@@ -2804,7 +2809,8 @@ to{opacity:1;transform:none}
   }
   function cancelEdit(){
     if(busy||uploading)return;
-    morphAway(editingId,()=>{closeEditor();render();});
+    /* 收起同样就地收缩：高度动画在画廊那边，不走「淡出再重画」。 */
+    closeEditor();render();
   }
   function closeEditor(){editorFocusVersion++;if(draft)ArtistGallery.pin(editingId||draft.uid,false);ArtistImages.dispose('editor');closeWorkPicker();editingId=null;draft=null;editorError=null;editorToggle=null;editorExpand=null;paintEditorWorks=null;}
   /* 从候选里挑出唯一可信的那一位：名字完全一致优先，只有一位候选时也接受。

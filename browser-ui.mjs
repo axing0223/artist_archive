@@ -67,14 +67,25 @@ try{
  const fiveImages=()=>JSON.stringify([...document.querySelectorAll('.artist:not(.is-editing) .works')].map(row=>{const works=[...row.querySelectorAll(':scope > .work')],rects=works.map(n=>n.getBoundingClientRect());return {count:works.length,oneLine:Math.max(...rects.map(r=>r.top))-Math.min(...rects.map(r=>r.top))<1,fits:rects.every(r=>r.left>=0&&r.right<=innerWidth),contain:[...row.querySelectorAll('img')].every(img=>getComputedStyle(img).objectFit==='contain')};}));
  const verifyFive=async label=>{const rows=JSON.parse(await evaluate('('+fiveImages.toString()+')()'));assert.ok(rows.length>0,label+' 必须显示卡片');assert.ok(rows.every(row=>row.count===5&&row.oneLine&&row.fits&&row.contain),label+' 五图完整同行：'+JSON.stringify(rows));};
  await verifyFive('1080×1920 竖屏');
- await evaluate('[...document.querySelector(".artist-actions").children].find(n=>n.textContent==="编辑").click()');await sleep(650);await capture('editor-top');
+ /* 点「编辑」应当是同一张卡片就地变高、下面的卡片被平滑推开，
+    而不是旧卡片淡出、新卡片再出现。 */
+ const morph=await evaluate(`(()=>{const card=document.querySelector('.artist:not(.is-editing)');const slot=card.closest('.artist-slot');const uid=slot.dataset.uid;const before=slot.getBoundingClientRect().height;const old=card;[...card.querySelectorAll('.artist-actions button')].find(n=>n.textContent==='编辑').click();return {before:Math.round(before),after:Math.round(slot.getBoundingClientRect().height),editing:!!slot.querySelector('.is-editing'),slotAlive:slot.isConnected&&slot.dataset.uid===uid,animations:slot.getAnimations().length,morphing:old.classList.contains('is-morphing')};})()`);
+ assert.equal(morph.editing,true,'点编辑后同一块占位里应立刻是编辑态：'+JSON.stringify(morph));
+ assert.equal(morph.slotAlive,true,'占位不能被拆掉重建：'+JSON.stringify(morph));
+ assert.ok(morph.animations>0,'展开要有高度过渡，而不是瞬间跳变：'+JSON.stringify(morph));
+ assert.equal(morph.morphing,false,'不再走「旧卡片淡出再重画」的老路：'+JSON.stringify(morph));
+ await sleep(650);await capture('editor-top');
  await evaluate('document.querySelector(".artist-expand button").click()');await sleep(650);
  assert.ok(await evaluate('document.activeElement===document.querySelector(".work-picker .candidate-previews")'),'手动展开的键盘焦点位于作品区域');
  assert.ok(await evaluate('document.querySelector(".work-picker .picker-status").getBoundingClientRect().top>=document.querySelector(".library-controls").getBoundingClientRect().bottom-1'),'手动展开后排序与分页不被固定栏遮挡');
  const editorWorks=await evaluate('(()=>{const w=document.querySelector(".is-editing .works").getBoundingClientRect(),b=document.querySelector(".library-controls").getBoundingClientRect();return Math.round(w.top-b.bottom);})()');
  assert.ok(editorWorks>=0&&editorWorks<200,'展开后视线交给作品格，且紧接在固定工具栏下方：间距 '+editorWorks+'px');
  await capture('picker-portrait');
- await evaluate('[...document.querySelector(".is-editing .artist-actions").children].find(n=>n.textContent==="取消").click()');await sleep(220);await evaluate('window.scrollTo(0,0)');await sleep(450);
+ const collapse=await evaluate(`(()=>{const card=document.querySelector('.is-editing');const slot=card.closest('.artist-slot');const before=slot.getBoundingClientRect().height;const old=card;[...card.querySelectorAll('.artist-actions button')].find(n=>n.textContent==='取消').click();return {before:Math.round(before),after:Math.round(slot.getBoundingClientRect().height),editing:!!slot.querySelector('.is-editing'),animations:slot.getAnimations().length,morphing:old.classList.contains('is-morphing')};})()`);
+ assert.equal(collapse.editing,false,'取消后同一块占位里立刻回到浏览态：'+JSON.stringify(collapse));
+ assert.ok(collapse.animations>0,'收起也要平滑收缩，而不是瞬间跳回去：'+JSON.stringify(collapse));
+ assert.equal(collapse.morphing,false,'收起同样不走淡出老路：'+JSON.stringify(collapse));
+ await sleep(450);await evaluate('window.scrollTo(0,0)');await sleep(450);
 
  /* 评分角标故意溢出卡片左上角 10px：卡片滚过固定筛选栏时，它连「筛选栏左右内边距之外那条缝」
     也必须被挡住，否则会从栏边露出一角。采样点取角标最左侧，正是修复前漏光的位置。 */

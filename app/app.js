@@ -674,23 +674,18 @@
       },420);
     });
   }
-  function morphAway(uid,then){
-    const article=uid?document.querySelector('.artist-slot[data-uid="'+uid+'"] article'):null;
-    if(!article){then();return;}
-    article.classList.add('is-morphing');
-    setTimeout(then,reducedMotion()?0:130);
-  }
   function startEdit(a){
     if(busy)return;
     $('quick-dialog').close();
-    const previous=editingId;
     closeEditor();
     editingId=a?.uid||null;
     /* 草稿也要带上「将要拿到的序号」：卡片顶部按它显示，缺了就画出 undefined。
        真正的序号在保存时才发，这里只是给它一个可读的占位。 */
     draft=a?clone(a):{uid:uid(),order:ArtistId.nextSeq(data.artists),name:'',category:null,score:null,aliases:[],alias:null,tags:[],artistUrl:'',description:'',note:'',works:[]};
     editorRevision++;ArtistGallery.pin(editingId||draft.uid,true);
-    morphAway(previous||editingId,()=>{render();focusEditingCard();autoOpenPicker();});
+    /* 同一张卡片就地变成编辑态：高度由画廊那边平滑展开，下面的卡片顺着文档流被一起推开。
+       以前是先给旧卡片一个淡出、等 130ms 再重画，看着就是「旧卡消失、新卡出现」。 */
+    render();focusEditingCard();autoOpenPicker();
   }
   /* 设置里开了「编辑画师时自动展开 danbooru 作品」：一进编辑态就把候选列表拉出来。
      名字还空着的（新建画师）先不动——那时展开只会弹一句「先填名字」；等填好名字再点按钮即可。 */
@@ -701,7 +696,8 @@
   }
   function cancelEdit(){
     if(busy||uploading)return;
-    morphAway(editingId,()=>{closeEditor();render();});
+    /* 收起同样就地收缩：高度动画在画廊那边，不走「淡出再重画」。 */
+    closeEditor();render();
   }
   function closeEditor(){editorFocusVersion++;if(draft)ArtistGallery.pin(editingId||draft.uid,false);ArtistImages.dispose('editor');closeWorkPicker();editingId=null;draft=null;editorError=null;editorToggle=null;editorExpand=null;paintEditorWorks=null;}
   /* 从候选里挑出唯一可信的那一位：名字完全一致优先，只有一位候选时也接受。

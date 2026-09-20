@@ -13,8 +13,21 @@
     if(!artist||!make)return false;
     const key=keyFor(artist);
     if(painted.get(uid)===key)return false;
+    /* 卡片高度会变（进出编辑态就是典型）：先按住旧高度，再动画到新高度。
+       下面的卡片顺着文档流被一起推开，而不是整块瞬间跳上去。 */
+    const before=mounted.has(uid)?slot.getBoundingClientRect().height:0;
     if(!patch?.(slot.children[0],artist)){ArtistImages.dispose('card:'+uid);slot.replaceChildren(make(artist));}
-    mounted.set(uid,artist);painted.set(uid,key);return true;
+    mounted.set(uid,artist);painted.set(uid,key);
+    if(before>0&&!calm()&&typeof slot.animate==='function'){
+      const after=slot.getBoundingClientRect().height;
+      if(Math.abs(after-before)>1){
+        slot.style.height=before+'px';
+        const grow=slot.animate([{height:before+'px'},{height:after+'px'}],{duration:280,easing:'cubic-bezier(.22,.61,.36,1)'});
+        const settle=()=>{if(slot.style.height)slot.style.height='';};
+        grow.onfinish=settle;grow.oncancel=settle;
+      }
+    }
+    return true;
   }
   /* 立刻按卡片真实高度挂载。render() 重建占位用的是上一次量到的高度，
      刚加完作品会比旧高度高，照着旧占位滚动会落到错的位置。 */
