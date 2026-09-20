@@ -25,9 +25,9 @@ class El{
   }
   get textContent(){return this._text;}
   set textContent(value){this._text=value==null?'':String(value);this.children=[];}
-  append(...nodes){for(const node of nodes)if(node){node.parentNode=this;this.children.push(node);}}
+  append(...nodes){for(const node of nodes)if(node){node.remove?.();node.parentNode=this;this.children.push(node);}}
   replaceChildren(...nodes){this.children=nodes.filter(Boolean);for(const node of this.children)node.parentNode=this;}
-  insertBefore(node,before){const index=this.children.indexOf(before);if(index<0)return this.append(node);node.parentNode=this;this.children.splice(index,0,node);}
+  insertBefore(node,before){if(node===before)return;node.remove();const index=this.children.indexOf(before);if(index<0)return this.append(node);node.parentNode=this;this.children.splice(index,0,node);}
   remove(){const parent=this.parentNode;if(parent)parent.children=parent.children.filter(child=>child!==this);this.parentNode=null;}
   setAttribute(key,value){this[key]=value;}
   removeAttribute(key){delete this[key];}
@@ -101,7 +101,7 @@ FileUrl.createObjectURL=()=>'blob:x';FileUrl.revokeObjectURL=()=>{};
     atob,DOMException,crypto:{subtle:webcrypto.subtle,randomUUID:()=>'uuid-'+Math.random().toString(36).slice(2)},
     fetch:async()=>{throw Error('测试中不应联网');},
     URL:FileUrl,Blob,structuredClone,setTimeout,clearTimeout,requestAnimationFrame:fn=>fn(),
-    ArtistImages:{bind(){},dispose(){},setFolder(){},clear(){},dataUrl:async()=>'data:image/jpeg;base64,/9j/2Q==',fetch:async()=>new Blob([])},
+    ArtistImages:{bind(){},unbind(){},dispose(){},setFolder(){},clear(){},dataUrl:async()=>'data:image/jpeg;base64,/9j/2Q==',fetch:async()=>new Blob([])},
     ArtistExtension:{connected:false,canGenerate:false,canAccount:false,version:'',generate:async()=>{throw Error('未连接');},subscription:async()=>{throw Error('未连接');},check:async()=>{throw Error('测试中未连接扩展');},image:async()=>{throw Error('未连接');},resolve:async()=>{throw Error('未连接');}},
     ArtistGallery:{render(container,rows,card,keyOf){state.card=card;state.rows=rows;state.keyOf=keyOf;state.renders.push(rows.map(row=>card(row)));},clear(){},pin(){},markPainted(){},visible:()=>[],mount(uid){state.mounted.push(uid);return true;}},
     ArtistLookup:{plan(){throw Error('测试中不查询');},lookup:async()=>[],posts:async()=>[],details:async()=>({counts:{total:null,beforeTotal:null}})},
@@ -2061,4 +2061,25 @@ test('已经删掉的计数元素不再被任何脚本写入',async()=>{
     assert.equal(source.includes("$('count')"),false,file+' 不能再去写 #count');
     assert.equal(source.includes("$('view-title')"),false,file+' 不能再去写 #view-title');
   }
+});
+
+
+for(const action of ['删除作品','新增画师'])test(action+'在慢写盘前呈现，失败后保留内存修改并释放保存锁',async()=>{
+ const {elements,state,ctx,dir}=await connectedApp();
+ await ctx.FolderStore.write(dir,{...ctx.FolderStore.empty(),artists:[bareArtist({uid:'0001-a-manual',name:'a'})]});await elements.get('choose-folder').onclick();
+ const original=ctx.FolderStore.write,started=gate(),release=gate();
+ ctx.FolderStore.write=async()=>{started.resolve();await release.promise;throw Error('模拟写入失败');};
+ let operation;
+ if(action==='删除作品'){const button=findByClass(lastRender(state)[0],'slot-delete');await button.onclick();operation=button.onclick();}
+ else operation=runBatch(elements,'new',false);
+ await started.promise;
+ try{
+  assert.equal(elements.get('storage-status').textContent,'正在保存…');assert.equal(elements.get('gallery').inert,true);
+  if(action==='删除作品')assert.equal(state.rows[0].works.length,0);else assert.equal(state.rows.length,2);
+ }finally{release.resolve();await operation;ctx.FolderStore.write=original;}
+ assert.equal(elements.get('gallery').inert,false);assert.match(elements.get('storage-status').textContent,/文件保存失败/);
+ const persisted=await ctx.FolderStore.read(dir);assert.equal(persisted.artists.length,1);assert.equal(persisted.artists[0].works.length,1);
+ elements.get('save-large').checked=true;await elements.get('save-large').onchange();
+ const retried=await ctx.FolderStore.read(dir);
+ if(action==='删除作品')assert.equal(retried.artists[0].works.length,0);else assert.equal(retried.artists.length,2);
 });

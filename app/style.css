@@ -524,3 +524,6 @@ to{opacity:1;transform:none}
 
 #workspace{scroll-margin-top:calc(var(--header) + 12px)}
 .works{scroll-margin-top:calc(var(--header) + 150px)}
+
+/* 临时写盘锁不改变原本可用控件的外观，避免图片按钮让整屏闪暗。 */
+.is-saving-locked:disabled{opacity:1}
