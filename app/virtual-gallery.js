@@ -77,6 +77,38 @@
     for(const uid of mounted.keys())before.set(uid,slots.get(uid).getBoundingClientRect().top-top);
     return before;
   }
+  /* 一张卡片里所有由 --card-size 决定高度的格子：预览图、空格、生图格。 */
+  function previewHeights(slot){
+    return [...slot.querySelectorAll('.thumb,.work-empty,.work-generate')].map(node=>({node,height:node.getBoundingClientRect().height}));
+  }
+  /* 换布局（舒适 ↔ 紧凑）时，把每张可见卡片的预览高度从旧值补间到新值：
+     不补间的话整屏会「啪」地跳一下——两套视图的差别主要就在预览高度上。
+     卡片高度由预览撑着，跟着一起长；左列信息不会盖过它。
+     这里不写成 CSS transition：--card-size 是用户自己拖的那条滑杆，
+     给它加过渡会让拖动变得不跟手，只有切换视图这一下才该有动画。 */
+  function animateLayoutChange(mutate){
+    if(typeof mutate!=='function')return;
+    if(calm()){mutate();remeasure();return;}
+    const before=new Map();
+    for(const [uid,slot] of slots)if(mounted.has(uid))before.set(uid,previewHeights(slot));
+    mutate();
+    // 离屏占位要立刻按新布局修正，否则它们还留着旧高度，滚到那里会跳一下。
+    remeasure();
+    for(const [uid,slot] of slots){
+      const was=before.get(uid);if(!was)continue;
+      const card=slot.firstElementChild;
+      // 编辑器是全宽表单，两套视图里长得一样，别跟着一起淡。
+      if(card?.classList.contains('is-editing'))continue;
+      /* 身份信息从「整行」变成「一列」，几何是跳过去的：让它淡一下，
+         才看得出是同一张卡换了排法，而不是两块内容互不相干地闪了一下。 */
+      card?.querySelector('.artist-info')?.animate?.([{opacity:.45},{opacity:1}],{duration:220,easing:'ease-out'});
+      for(const [index,preview] of previewHeights(slot).entries()){
+        const from=was[index];
+        if(!from||typeof preview.node.animate!=='function'||Math.abs(from.height-preview.height)<1)continue;
+        preview.node.animate([{height:from.height+'px'},{height:preview.height+'px'}],{duration:320,easing:'cubic-bezier(.22,.61,.36,1)'});
+      }
+    }
+  }
   function render(container,rows,makeCard,key,patchCard){
     const next=rows.map(a=>a.uid),same=uids.length>0&&next.length===uids.length&&next.every((uid,i)=>uid===uids[i]);
     current=rows;make=makeCard;patch=patchCard;if(key)keyOf=key;
@@ -128,7 +160,7 @@
     for(const [id,slot] of slots)if(!mounted.has(id)){heights.set(id,average);slot.style.height=average+'px';}
   }
   window.ArtistGallery={
-    render,clear,remeasure,
+    render,clear,remeasure,animateLayoutChange,
     mount(uid){return mountSlot(slots.get(uid));},
     pin(uid,value){if(value)pinned.add(uid);else pinned.delete(uid);},
     /* 卡片内容在别处就地更新完了（比如编辑态里那一排作品格），跟画廊说一声「这张已经是最新的」，

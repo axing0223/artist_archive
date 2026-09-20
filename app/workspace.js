@@ -42,7 +42,7 @@
   const densityKey='artist-library.density';
   const setDensity=value=>{const compact=value==='compact';document.documentElement.dataset.density=compact?'compact':'comfortable';$('density-toggle').setAttribute('aria-pressed',String(compact));$('density-toggle').textContent=compact?'舒适视图':'紧凑视图';};
   try{setDensity(localStorage.getItem(densityKey));}catch{setDensity('comfortable');}
-  $('density-toggle').onclick=()=>{const value=document.documentElement.dataset.density==='compact'?'comfortable':'compact';setDensity(value);try{localStorage.setItem(densityKey,value);}catch{}window.ArtistGallery.remeasure?.();};
+  $('density-toggle').onclick=()=>{const value=document.documentElement.dataset.density==='compact'?'comfortable':'compact';const relayout=window.ArtistGallery?.animateLayoutChange;relayout?relayout(()=>setDensity(value)):setDensity(value);try{localStorage.setItem(densityKey,value);}catch{}};
   $('quick-open').onclick=openQuick;$('empty-action').onclick=()=>$( !connected?'choose-folder':total?'reset':'quick-open').click();
   $('status-toggle').onclick=()=>{paintHistory();$('activity-dialog').showModal();};$('back-top').onclick=()=>window.scrollTo({top:0,behavior:calm()?'auto':'smooth'});
   $('filter-toggle').onclick=()=>{const open=$('filter-panel').hidden;$('filter-panel').hidden=!open;$('filter-toggle').setAttribute('aria-expanded',String(open));};

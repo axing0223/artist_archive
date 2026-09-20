@@ -67,6 +67,38 @@ try{
  const fiveImages=()=>JSON.stringify([...document.querySelectorAll('.artist:not(.is-editing) .works')].map(row=>{const works=[...row.querySelectorAll(':scope > .work')],rects=works.map(n=>n.getBoundingClientRect());return {count:works.length,oneLine:Math.max(...rects.map(r=>r.top))-Math.min(...rects.map(r=>r.top))<1,fits:rects.every(r=>r.left>=0&&r.right<=innerWidth),contain:[...row.querySelectorAll('img')].every(img=>getComputedStyle(img).objectFit==='contain')};}));
  const verifyFive=async label=>{const rows=JSON.parse(await evaluate('('+fiveImages.toString()+')()'));assert.ok(rows.length>0,label+' 必须显示卡片');assert.ok(rows.every(row=>row.count===5&&row.oneLine&&row.fits&&row.contain),label+' 五图完整同行：'+JSON.stringify(rows));};
  await verifyFive('1080×1920 竖屏');
+ /* 舒适与紧凑是两套真正不同的排法，而不是同一套只差几个像素：
+   舒适＝信息在上、五张大预览竖排；紧凑＝左边一列身份信息、右边五张缩小的预览横排。
+   （以前「紧凑」只把某个 margin 差 4px，所以看着和舒适一模一样。）
+   切换时量的是动画走完之后的稳定值——过渡中间的高度不是任何一套布局的真实值。 */
+ const density=await evaluate(`(async()=>{const settle=()=>new Promise(r=>setTimeout(r,420));const measure=()=>{const card=document.querySelector('#gallery .artist'),h2=card.querySelector('h2'),works=card.querySelector('.works'),info=card.querySelector('.artist-info'),thumb=card.querySelector('.thumb');const r=card.getBoundingClientRect(),ir=info.getBoundingClientRect(),wr=works.getBoundingClientRect();return {cardH:Math.round(r.height),nameFont:parseFloat(getComputedStyle(h2).fontSize),workGap:Math.round(parseFloat(getComputedStyle(works).columnGap)),padTop:Math.round(parseFloat(getComputedStyle(card).paddingTop)),thumbH:Math.round(thumb.getBoundingClientRect().height),infoTop:Math.round(ir.top-r.top),infoLeft:Math.round(ir.left-r.left),worksTop:Math.round(wr.top-r.top),worksLeft:Math.round(wr.left-r.left)};};const comfortable=measure();document.getElementById('density-toggle').click();const running=document.getAnimations().filter(a=>a.playState==='running').length;const midThumb=Math.round(await new Promise(r=>setTimeout(()=>r(document.querySelector('#gallery .thumb').getBoundingClientRect().height),90)));await settle();const compact=measure();document.getElementById('density-toggle').click();await settle();return {comfortable,compact,running,midThumb,density:document.documentElement.dataset.density};})()`);
+ assert.ok(density.running>0,'切换布局要有过渡动画：'+JSON.stringify(density));
+ assert.ok(density.midThumb<density.comfortable.thumbH-10&&density.midThumb>density.compact.thumbH+10,'预览要缩放着过去，不能一步跳过去：'+JSON.stringify(density));
+ assert.equal(density.density,'comfortable','切换两下要回到舒适视图');
+ assert.ok(density.comfortable.cardH>=density.compact.cardH*1.5,'紧凑视图的卡片要明显矮于舒适视图：'+JSON.stringify(density));
+ assert.ok(density.comfortable.thumbH>=density.compact.thumbH*1.5,'紧凑视图的预览要明显更矮：'+JSON.stringify(density));
+ assert.ok(density.comfortable.nameFont>density.compact.nameFont,'紧凑视图的名字要更小：'+JSON.stringify(density));
+ assert.ok(density.comfortable.workGap>density.compact.workGap,'紧凑视图的图间距要更窄：'+JSON.stringify(density));
+ assert.ok(density.comfortable.padTop>density.compact.padTop,'紧凑视图的内边距要更小：'+JSON.stringify(density));
+ /* 排法本身不同：舒适是「信息在上、预览在下、预览从卡片左边铺开」，
+    紧凑是「信息在左、预览在右、两者同一行」。 */
+ assert.ok(density.comfortable.worksTop>=density.comfortable.infoTop+20,'舒适视图的预览要排在信息下方：'+JSON.stringify(density));
+ assert.ok(density.compact.worksTop<=density.compact.infoTop+8,'紧凑视图的预览要和信息同一行：'+JSON.stringify(density));
+ assert.ok(density.compact.worksLeft>=density.comfortable.worksLeft+100,'紧凑视图的预览要挪到信息列右边：'+JSON.stringify(density));
+ await capture('density-comfortable');
+ await evaluate('document.getElementById("density-toggle").click()');await sleep(420);
+ await capture('density-compact');
+ await evaluate('document.getElementById("density-toggle").click()');await sleep(420);
+ console.log('两套布局实测：'+JSON.stringify(density));
+ /* 编辑器不属于这两套视图：它在两套视图里都得是原来那张全宽表单。
+    上面那串 .artist:not(.is-editing) 前缀一旦写错，第一个坏掉的就是它。 */
+ await evaluate('document.getElementById("density-toggle").click()');await sleep(420);
+ await evaluate(`(()=>{[...document.querySelector('.artist-actions').children].find(n=>n.textContent==='编辑').click();})()`);await sleep(700);
+ const compactEditor=await evaluate(`(()=>{const card=document.querySelector('.artist.is-editing');if(!card)return {ok:false};const thumb=card.querySelector('.thumb'),slider=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--card-size'))||190;return {ok:true,thumbH:Math.round(thumb.getBoundingClientRect().height),slider:Math.round(slider),columns:getComputedStyle(card).gridTemplateColumns};})()`);
+ assert.ok(compactEditor.ok&&Math.abs(compactEditor.thumbH-compactEditor.slider)<1&&compactEditor.columns==='none','紧凑视图下编辑器仍是全宽表单、预览仍按滑杆像素显示：'+JSON.stringify(compactEditor));
+ assert.deepEqual(await evaluate('document.documentElement.dataset.density'),'compact','编辑器检查期间应处于紧凑视图');
+ await evaluate(`(()=>{[...document.querySelector('.is-editing .artist-actions').children].find(n=>n.textContent==='取消').click();})()`);await sleep(500);
+ await evaluate('document.getElementById("density-toggle").click()');await sleep(420);
  /* 切分类后第一张卡要停在固定筛选栏下方：曾经因为平滑滚动期间文档高度一直在变，
     滚动目标漂移，整张卡被筛选栏盖住，看着像停在了第二张。 */
  await evaluate(`(()=>{[...document.querySelectorAll('#categories button')].find(b=>b.dataset.filterKey==='category:二次元').click();})()`);
@@ -200,10 +232,17 @@ async function browserChecks(){
  $('quick-open').click();check($('quick-dialog').open&&document.activeElement===$('quick-input'),'识别添加直接聚焦输入');$('quick-dialog').querySelector('[data-close-dialog]').click();
  document.querySelector('.thumb').click();await until(()=>$('viewer').open);check($('viewer-position').textContent==='1 / 5','预览显示完整图片序号');$('viewer-next').click();check($('viewer-position').textContent==='2 / 5','可切到下一张');$('viewer').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true}));check($('viewer-position').textContent==='1 / 5','方向键可切回上一张');$('viewer').close();
 
- // 高度滑块在原先失效的上限以上仍可调，紧凑模式也使用设置的实际像素。
+ // 高度滑块是「舒适视图的基准高度」：舒适视图严格按像素渲染，紧凑视图按它的一半缩放、但仍跟着滑杆走。
  $('settings-open').click();await delay(350);
- for(const height of [160,300,360]){input('card-size',String(height));await delay(30);check(Math.abs(document.querySelector('.thumb').getBoundingClientRect().height-height)<1,'预览高度应等于 '+height+'，实际 '+document.querySelector('.thumb').getBoundingClientRect().height+' / '+getComputedStyle(document.querySelector('.thumb')).height+' / '+document.documentElement.style.getPropertyValue('--card-size'));}
- $('density-toggle').click();input('card-size','251');await delay(30);check(Math.abs(document.querySelector('.thumb').getBoundingClientRect().height-251)<1,'紧凑视图也响应逐像素高度');$('density-toggle').click();
+ check(document.documentElement.dataset.density==='comfortable','高度滑块以舒适视图为基准');
+ for(const height of [160,300,360]){input('card-size',String(height));await delay(30);check(Math.abs(document.querySelector('.thumb').getBoundingClientRect().height-height)<1,'舒适视图预览高度应等于 '+height+'，实际 '+document.querySelector('.thumb').getBoundingClientRect().height+' / '+getComputedStyle(document.querySelector('.thumb')).height+' / '+document.documentElement.style.getPropertyValue('--card-size'));}
+ $('density-toggle').click();await delay(380);
+ input('card-size','200');await delay(30);const compactSmall=document.querySelector('.thumb').getBoundingClientRect().height;
+ input('card-size','300');await delay(30);const compactLarge=document.querySelector('.thumb').getBoundingClientRect().height;
+ check(compactLarge<300,'紧凑视图的预览要小于滑杆设定值：'+compactLarge);
+ check(compactLarge-compactSmall>30&&compactLarge-compactSmall<90,'紧凑视图的预览仍按比例跟随滑杆：'+compactSmall+' → '+compactLarge);
+ input('card-size','251');await delay(30);check(Math.abs(document.querySelector('.thumb').getBoundingClientRect().height-125.5)<2,'紧凑视图按舒适视图基准的一半缩放：'+document.querySelector('.thumb').getBoundingClientRect().height);
+ $('density-toggle').click();
  $('settings').close();$('settings-open').click();check($('card-size').value==='251','再次打开设置保留高度');check(localStorage.getItem('artist-library.card-size')==='251','预览高度需持久化');input('card-size','190');$('settings').close();
  document.querySelector('.thumb').click();await until(()=>$('large-image').naturalWidth>0);await delay(300);
  for(const [key,position] of [['d','2 / 5'],['a','1 / 5'],['ArrowRight','2 / 5'],['ArrowLeft','1 / 5'],['D','2 / 5']]){$('viewer').dispatchEvent(new KeyboardEvent('keydown',{key,bubbles:true}));check($('viewer-position').textContent===position,key+' 切图');}

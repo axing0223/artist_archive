@@ -354,10 +354,46 @@ legend{font-size:14px;color:var(--muted)}
 .command-results button{display:flex;align-items:center;justify-content:space-between;background:none;border:0;border-radius:6px;padding:12px;text-align:left;color:var(--text);font-size:15px}
 .command-results button:hover,.command-results button:focus{background:var(--accent-soft);color:var(--accent)}
 .command-results small{color:var(--faint);font-size:12px}
-html[data-density=compact] .artist-footer{margin-top:2px;padding-top:2px}
-html[data-density=compact] .artist{padding-top:13px}
-html[data-density=compact] .artist-info{margin-bottom:4px}
-html[data-density=compact] #gallery{gap:16px}
+/* 舒适与紧凑是两套排法，不是同一套挤一挤：
+   舒适＝信息在上、五张大预览竖排铺开；紧凑＝卡片横过来，左边一列身份信息、右边五张缩小的预览，
+   两者同一行，卡片矮一半以上，一屏能多看两倍多的画师。
+   能自己插值的尺寸（间距、内边距、字号）交给 CSS 过渡；图片高度是主角，由
+   ArtistGallery.animateLayoutChange 补间——不能写成 .thumb 的 transition：
+   --card-size 是用户自己拖的那条滑杆，给它加过渡会让拖动变得不跟手。
+   所有紧凑规则都排除 .is-editing：编辑器是全宽表单，两套视图里长得一样才对。
+   密度选择器的特异性天然高于基础规则，所以这里显式写两套，不依赖基础值。 */
+html[data-density] .artist{transition:border-color .18s,padding .28s ease,gap .28s ease}
+html[data-density] .artist-info{transition:gap .28s ease,margin-bottom .28s ease}
+html[data-density] .works{transition:gap .28s ease}
+html[data-density] .artist-footer{transition:margin-top .28s ease,padding-top .28s ease}
+html[data-density] .artist h2{transition:font-size .28s ease}
+html[data-density=comfortable] #gallery{gap:16px}
+html[data-density=comfortable] .artist{padding:15px 14px 10px}
+html[data-density=comfortable] .artist-info{gap:11px;margin-bottom:8px}
+html[data-density=comfortable] .artist h2{font-size:21px}
+html[data-density=comfortable] .works{gap:10px}
+html[data-density=comfortable] .artist-footer{margin-top:6px;padding-top:6px}
+/* 紧凑：左列固定宽度放身份信息，右列整块放预览，备注横跨底部。 */
+html[data-density=compact] #gallery{gap:18px}
+html[data-density=compact] .artist:not(.is-editing){display:grid;grid-template-columns:220px minmax(0,1fr);grid-template-areas:"info works" "footer footer";align-items:start;column-gap:14px;padding:9px 11px 7px}
+html[data-density=compact] .artist:not(.is-editing) .artist-info{grid-area:info;flex-direction:column;align-items:stretch;justify-content:flex-start;gap:5px;margin-bottom:0}
+html[data-density=compact] .artist:not(.is-editing) .name-row{gap:3px 7px}
+html[data-density=compact] .artist:not(.is-editing) .artist-meta{border-inline-start:0;padding-inline-start:0;gap:5px}
+html[data-density=compact] .artist:not(.is-editing) .secondary{display:none}
+html[data-density=compact] .artist:not(.is-editing) .artist-actions{justify-content:flex-start;gap:5px}
+html[data-density=compact] .artist:not(.is-editing) .works{grid-area:works;gap:6px}
+/* 预览是舒适视图基准的一半：滑杆仍然全程有效，只是这套视图按比例缩。 */
+html[data-density=compact] .artist:not(.is-editing) :is(.thumb,.work-empty,.work-generate){height:calc(var(--card-size) / 2)}
+html[data-density=compact] .artist:not(.is-editing) .work figcaption{margin-top:2px;min-height:15px;font-size:11px}
+html[data-density=compact] .artist:not(.is-editing) .work.is-test::before{top:4px;left:4px;font-size:10px;padding:1px 4px}
+html[data-density=compact] .artist:not(.is-editing) .artist-footer{grid-area:footer;margin-top:4px;padding-top:4px}
+html[data-density=compact] .artist:not(.is-editing) .serial{font-size:11px}
+html[data-density=compact] .artist:not(.is-editing) .alias{font-size:12px}
+html[data-density=compact] .artist:not(.is-editing) .secondary span,html[data-density=compact] .artist:not(.is-editing) .artist-site-count,html[data-density=compact] .artist:not(.is-editing) .artist-before-count{font-size:11px}
+html[data-density=compact] .artist:not(.is-editing) :is(.artist-site-count,.artist-before-count){border-inline-start:0;padding-inline-start:0}
+html[data-density=compact] .artist:not(.is-editing) h2{font-size:18px;line-height:1.3}
+html[data-density=compact] .artist:not(.is-editing) .artist-notes{max-width:100%;font-size:12px}
+html[data-density=compact] .artist:not(.is-editing) .description,html[data-density=compact] .artist:not(.is-editing) .sample-note{font-size:13px;line-height:1.6}
 @media(min-width:1200px){main{padding-left:36px;padding-right:36px}
 .artist{padding-left:14px;padding-right:14px}
 .works{gap:12px}
@@ -389,6 +425,11 @@ h1{font-size:28px}
 .alias{font-size:12px}
 .artist-meta{gap:5px}
 .secondary span{font-size:11px}
+/* 窄屏放不下「信息列 + 预览列」：紧凑视图退回竖排，但预览仍是缩小的一半，
+   这样两套视图在手机上依然一眼能分开。 */
+html[data-density=compact] .artist:not(.is-editing){display:block;padding:10px 9px 7px}
+html[data-density=compact] .artist:not(.is-editing) .artist-info{margin-bottom:6px}
+html[data-density=compact] .artist:not(.is-editing) .artist-notes{max-width:100%}
 .intro{font-size:13px}
 .textarea-row{flex-direction:column}
 .textarea-row>div:first-child{flex:1}
@@ -551,7 +592,7 @@ to{opacity:1;transform:none}
   <main id="workspace" tabindex="-1">
     <div class="collection-heading"><div><p class="eyebrow">YOUR CREATIVE REFERENCE</p><h1>画师与作品<span class="title-dot">.</span></h1><p id="library-summary" class="intro">正在打开画师库…</p></div><div class="collection-actions"><details id="library-menu" class="action-menu"><summary>更多操作 <span aria-hidden="true">⌄</span></summary><div class="menu-panel"><button id="add-artist">手动添加画师</button><button id="export-data">导出资料备份</button><button id="import-data">从备份恢复资料</button><p>JSON 包含资料与图片链接。<br>完整备份请复制数据文件夹。</p><hr><button id="extension-status">检测图片助手…</button><button id="command-open">快捷操作 <kbd>Ctrl K</kbd></button></div></details><details id="test-menu" class="action-menu"><summary>测试风格图 <span aria-hidden="true">⌄</span></summary><div class="menu-panel"><p>与作品参考并排对比画风</p><button id="test-import-open">导入测试风格图</button><button id="gen-batch-open">批量生成测试风格图</button><button id="gen-settings-open">NovelAI 生图参数</button></div></details><button id="batch-artists" class="action">批量采集画师</button><button id="quick-open" class="action primary-action">＋ 添加画师</button><input id="import-file" type="file" accept=".json" hidden></div></div>
     <section class="library-controls" aria-label="查找画师">
-      <div class="search-row"><label class="search"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg><span class="sr-only">搜索画师、笔名、标签与备注</span><input id="search" type="search" placeholder="搜索画师、笔名、标签与备注" autocomplete="off" aria-keyshortcuts="/"><kbd>/</kbd></label><label class="sort-control"><span class="sr-only">画师排序</span><select id="library-sort"><option value="order">序号顺序</option><option value="name">名称 A–Z</option><option value="score">参考评分优先</option><option value="works">收录图片最多</option></select></label><button id="sort-direction" class="action" type="button" aria-pressed="false" title="升序">↑</button><button id="density-toggle" class="action" aria-pressed="false" title="切换图片显示密度">紧凑视图</button><button id="filter-toggle" class="action" aria-expanded="false" aria-controls="filter-panel">筛选 <span id="filter-number" hidden></span></button></div>
+      <div class="search-row"><label class="search"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg><span class="sr-only">搜索画师、笔名、标签与备注</span><input id="search" type="search" placeholder="搜索画师、笔名、标签与备注" autocomplete="off" aria-keyshortcuts="/"><kbd>/</kbd></label><label class="sort-control"><span class="sr-only">画师排序</span><select id="library-sort"><option value="order">序号顺序</option><option value="name">名称 A–Z</option><option value="score">参考评分优先</option><option value="works">收录图片最多</option></select></label><button id="sort-direction" class="action" type="button" aria-pressed="false" title="升序">↑</button><button id="density-toggle" class="action" aria-pressed="false" title="切换舒适 / 紧凑布局">紧凑视图</button><button id="filter-toggle" class="action" aria-expanded="false" aria-controls="filter-panel">筛选 <span id="filter-number" hidden></span></button></div>
       <div class="category-row"><nav id="categories" class="categories" aria-label="画师分类"></nav><button id="manage-tags" class="icon-button" title="管理分类与标签" aria-label="管理分类与标签">＋</button></div>
       <div id="filter-panel" class="filter-panel" hidden><section aria-labelledby="tags-title"><h2 id="tags-title">画风标签 <small>多选时同时匹配</small></h2><div id="tags" class="tags"></div></section><section aria-labelledby="scores-title"><h2 id="scores-title">参考评分 <small>可多选</small></h2><div id="scores" class="score-filter"></div></section><button id="reset" class="reset">清除全部筛选</button></div>
     </section>
@@ -591,7 +632,7 @@ to{opacity:1;transform:none}
     <div class="setting-row"><div><strong>采集作品的排序</strong><p class="field-help">决定识别和采集时优先读取哪些作品。作品较多的画师若出现超时，可切换为「最新发布」。</p></div><select id="work-order" aria-label="采集作品的排序"></select></div>
     <div class="setting-row"><div><strong>刷新所有画师数据</strong><p class="field-help">核对站点正式名称、作品总数和截至日期前数量。改名时会同步迁移本地图片；进度分批保存，可随时停止。</p></div><button id="sync-all" class="action" type="button">开始刷新</button></div>
     <div class="setting-row"><div><strong>保存大图</strong><p class="field-help">开启后，预览作品会将在线原图保存到本地，之后可离线查看。关闭时只临时加载；已保存的原图仍然保留。</p></div><label class="switch"><input id="save-large" type="checkbox" aria-label="预览时保存原图"><span></span></label></div>
-    <div class="setting-row"><div><strong>作品预览高度</strong><p class="field-help">调整作品预览高度。五张图片始终同排、完整缩放显示；按像素设置高度，在所有视图中即时生效。设置保存在本机。</p></div><div class="size-control"><input id="card-size" type="range" min="140" max="360" step="1" value="190" aria-label="作品预览高度"><span id="card-size-value">190</span></div></div>
+    <div class="setting-row"><div><strong>作品预览高度（舒适视图基准）</strong><p class="field-help">舒适视图按这个像素高度显示五张预览，完整缩放、始终同排；紧凑视图是另一套横排布局，预览按它的一半缩放，仍然跟着这条滑杆走。设置保存在本机。</p></div><div class="size-control"><input id="card-size" type="range" min="140" max="360" step="1" value="190" aria-label="作品预览高度"><span id="card-size-value">190</span></div></div>
     <div class="setting-row"><div><strong>固定测试风格图</strong><p class="field-help">为测试风格 1、2 各保留一格，与三张作品参考对比。空格可直接生成；参数在「测试风格图」菜单中设置。</p></div><label class="switch"><input id="fixed-test" type="checkbox" aria-label="固定测试风格图"><span></span></label></div>
     <div class="setting-row"><div><strong>编辑画师时自动展开 danbooru 作品</strong><p class="field-help">编辑时自动联网读取站点作品。关闭时，可在编辑区按需点击「展开读取」。</p></div><label class="switch"><input id="auto-open-works" type="checkbox" aria-label="编辑时自动读取站点作品"><span></span></label></div>
   </div></dialog>
@@ -1645,6 +1686,38 @@ to{opacity:1;transform:none}
     for(const uid of mounted.keys())before.set(uid,slots.get(uid).getBoundingClientRect().top-top);
     return before;
   }
+  /* 一张卡片里所有由 --card-size 决定高度的格子：预览图、空格、生图格。 */
+  function previewHeights(slot){
+    return [...slot.querySelectorAll('.thumb,.work-empty,.work-generate')].map(node=>({node,height:node.getBoundingClientRect().height}));
+  }
+  /* 换布局（舒适 ↔ 紧凑）时，把每张可见卡片的预览高度从旧值补间到新值：
+     不补间的话整屏会「啪」地跳一下——两套视图的差别主要就在预览高度上。
+     卡片高度由预览撑着，跟着一起长；左列信息不会盖过它。
+     这里不写成 CSS transition：--card-size 是用户自己拖的那条滑杆，
+     给它加过渡会让拖动变得不跟手，只有切换视图这一下才该有动画。 */
+  function animateLayoutChange(mutate){
+    if(typeof mutate!=='function')return;
+    if(calm()){mutate();remeasure();return;}
+    const before=new Map();
+    for(const [uid,slot] of slots)if(mounted.has(uid))before.set(uid,previewHeights(slot));
+    mutate();
+    // 离屏占位要立刻按新布局修正，否则它们还留着旧高度，滚到那里会跳一下。
+    remeasure();
+    for(const [uid,slot] of slots){
+      const was=before.get(uid);if(!was)continue;
+      const card=slot.firstElementChild;
+      // 编辑器是全宽表单，两套视图里长得一样，别跟着一起淡。
+      if(card?.classList.contains('is-editing'))continue;
+      /* 身份信息从「整行」变成「一列」，几何是跳过去的：让它淡一下，
+         才看得出是同一张卡换了排法，而不是两块内容互不相干地闪了一下。 */
+      card?.querySelector('.artist-info')?.animate?.([{opacity:.45},{opacity:1}],{duration:220,easing:'ease-out'});
+      for(const [index,preview] of previewHeights(slot).entries()){
+        const from=was[index];
+        if(!from||typeof preview.node.animate!=='function'||Math.abs(from.height-preview.height)<1)continue;
+        preview.node.animate([{height:from.height+'px'},{height:preview.height+'px'}],{duration:320,easing:'cubic-bezier(.22,.61,.36,1)'});
+      }
+    }
+  }
   function render(container,rows,makeCard,key,patchCard){
     const next=rows.map(a=>a.uid),same=uids.length>0&&next.length===uids.length&&next.every((uid,i)=>uid===uids[i]);
     current=rows;make=makeCard;patch=patchCard;if(key)keyOf=key;
@@ -1696,7 +1769,7 @@ to{opacity:1;transform:none}
     for(const [id,slot] of slots)if(!mounted.has(id)){heights.set(id,average);slot.style.height=average+'px';}
   }
   window.ArtistGallery={
-    render,clear,remeasure,
+    render,clear,remeasure,animateLayoutChange,
     mount(uid){return mountSlot(slots.get(uid));},
     pin(uid,value){if(value)pinned.add(uid);else pinned.delete(uid);},
     /* 卡片内容在别处就地更新完了（比如编辑态里那一排作品格），跟画廊说一声「这张已经是最新的」，
@@ -2098,7 +2171,7 @@ to{opacity:1;transform:none}
   const densityKey='artist-library.density';
   const setDensity=value=>{const compact=value==='compact';document.documentElement.dataset.density=compact?'compact':'comfortable';$('density-toggle').setAttribute('aria-pressed',String(compact));$('density-toggle').textContent=compact?'舒适视图':'紧凑视图';};
   try{setDensity(localStorage.getItem(densityKey));}catch{setDensity('comfortable');}
-  $('density-toggle').onclick=()=>{const value=document.documentElement.dataset.density==='compact'?'comfortable':'compact';setDensity(value);try{localStorage.setItem(densityKey,value);}catch{}window.ArtistGallery.remeasure?.();};
+  $('density-toggle').onclick=()=>{const value=document.documentElement.dataset.density==='compact'?'comfortable':'compact';const relayout=window.ArtistGallery?.animateLayoutChange;relayout?relayout(()=>setDensity(value)):setDensity(value);try{localStorage.setItem(densityKey,value);}catch{}};
   $('quick-open').onclick=openQuick;$('empty-action').onclick=()=>$( !connected?'choose-folder':total?'reset':'quick-open').click();
   $('status-toggle').onclick=()=>{paintHistory();$('activity-dialog').showModal();};$('back-top').onclick=()=>window.scrollTo({top:0,behavior:calm()?'auto':'smooth'});
   $('filter-toggle').onclick=()=>{const open=$('filter-panel').hidden;$('filter-panel').hidden=!open;$('filter-toggle').setAttribute('aria-expanded',String(open));};

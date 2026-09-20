@@ -346,10 +346,46 @@ legend{font-size:14px;color:var(--muted)}
 .command-results button{display:flex;align-items:center;justify-content:space-between;background:none;border:0;border-radius:6px;padding:12px;text-align:left;color:var(--text);font-size:15px}
 .command-results button:hover,.command-results button:focus{background:var(--accent-soft);color:var(--accent)}
 .command-results small{color:var(--faint);font-size:12px}
-html[data-density=compact] .artist-footer{margin-top:2px;padding-top:2px}
-html[data-density=compact] .artist{padding-top:13px}
-html[data-density=compact] .artist-info{margin-bottom:4px}
-html[data-density=compact] #gallery{gap:16px}
+/* 舒适与紧凑是两套排法，不是同一套挤一挤：
+   舒适＝信息在上、五张大预览竖排铺开；紧凑＝卡片横过来，左边一列身份信息、右边五张缩小的预览，
+   两者同一行，卡片矮一半以上，一屏能多看两倍多的画师。
+   能自己插值的尺寸（间距、内边距、字号）交给 CSS 过渡；图片高度是主角，由
+   ArtistGallery.animateLayoutChange 补间——不能写成 .thumb 的 transition：
+   --card-size 是用户自己拖的那条滑杆，给它加过渡会让拖动变得不跟手。
+   所有紧凑规则都排除 .is-editing：编辑器是全宽表单，两套视图里长得一样才对。
+   密度选择器的特异性天然高于基础规则，所以这里显式写两套，不依赖基础值。 */
+html[data-density] .artist{transition:border-color .18s,padding .28s ease,gap .28s ease}
+html[data-density] .artist-info{transition:gap .28s ease,margin-bottom .28s ease}
+html[data-density] .works{transition:gap .28s ease}
+html[data-density] .artist-footer{transition:margin-top .28s ease,padding-top .28s ease}
+html[data-density] .artist h2{transition:font-size .28s ease}
+html[data-density=comfortable] #gallery{gap:16px}
+html[data-density=comfortable] .artist{padding:15px 14px 10px}
+html[data-density=comfortable] .artist-info{gap:11px;margin-bottom:8px}
+html[data-density=comfortable] .artist h2{font-size:21px}
+html[data-density=comfortable] .works{gap:10px}
+html[data-density=comfortable] .artist-footer{margin-top:6px;padding-top:6px}
+/* 紧凑：左列固定宽度放身份信息，右列整块放预览，备注横跨底部。 */
+html[data-density=compact] #gallery{gap:18px}
+html[data-density=compact] .artist:not(.is-editing){display:grid;grid-template-columns:220px minmax(0,1fr);grid-template-areas:"info works" "footer footer";align-items:start;column-gap:14px;padding:9px 11px 7px}
+html[data-density=compact] .artist:not(.is-editing) .artist-info{grid-area:info;flex-direction:column;align-items:stretch;justify-content:flex-start;gap:5px;margin-bottom:0}
+html[data-density=compact] .artist:not(.is-editing) .name-row{gap:3px 7px}
+html[data-density=compact] .artist:not(.is-editing) .artist-meta{border-inline-start:0;padding-inline-start:0;gap:5px}
+html[data-density=compact] .artist:not(.is-editing) .secondary{display:none}
+html[data-density=compact] .artist:not(.is-editing) .artist-actions{justify-content:flex-start;gap:5px}
+html[data-density=compact] .artist:not(.is-editing) .works{grid-area:works;gap:6px}
+/* 预览是舒适视图基准的一半：滑杆仍然全程有效，只是这套视图按比例缩。 */
+html[data-density=compact] .artist:not(.is-editing) :is(.thumb,.work-empty,.work-generate){height:calc(var(--card-size) / 2)}
+html[data-density=compact] .artist:not(.is-editing) .work figcaption{margin-top:2px;min-height:15px;font-size:11px}
+html[data-density=compact] .artist:not(.is-editing) .work.is-test::before{top:4px;left:4px;font-size:10px;padding:1px 4px}
+html[data-density=compact] .artist:not(.is-editing) .artist-footer{grid-area:footer;margin-top:4px;padding-top:4px}
+html[data-density=compact] .artist:not(.is-editing) .serial{font-size:11px}
+html[data-density=compact] .artist:not(.is-editing) .alias{font-size:12px}
+html[data-density=compact] .artist:not(.is-editing) .secondary span,html[data-density=compact] .artist:not(.is-editing) .artist-site-count,html[data-density=compact] .artist:not(.is-editing) .artist-before-count{font-size:11px}
+html[data-density=compact] .artist:not(.is-editing) :is(.artist-site-count,.artist-before-count){border-inline-start:0;padding-inline-start:0}
+html[data-density=compact] .artist:not(.is-editing) h2{font-size:18px;line-height:1.3}
+html[data-density=compact] .artist:not(.is-editing) .artist-notes{max-width:100%;font-size:12px}
+html[data-density=compact] .artist:not(.is-editing) .description,html[data-density=compact] .artist:not(.is-editing) .sample-note{font-size:13px;line-height:1.6}
 @media(min-width:1200px){main{padding-left:36px;padding-right:36px}
 .artist{padding-left:14px;padding-right:14px}
 .works{gap:12px}
@@ -381,6 +417,11 @@ h1{font-size:28px}
 .alias{font-size:12px}
 .artist-meta{gap:5px}
 .secondary span{font-size:11px}
+/* 窄屏放不下「信息列 + 预览列」：紧凑视图退回竖排，但预览仍是缩小的一半，
+   这样两套视图在手机上依然一眼能分开。 */
+html[data-density=compact] .artist:not(.is-editing){display:block;padding:10px 9px 7px}
+html[data-density=compact] .artist:not(.is-editing) .artist-info{margin-bottom:6px}
+html[data-density=compact] .artist:not(.is-editing) .artist-notes{max-width:100%}
 .intro{font-size:13px}
 .textarea-row{flex-direction:column}
 .textarea-row>div:first-child{flex:1}
