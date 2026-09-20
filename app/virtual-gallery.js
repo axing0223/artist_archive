@@ -16,21 +16,8 @@
     /* 卡片高度会变（进出编辑态就是典型）：先按住旧高度，再动画到新高度。
        下面的卡片顺着文档流被一起推开，而不是整块瞬间跳上去。 */
     const before=mounted.has(uid)?slot.getBoundingClientRect().height:0;
-    const previous=slot.children[0];
-    /* 整块换内容时（浏览态 ↔ 编辑态）给旧内容留一份静态副本渐隐，新内容同时渐显：
-       直接换掉是「啪」地一下，看不出是同一张卡在变。副本必须在 dispose 之前克隆，
-       否则图片绑定已经释放。patch 成功（就地微调）不走这条路——那种变化本来就很轻。 */
-    const replaced=!patch?.(previous,artist);
-    const ghost=replaced&&previous&&!calm()&&typeof previous.cloneNode==='function'&&typeof slot.animate==='function'?previous.cloneNode(true):null;
-    if(replaced){ArtistImages.dispose('card:'+uid);slot.replaceChildren(make(artist));}
+    if(!patch?.(slot.children[0],artist)){ArtistImages.dispose('card:'+uid);slot.replaceChildren(make(artist));}
     mounted.set(uid,artist);painted.set(uid,key);
-    const fresh=slot.children[0];
-    if(ghost&&fresh){
-      ghost.classList.add('card-ghost');slot.append(ghost);
-      const fade=ghost.animate([{opacity:1},{opacity:0}],{duration:200,easing:'ease-out',fill:'forwards'});
-      const drop=()=>ghost.remove();fade.onfinish=drop;fade.oncancel=drop;
-      fresh.animate([{opacity:0},{opacity:1}],{duration:200,easing:'ease-out'});
-    }
     if(before>0&&!calm()&&typeof slot.animate==='function'){
       const after=slot.getBoundingClientRect().height;
       if(Math.abs(after-before)>1){

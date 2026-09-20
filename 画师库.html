@@ -125,9 +125,7 @@ main{max-width:1440px;margin:0 auto;padding:30px 28px 12px;min-width:0;overflow-
 .artist-collecting::before{content:'';flex:none;width:9px;height:9px;border:2px solid var(--accent-soft);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite}
 /* 每位画师占一行：信息在上，五张作品在下，所有尺寸都不换列、不裁图。 */
 #gallery{display:grid;gap:16px;margin-top:22px}
-.artist-slot{position:relative;min-width:0;scroll-margin-top:200px;overflow-anchor:auto}
-/* 换内容时盖在上面的那份旧内容副本：只负责渐隐，淡完就自己走。 */
-.card-ghost{position:absolute;top:0;left:0;right:0;z-index:1;pointer-events:none}
+.artist-slot{min-width:0;scroll-margin-top:200px;overflow-anchor:auto}
 .artist-slot:empty{border:1px solid var(--line-soft);border-radius:12px;background:var(--panel)}
 .artist{min-width:0;position:relative;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:13px 12px 8px;transition:border-color .18s}
 .artist:hover{border-color:var(--faint)}
@@ -1579,21 +1577,8 @@ to{opacity:1;transform:none}
     /* 卡片高度会变（进出编辑态就是典型）：先按住旧高度，再动画到新高度。
        下面的卡片顺着文档流被一起推开，而不是整块瞬间跳上去。 */
     const before=mounted.has(uid)?slot.getBoundingClientRect().height:0;
-    const previous=slot.children[0];
-    /* 整块换内容时（浏览态 ↔ 编辑态）给旧内容留一份静态副本渐隐，新内容同时渐显：
-       直接换掉是「啪」地一下，看不出是同一张卡在变。副本必须在 dispose 之前克隆，
-       否则图片绑定已经释放。patch 成功（就地微调）不走这条路——那种变化本来就很轻。 */
-    const replaced=!patch?.(previous,artist);
-    const ghost=replaced&&previous&&!calm()&&typeof previous.cloneNode==='function'&&typeof slot.animate==='function'?previous.cloneNode(true):null;
-    if(replaced){ArtistImages.dispose('card:'+uid);slot.replaceChildren(make(artist));}
+    if(!patch?.(slot.children[0],artist)){ArtistImages.dispose('card:'+uid);slot.replaceChildren(make(artist));}
     mounted.set(uid,artist);painted.set(uid,key);
-    const fresh=slot.children[0];
-    if(ghost&&fresh){
-      ghost.classList.add('card-ghost');slot.append(ghost);
-      const fade=ghost.animate([{opacity:1},{opacity:0}],{duration:200,easing:'ease-out',fill:'forwards'});
-      const drop=()=>ghost.remove();fade.onfinish=drop;fade.oncancel=drop;
-      fresh.animate([{opacity:0},{opacity:1}],{duration:200,easing:'ease-out'});
-    }
     if(before>0&&!calm()&&typeof slot.animate==='function'){
       const after=slot.getBoundingClientRect().height;
       if(Math.abs(after-before)>1){
@@ -2729,8 +2714,6 @@ to{opacity:1;transform:none}
     if(draft&&!editingId)rows.push(draft);
     else if(draft&&editingId&&!rows.some(a=>a.uid===editingId)){const editing=data.artists.find(a=>a.uid===editingId);if(editing)rows.unshift(editing);}
     ArtistGallery.render($('gallery'),rows,card,cardKey,patchCard);
-    /* 编辑态收起后，作品格的图片到这里才释放：上面那次重画已经拿旧内容克隆过渐隐副本了。 */
-    if(editorImagesPending&&!draft){editorImagesPending=false;ArtistImages.dispose('editor');}
     $('empty').hidden=rows.length!==0;
     $('library-summary').textContent=summary.total+' 位画师 · '+summary.works+' 张作品参考 · '+summary.tests+' 张测试风格图';
     $('sample-date').textContent=data.date?'样本日期 '+data.date:'';
@@ -2829,11 +2812,7 @@ to{opacity:1;transform:none}
     /* 收起同样就地收缩：高度动画在画廊那边，不走「淡出再重画」。 */
     closeEditor();render();
   }
-  /* 编辑态作品格的图片不能在这里就释放：卡片还要留一份副本做渐隐，而克隆必须发生在图片被清空之前
-     （释放会把 img 的 src 摘掉，克隆出来就是一张空卡）。真正的释放推迟到下一次 render——
-     那时新内容已经就位、渐隐副本也已经克隆好了。 */
-  let editorImagesPending=false;
-  function closeEditor(){editorFocusVersion++;if(draft)ArtistGallery.pin(editingId||draft.uid,false);editorImagesPending=true;closeWorkPicker();editingId=null;draft=null;editorError=null;editorToggle=null;editorExpand=null;paintEditorWorks=null;}
+  function closeEditor(){editorFocusVersion++;if(draft)ArtistGallery.pin(editingId||draft.uid,false);ArtistImages.dispose('editor');closeWorkPicker();editingId=null;draft=null;editorError=null;editorToggle=null;editorExpand=null;paintEditorWorks=null;}
   /* 从候选里挑出唯一可信的那一位：名字完全一致优先，只有一位候选时也接受。
      其余情况返回 null —— 宁可没有编号，也不写错。 */
   const pickCandidate=(found,name)=>{
