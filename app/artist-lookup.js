@@ -30,9 +30,11 @@
     else query=input.replace(/^@/,'').replace(/\s+/g,'_');
     if(kind==='id'&&(!Number.isSafeInteger(Number(id))||Number(id)<1))throw Error('请输入有效的 Danbooru 画师编号。');
     const params=new URLSearchParams({limit:'12'});
-    /* any_name_matches 明确覆盖 name / group_name / other_name，用来按旧名找改名后的画师；
-       any_name_or_url_matches 兼做 URL 检索，仍是默认。 */
-    params.set(kind==='id'?'search[id]':(match==='name'?'search[any_name_matches]':'search[any_name_or_url_matches]'),kind==='id'?id:query);
+    /* 三种搜索各对应站点上的一个字段，也对应 /artists 页面上能点的三种条件：
+       name = 名字 / 组名 / 别名；url = 画师主页地址（该参数不带通配符时会自动在首尾补 *）；
+       默认的综合搜索只在输入本身是链接时才真的去搜 URL，所以它替代不了 url 这一路。 */
+    const field=kind==='id'?'search[id]':match==='name'?'search[any_name_matches]':match==='url'?'search[url_matches]':'search[any_name_or_url_matches]';
+    params.set(field,kind==='id'?id:query);
     return {input,query,kind,siteUrl:origin+'/artists?'+params,apiUrl:kind==='id'?origin+'/artists/'+id+'.json':origin+'/artists.json?'+params};
   }
   function candidates(payload){

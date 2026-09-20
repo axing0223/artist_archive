@@ -3,6 +3,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import vm from 'node:vm';
 import {webcrypto} from 'node:crypto';
+import {createRequire} from 'node:module';
+/* 冒烟测试里的 stub 会把整个 ArtistLookup 换掉（连 plan 一起），假 plan 的 apiUrl 是空的。
+   想验「三路搜索各自用了哪个参数」，就得把真实的 plan 接回去。 */
+const RealArtistLookup=createRequire(import.meta.url)('./app/artist-lookup.js');
+const useRealPlan=ctx=>{ctx.ArtistLookup.plan=(value,options)=>RealArtistLookup.plan(value,options);};
 class El{
   constructor(tag='div'){
     this.tagName=tag;this.children=[];this.className='';this._text='';this.dataset={};this.props={};
@@ -2112,4 +2117,59 @@ test('批量采集：中途停止后「采集中」也要收干净',async()=>{
   elements.get('batch-stop').onclick();
   release.resolve();await batch;
   assert.equal(lastRender(state).some(card=>findByClass(card,'artist-collecting')),false,'中止采集后不能留着「采集中」');
+});
+
+
+/* ── 回归：名字搜不到时，还要按主页地址再搜一次 ─────────────────────── */
+
+/* yotte615 这类字符串可能只在画师的主页地址里，不在名字/组名/别名里；
+   名字类搜索永远搜不到，只有 url_matches 能命中。 */
+test('批量采集：名字与别名都搜不到时，再按主页地址搜一次',async()=>{
+  const {elements,ctx,dir}=await connectedApp();
+  const asked=[];
+  stub(ctx,{
+    lookup:async plan=>{asked.push(plan.apiUrl);return new URL(plan.apiUrl).searchParams.has('search[url_matches]')?[{id:999,name:'yotte615_artist',aliases:[],pageUrl:'https://danbooru.donmai.us/artists/999'}]:[];},
+    details:async()=>({counts:{total:5,checkedAt:'now'},works:[]}),
+    posts:async()=>[],
+  });
+  useRealPlan(ctx);
+  await runBatch(elements,'yotte615');
+  assert.equal(asked.length,3,'名字、综合、主页地址三路依次都要试：'+asked.join(' | '));
+  assert.match(asked[2],/url_matches/,'最后一路要按主页地址搜');
+  const saved=await ctx.FolderStore.read(dir);
+  assert.equal(saved.artists[0].danbooruId,999,'第三路命中的编号要写回画师');
+  assert.equal(saved.artists[0].name,'yotte615_artist','名字也要跟着站点的正式名走');
+});
+test('右键菜单：名字搜不到时也按主页地址再搜一次',async()=>{
+  const {elements,state,ctx}=await boot();
+  await getEl(elements,'choose-folder').onclick();
+  const asked=[];
+  stub(ctx,{
+    lookup:async plan=>{asked.push(plan.apiUrl);return new URL(plan.apiUrl).searchParams.has('search[url_matches]')?[{id:999,name:'yotte615_artist',aliases:[],pageUrl:'https://danbooru.donmai.us/artists/999'}]:[];},
+    posts:async()=>[post('1')],
+    details:async()=>({counts:{},works:[],countsError:false}),
+  });
+  useRealPlan(ctx);
+  const replies=[];
+  state.pageListeners[0]({type:'artist-library.create',text:'yotte615',requestId:'r1',sourceTabId:42},null,value=>replies.push(value));
+  await wait(40);
+  assert.equal(replies.length,1);
+  assert.equal(replies[0].ok,true,'按主页地址搜到唯一画师后应该建卡成功：'+JSON.stringify(replies[0]));
+  assert.ok(asked.some(url=>new URL(url).searchParams.has('search[url_matches]')),'要试过主页地址这一路：'+asked.join(' | '));
+});
+test('识别画师：名字类搜索落空时补一次主页地址搜索',async()=>{
+  const {elements,state,ctx}=await boot();
+  const asked=[];
+  stub(ctx,{
+    lookup:async plan=>{asked.push(plan.apiUrl);return new URL(plan.apiUrl).searchParams.has('search[url_matches]')?[{id:999,name:'yotte615_artist',aliases:[],pageUrl:'https://danbooru.donmai.us/artists/999'}]:[];},
+    posts:async()=>[post('1')],
+    details:async()=>({counts:{total:7}}),
+  });
+  useRealPlan(ctx);
+  getEl(elements,'quick-input').value='yotte615';
+  await getEl(elements,'quick-form').onsubmit({preventDefault(){}});
+  await wait(40);
+  const row=findByClass(getEl(elements,'quick-results'),'candidate');
+  assert.ok(row,'补搜命中后要列出候选：'+asked.join(' | '));
+  assert.ok(asked.some(url=>new URL(url).searchParams.has('search[url_matches]')),'要试过主页地址这一路：'+asked.join(' | '));
 });

@@ -717,6 +717,9 @@
   async function lookupArtist(name){
     let hit=pickCandidate(await ArtistLookup.lookup(ArtistLookup.plan(name,{match:'name'})),name);
     if(!hit)hit=pickCandidate(await ArtistLookup.lookup(ArtistLookup.plan(name)),name);
+    /* 名字、组名、别名都对不上时，再按主页地址找一次：像 yotte615 这种只出现在
+       画师主页地址里的字符串，前两路永远搜不到，只有 url_matches 能命中。 */
+    if(!hit)hit=pickCandidate(await ArtistLookup.lookup(ArtistLookup.plan(name,{match:'url'})),name);
     if(!hit)return null;
     const canonical=typeof hit.name==='string'&&hit.name.trim()?hit.name.trim():null;
     return {id:hit.id,canonical,aliases:hit.aliases||[]};
@@ -1170,7 +1173,17 @@
     const cached=lookupCache.get(p.apiUrl);if(cached&&Date.now()-cached.time<600000){showCandidates(cached.results,p,sequence);return;}
     $('quick-status').textContent=p.kind==='url'?'正在根据主页 URL 匹配画师…':'正在查询正式画师标签与别名…';
     const controller=new AbortController();lookupController=controller;const timeout=setTimeout(()=>controller.abort(),12000);
-    try{const results=await ArtistLookup.lookup(p,{signal:controller.signal});if(sequence!==lookupSequence)return;lookupCache.set(p.apiUrl,{time:Date.now(),results});if(lookupCache.size>100)lookupCache.delete(lookupCache.keys().next().value);showCandidates(results,p,sequence);}
+    try{
+      let results=await ArtistLookup.lookup(p,{signal:controller.signal});if(sequence!==lookupSequence)return;
+      /* 名字类搜索落空时补一次主页地址搜索：像 yotte615 这种只出现在画师主页地址里的字符串，
+         按名字、组名、别名都搜不到，只有 url_matches 能命中。 */
+      if(!results.length&&p.kind==='name'){
+        const byUrl=ArtistLookup.plan(p.input,{match:'url'});
+        results=await ArtistLookup.lookup(byUrl,{signal:controller.signal});if(sequence!==lookupSequence)return;
+        if(results.length)p=byUrl;
+      }
+      lookupCache.set(p.apiUrl,{time:Date.now(),results});if(lookupCache.size>100)lookupCache.delete(lookupCache.keys().next().value);showCandidates(results,p,sequence);
+    }
     catch(error){if(sequence!==lookupSequence)return;$('quick-status').textContent=error.name==='AbortError'?'查询超时，请重试或打开站内检索。':error instanceof TypeError?'暂时无法跨站读取 Danbooru。请打开站内检索核验，或稍后重试。':error.message;}
     finally{clearTimeout(timeout);}
   }
@@ -1207,6 +1220,10 @@
     if(!found.length&&plan.kind==='name'&&/\s/.test(value)){
       const first=value.split(/\s+/)[0].replace(/^@/,'');
       if(/^[\w-]{2,}$/.test(first)){try{plan=ArtistLookup.plan(first,{match:'name'});found=await ArtistLookup.lookup(plan);}catch{}}
+    }
+    /* 名字类搜索都落空时，再按主页地址找一次。 */
+    if(!found.length&&plan.kind==='name'){
+      try{plan=ArtistLookup.plan(value,{match:'url'});found=await ArtistLookup.lookup(plan);}catch{}
     }
     const wanted=String(plan.query||'').toLowerCase(),exact=found.find(item=>item.name.toLowerCase()===wanted);
     const chosen=plan.kind==='id'?found[0]:(exact||(found.length===1?found[0]:null));

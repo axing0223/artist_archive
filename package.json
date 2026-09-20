@@ -5,7 +5,7 @@
   "description": "本地画师库：单文件网页（画师库.html）+ 图片取图扩展",
   "scripts": {
     "build": "node build.mjs",
-    "test": "node --test tests.mjs artist-id.test.mjs work-picker.test.mjs app-smoke.test.mjs image-performance.test.mjs extension-probe.test.mjs novelai.test.mjs image-gen.test.mjs generate-queue.test.mjs host-direct.test.mjs folder-memory.test.mjs build.test.mjs viewer.test.mjs library-index.test.mjs",
+    "test": "node --test tests.mjs artist-id.test.mjs artist-lookup.test.mjs work-picker.test.mjs app-smoke.test.mjs image-performance.test.mjs extension-probe.test.mjs novelai.test.mjs image-gen.test.mjs generate-queue.test.mjs host-direct.test.mjs folder-memory.test.mjs build.test.mjs viewer.test.mjs library-index.test.mjs",
     "test:browser": "node browser-smoke.mjs",
     "preview": "node ui-preview.mjs",
     "test:ui": "node browser-ui.mjs",
