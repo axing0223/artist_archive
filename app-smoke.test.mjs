@@ -2083,3 +2083,33 @@ for(const action of ['删除作品','新增画师'])test(action+'在慢写盘前
  const retried=await ctx.FolderStore.read(dir);
  if(action==='删除作品')assert.equal(retried.artists[0].works.length,0);else assert.equal(retried.artists.length,2);
 });
+
+
+/* ── 回归：批量采集时标出正在采集的那张卡片 ─────────────────────────── */
+
+test('批量采集：正在采集的那张卡片显示「采集中」',async()=>{
+  const {elements,state,ctx}=await connectedApp();
+  const started=gate(),release=gate();
+  stub(ctx,{lookup:async()=>[],details:async()=>{started.resolve();await release.promise;return {counts:{total:5,checkedAt:'now'},works:[]};},posts:async()=>[]});
+  const batch=runBatch(elements,'甲\n乙');
+  await started.promise;
+  const cards=lastRender(state);
+  const first=cards.find(card=>findText(card,'甲'));
+  assert.ok(first,'第一位画师的卡片要在');
+  assert.ok(findByClass(first,'artist-collecting'),'正在采集的那张卡片要显示「采集中」');
+  const second=cards.find(card=>findText(card,'乙'));
+  assert.ok(second&&!findByClass(second,'artist-collecting'),'还没轮到的那位不该显示「采集中」');
+  release.resolve();await batch;
+  assert.equal(lastRender(state).some(card=>findByClass(card,'artist-collecting')),false,'采集结束后标记要消失');
+});
+test('批量采集：中途停止后「采集中」也要收干净',async()=>{
+  const {elements,state,ctx}=await connectedApp();
+  const started=gate(),release=gate();
+  stub(ctx,{lookup:async()=>[],details:async()=>{started.resolve();await release.promise;return {counts:{total:5,checkedAt:'now'},works:[]};},posts:async()=>[]});
+  const batch=runBatch(elements,'甲\n乙');
+  await started.promise;
+  assert.ok(lastRender(state).some(card=>findByClass(card,'artist-collecting')),'采集中要能看到标记');
+  elements.get('batch-stop').onclick();
+  release.resolve();await batch;
+  assert.equal(lastRender(state).some(card=>findByClass(card,'artist-collecting')),false,'中止采集后不能留着「采集中」');
+});

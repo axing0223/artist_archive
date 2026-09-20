@@ -421,7 +421,9 @@
     const article=previous||el('article','artist'),info=el('div','artist-info'),identity=el('div','artist-identity'),row=el('div','name-row');
     article.dataset.artist=a.name;article.setAttribute('aria-label','画师 '+a.name);
     const heading=el('h2'),name=btn(a.name,()=>copyText(a.name,'画师 tag'),'artist-name');name.title='点击复制画师 tag';name.setAttribute('aria-label','复制画师 tag：'+a.name);heading.append(name);
-    row.append(el('span','serial',String(seqOf(a)).padStart(4,'0')),heading);if(a.alias)row.append(el('span','alias',a.alias));
+    row.append(el('span','serial',String(seqOf(a)).padStart(4,'0')),heading);
+    if(collectingUid===a.uid)row.append(el('span','artist-collecting','采集中'));
+    if(a.alias)row.append(el('span','alias',a.alias));
     const count=el('span','artist-site-count','站点作品 '+(a.counts?.total??'未读取'));count.title='本库收录 '+a.works.length+' 张；截至日期：'+(a.counts?.beforeDate||data.cutoffDate);row.append(count);
     /* 站点作品是「现在有多少」，这一项是「截至日期之前有多少」：两者并排才看得出涨了多少。 */
     const beforeCount=el('span','artist-before-count','数据截至日前作品 '+(a.counts?.beforeTotal??'未读取'));beforeCount.title='截至日期：'+(a.counts?.beforeDate||data.cutoffDate);row.append(beforeCount);
@@ -462,7 +464,7 @@
     if(editing)return 'edit/'+editorRevision;
     const queue=waiting?`run${genQueue.waiting?1:0}`:`q${genQueue.positionOf(item=>item.uid===a.uid)||0}`;
     // 删除导致 order 连续重排，但卡片显示稳定 uid 序号，不必让相邻作品重载。
-    return `show/${reservedOf()}/${PREVIEW_SLOTS}/${queue}/${JSON.stringify({...a,order:seqOf(a)})}`;
+    return `show/${reservedOf()}/${PREVIEW_SLOTS}/${queue}/${collectingUid===a.uid?'collecting':''}/${JSON.stringify({...a,order:seqOf(a)})}`;
   }
   /* 卡片内容就地更新完了（编辑态里那一排作品格），同步一下指纹。 */
   const markEditorPainted=()=>{if(draft)ArtistGallery.markPainted(editingId||draft.uid);};
@@ -965,6 +967,13 @@
   }
   const BATCH_WORKS=3;
   let batchStop=false,batchRunning=false;const batchFailed=[];
+  /* 正在采集哪一位：卡片据此显示「采集中」，让进度落到具体那张卡上，
+     而不是只有页面底部一行字。 */
+  let collectingUid=null;
+  function setCollecting(uid){
+    if(collectingUid===uid)return;
+    collectingUid=uid;render();
+  }
   /* 采集期间：工具栏与对话框里都给出「停止采集」，并把进度同时写到页面底部——
      对话框收起以后，主页面那一行仍然看得见进度。 */
   function setBatchRunning(value){
@@ -976,11 +985,13 @@
     const message=$('batch-message'),total=targets.length;
     let done=0,failed=0,renamed=0,images=0;
     const text=()=>`正在采集 ${done} / ${total} · 补编号 ${renamed} · 缩略图 ${images} 张${failed?` · 失败 ${failed}`:''}`;
+    try{
     for(const job of targets){
       if(batchStop)break;
       const source=data.artists.find(a=>a.uid===job.uid);done++;
       if(!source||source.counts?.checkedAt)continue;
       const name=source.name,cutoffDate=data.cutoffDate;
+      setCollecting(job.uid);
       try{
         const detail=await ArtistLookup.details(name,cutoffDate,{previews:true,order});
         if(detail.countsError)throw Error('作品数量读取失败');
@@ -1007,6 +1018,7 @@
       const line=text();message.textContent=line;status(line);
     }
     return {done,failed,renamed,images};
+    }finally{setCollecting(null);}
   }
   /* 超过这个人数、又勾了「同时生成测试风格图」时，按钮要变红再确认一次。 */
   const BATCH_CONFIRM_OVER=20;
