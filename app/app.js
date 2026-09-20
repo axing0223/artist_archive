@@ -128,8 +128,7 @@
     const warnings=FolderStore.takeWarnings(),tail=kept?'':'；这个环境记不住文件夹，下次还得重新选';
     status(warnings.length?`已连接文件夹（${from}），但有 ${warnings.length} 处问题：${warnings.join('；')}${tail}`:`已连接文件夹（${from}） · 图片滚动到附近才加载${tail}`,warnings.length>0);
     /* 文件夹一就绪，就把右键菜单排队等着的那张卡建出来 */
-    if(queuedCreate)runQueuedCreate();
-  }
+    pumpCreate();  }
   async function connectFolder(){
     if(busy)return;
     if(generating||syncingAll||batchRunning||uploading||!genQueue.idle){status('请等当前采集、刷新或生成任务结束后再切换数据文件夹。',true);return;}
@@ -1207,40 +1206,46 @@
     status(`已从右键菜单收到「${value}」，正在识别画师…`);
     detectArtist();
   }
-  /* 右键菜单「添加到画师库」：直接按选中文字建一张新卡（等价于批量导入一位）。
-     只有能定位到唯一的 Danbooru 画师、并且取到作品，才算成功——不做「先建个空卡再说」这种脏数据。 */
+  /* 右键菜单「添加到画师库」：把选中的文字收进库里。
+     识别（找正式名、编号、作品）只当成「尽量补全」——认不出来也照样建卡，卡名就用选中的文字，
+     资料留给你自己在编辑态里补。右键的意图是「收下这段文字」，不该因为站点上查不到就落空。
+     只有三种情况真的不建：没选数据文件夹（写不了盘）、正忙、这位画师已经在库里了。 */
   async function createArtistFromSelection(text){
     const value=String(text||'').replace(/\s+/g,' ').trim().slice(0,200);
     if(!value)return {ok:false,reason:'选中的文字是空的。',text:value};
     if(!folder)return {ok:false,reason:'还没有可用的数据文件夹（可能上次那个搬走了、或权限被拒了）：点提示打开画师库选一次，之后再右键就不用管了。',text:value};
     if(busy||syncingAll)return {ok:false,reason:'画师库正忙（保存或刷新中），过一会儿再右键一次。',text:value};
-    let plan;try{plan=ArtistLookup.plan(value,{match:'name'});}catch(error){return {ok:false,reason:error.message,text:value};}
-    let found;try{found=await ArtistLookup.lookup(plan);}catch(error){return {ok:false,reason:error.message,text:value};}
-    /* 选中的常常是「tag 编号」「tag（@tag）」这类一整段：整段没匹配上，就再试第一个像标签的词。 */
-    if(!found.length&&plan.kind==='name'&&/\s/.test(value)){
-      const first=value.split(/\s+/)[0].replace(/^@/,'');
-      if(/^[\w-]{2,}$/.test(first)){try{plan=ArtistLookup.plan(first,{match:'name'});found=await ArtistLookup.lookup(plan);}catch{}}
-    }
-    /* 名字类搜索都落空时，再按主页地址找一次。 */
-    if(!found.length&&plan.kind==='name'){
-      try{plan=ArtistLookup.plan(value,{match:'url'});found=await ArtistLookup.lookup(plan);}catch{}
-    }
-    const wanted=String(plan.query||'').toLowerCase(),exact=found.find(item=>item.name.toLowerCase()===wanted);
-    const chosen=plan.kind==='id'?found[0]:(exact||(found.length===1?found[0]:null));
-    if(!chosen)return {ok:false,reason:found.length?`匹配到 ${found.length} 个候选（${found.slice(0,3).map(item=>item.name).join('、')}），需要手动确认`:'站点上没找到这个画师',text:value};
-    const exists=data.artists.find(item=>item.name.toLowerCase()===chosen.name.toLowerCase()||(chosen.id&&item.danbooruId===chosen.id));
-    if(exists)return {ok:false,reason:`「${exists.name}」已经在画师库里了`,uid:exists.uid,text:value};
-    let works=[];try{works=await ArtistLookup.posts(chosen.name,{limit:3,order:data.workOrder});}catch{}
-    if(!works.length)return {ok:false,reason:`找到「${chosen.name}」，但没取到作品（可能都被隐藏了），没有建卡`,text:value};
+    /* 先尽量认出这位画师；认不出来就让 chosen 留在 null，下面照建卡。 */
+    let chosen=null;
     try{
-      const uid=ArtistId.issue(data.artists,{name:chosen.name,danbooruId:chosen.id});
-      const [saved,quantity]=await Promise.all([cacheWorks(uid,works),ArtistLookup.details(chosen.name,data.cutoffDate,{previews:false,order:data.workOrder})]);
+      let plan=ArtistLookup.plan(value,{match:'name'});
+      let found=await ArtistLookup.lookup(plan);
+      /* 选中的常常是「tag 编号」「tag（@tag）」这类一整段：整段没匹配上，就再试第一个像标签的词。 */
+      if(!found.length&&plan.kind==='name'&&/\s/.test(value)){
+        const first=value.split(/\s+/)[0].replace(/^@/,'');
+        if(/^[\w-]{2,}$/.test(first)){try{plan=ArtistLookup.plan(first,{match:'name'});found=await ArtistLookup.lookup(plan);}catch{}}
+      }
+      /* 名字类搜索都落空时，再按主页地址找一次。 */
+      if(!found.length&&plan.kind==='name'){
+        try{plan=ArtistLookup.plan(value,{match:'url'});found=await ArtistLookup.lookup(plan);}catch{}
+      }
+      const wanted=String(plan.query||'').toLowerCase(),exact=found.find(item=>item.name.toLowerCase()===wanted);
+      chosen=plan.kind==='id'?found[0]:(exact||(found.length===1?found[0]:null));
+    }catch{}
+    const name=chosen?chosen.name:value;
+    const exists=data.artists.find(item=>item.name.toLowerCase()===name.toLowerCase()||(chosen?.id&&item.danbooruId===chosen.id));
+    if(exists)return {ok:false,reason:`「${exists.name}」已经在画师库里了`,uid:exists.uid,text:value};
+    let works=[];
+    if(chosen){try{works=await ArtistLookup.posts(chosen.name,{limit:3,order:data.workOrder});}catch{}}
+    try{
+      const uid=ArtistId.issue(data.artists,{name,danbooruId:chosen?.id});
+      const [saved,quantity]=chosen?await Promise.all([cacheWorks(uid,works),ArtistLookup.details(chosen.name,data.cutoffDate,{previews:false,order:data.workOrder})]):[[],null];
       await save(next=>{
         if(next.artists.some(a=>a.uid===uid))return next;
-        next.artists.push({uid,order:next.artists.length+1,name:chosen.name,danbooruId:chosen.id,counts:{...quantity.counts},category:null,score:null,aliases:[...chosen.aliases],alias:null,tags:[],artistUrl:chosen.pageUrl,description:'',note:'',works:saved});
+        next.artists.push({uid,order:next.artists.length+1,name,danbooruId:chosen?.id??null,counts:quantity?{...quantity.counts}:{},category:null,score:null,aliases:chosen?[...chosen.aliases]:[],alias:null,tags:[],artistUrl:chosen?chosen.pageUrl:'https://danbooru.donmai.us/posts?tags='+encodeURIComponent(name),description:'',note:'',works:saved});
         return next;
-      },`右键菜单已添加 ${chosen.name} · ${saved.length} 张作品`);
-      return {ok:true,uid,name:chosen.name,danbooruId:chosen.id,works:saved.length,text:value};
+      },chosen?`右键菜单已添加 ${name} · ${saved.length} 张作品`:`右键菜单已收下「${name}」，资料待补全`);
+      return {ok:true,uid,name,danbooruId:chosen?.id??null,works:saved.length,text:value,partial:!chosen};
     }catch(error){return {ok:false,reason:'写入失败：'+error.message,text:value};}
   }
   /* 点漂浮提示回到页面时：清掉筛选、滚到那位画师、闪一下边框。
@@ -1299,27 +1304,31 @@
   }
   /* 待办里的建卡排到「数据文件夹就绪」之后再跑：页面刚被右键菜单打开时，
      文件夹是这一刻才接上的（可能来自记忆、也可能要用户选一次），急不得。 */
-  let queuedCreate=null,queuedTimer=null;
-  function runCreate(action,send){
-    createArtistFromSelection(action.text).then(result=>send({channel:'artist-library-page',type:'created',result:{...result,requestId:action.requestId,sourceTabId:action.sourceTabId}}));
-  }
-  function runQueuedCreate(){
-    clearTimeout(queuedTimer);queuedTimer=null;
-    const queued=queuedCreate;queuedCreate=null;
-    if(queued)runCreate(queued.action,queued.send);
-  }
-  function handleAction(action,send){
-    if(action?.kind==='create'){
-      if(!folder&&!queuedCreate){
-        queuedCreate={action,send};
-        status('右键菜单要添加一张新卡片：等数据文件夹就绪（可能要点一下「继续使用上次的文件夹」）就立刻写入…');
-        /* 给用户足够时间去点那个「继续使用」，超时才如实说失败。 */
-        queuedTimer=setTimeout(()=>{if(queuedCreate)runQueuedCreate();},60000);
-        return;
+  /* 待办里的建卡排进一条串行队列：轮到自己的时候才检查文件夹、才发号。
+     这样排队 5 个会一起等文件夹就绪（而不是只有第一个等），序号也不会全撞在 0001。 */
+  const createQueue=[];let createRunning=false,createTimer=null;
+  function pumpCreate(){
+    if(createRunning||!createQueue.length)return;
+    if(!folder){
+      if(!createTimer){
+        status(`右键菜单要添加 ${createQueue.length} 张新卡片：等数据文件夹就绪（可能要点一下「继续使用上次的文件夹」）就依次写入…`);
+        /* 给用户足够时间去点那个「继续使用」，超时再重试一次。
+           unref：这个等待不该拖着进程不让它退出（node 测试尤其明显）。 */
+        createTimer=setTimeout(()=>{createTimer=null;pumpCreate();},60000);
+        createTimer?.unref?.();
       }
-      runCreate(action,send);
       return;
     }
+    clearTimeout(createTimer);createTimer=null;
+    const job=createQueue.shift();createRunning=true;
+    const report=result=>job.send({channel:'artist-library-page',type:'created',result:{...result,requestId:job.action.requestId,sourceTabId:job.action.sourceTabId}});
+    createArtistFromSelection(job.action.text)
+      .then(report)
+      .catch(error=>report({ok:false,reason:'内部错误：'+(error?.message||error),text:job.action.text}))
+      .finally(()=>{createRunning=false;pumpCreate();});
+  }
+  function handleAction(action,send){
+    if(action?.kind==='create'){createQueue.push({action,send});pumpCreate();return;}
     if(action?.kind==='focus')focusArtist(action.uid,action.text);
   }
   /* ---- 生图参数：只存在本机浏览器里，绝不写进画师库数据文件，导出备份也就不会带 token ---- */

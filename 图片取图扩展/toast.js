@@ -19,12 +19,14 @@
   const look=payload=>{
     if(payload?.state==='pending')return {accent:'#b8791a',background:'#fdf7ee',title:'正在尝试加入画师库…',hint:'正在查询 Danbooru，请稍候',dot:true};
     if(payload?.state==='queued')return {accent:'#3b5bdb',background:'#f2f5fd',title:'已记下这次添加',hint:'点击打开画师库，打开时自动添加',dot:false};
+    /* 认不出画师时也建了卡，只是资料待补：用琥珀色和「已排队」的蓝、「已完成」的绿区分开。 */
+    if(payload?.ok===true&&payload?.partial)return {accent:'#b8791a',background:'#fdf7ee',title:`已收下「${payload?.name||''}」`,hint:'没认出画师，资料待你补全；点击进入画师库',dot:false};
     if(payload?.ok===true)return {accent:'#177a4b',background:'#f2fbf6',title:`已添加「${payload?.name||''}」`,hint:'点击进入画师库并定位',dot:false};
     return {accent:'#c0392b',background:'#fdf3f2',title:'没能添加画师',hint:'点击进入画师库手动添加',dot:false};
   };
   const detailOf=(payload,ok)=>{
     if(payload?.state)return String(payload?.text||'');
-    if(ok)return [payload?.danbooruId?('Danbooru #'+payload.danbooruId):'',payload?.works?`${payload.works} 张作品`:''].filter(Boolean).join(' · ');
+    if(ok)return [payload?.partial?String(payload?.text||''):'',payload?.danbooruId?('Danbooru #'+payload.danbooruId):'',payload?.works?`${payload.works} 张作品`:''].filter(Boolean).join(' · ');
     return String(payload?.reason||'未知原因');
   };
   const render=payload=>{

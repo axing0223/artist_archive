@@ -6,7 +6,9 @@ import {webcrypto} from 'node:crypto';
 import {createRequire} from 'node:module';
 /* 冒烟测试里的 stub 会把整个 ArtistLookup 换掉（连 plan 一起），假 plan 的 apiUrl 是空的。
    想验「三路搜索各自用了哪个参数」，就得把真实的 plan 接回去。 */
-const RealArtistLookup=createRequire(import.meta.url)('./app/artist-lookup.js');
+const nodeRequire=createRequire(import.meta.url);
+const RealArtistLookup=nodeRequire('./app/artist-lookup.js');
+const RealArtistId=nodeRequire('./app/artist-id.js');
 const useRealPlan=ctx=>{ctx.ArtistLookup.plan=(value,options)=>RealArtistLookup.plan(value,options);};
 class El{
   constructor(tag='div'){
@@ -1085,31 +1087,37 @@ test('右键菜单：能定位到唯一的画师就直接建一张新卡，并�
   assert.equal(state.rows[0].works.length,3,'作品要缓存成缩略图一起写进去');
   assert.equal(state.rows[0].aliases[0],'旧名');
 });
-test('右键菜单：定位不到、候选不唯一、已存在、没选文件夹时都不建卡，并给出原因',async()=>{
-  /* 没选文件夹 */
+test('右键菜单：没选文件夹与已在库里时不建卡；认不出画师时建一张空卡留给用户',async()=>{
+  /* 没选文件夹：写不了盘，不建 */
   const noFolder=await boot();
   const first=[];
   noFolder.state.pageListeners[0]({type:'artist-library.create',text:'modare'},null,value=>first.push(value));
   await wait(20);
   assert.equal(first[0].ok,false);assert.match(first[0].reason,/数据文件夹/);
-  /* 站点上找不到 */
+  /* 站点上找不到：照样把选中的文字收进库里，资料留给用户补 */
   const missing=await boot();
   await getEl(missing.elements,'choose-folder').onclick();
   stub(missing.ctx,{lookup:async()=>[],posts:async()=>[],details:async()=>({counts:{}})});
   const second=[];
   missing.state.pageListeners[0]({type:'artist-library.create',text:'no-such-artist'},null,value=>second.push(value));
   await wait(30);
-  assert.equal(second[0].ok,false);assert.match(second[0].reason,/没找到/);
-  assert.equal(missing.state.rows.length,0,'不该凭空建卡');
-  /* 候选不唯一：不能替用户挑一个 */
+  assert.equal(second[0].ok,true,'认不出也要收下：'+JSON.stringify(second[0]));
+  assert.equal(second[0].partial,true,'要标明资料待补');
+  assert.equal(second[0].name,'no-such-artist','卡名就用选中的文字');
+  assert.equal(second[0].danbooruId,null,'没认出来就不写编号');
+  assert.equal(missing.state.rows.length,1,'要真的建出一张卡');
+  /* 候选不唯一：不替用户挑一个，但也不让这次右键落空——仍然用选中的文字建卡 */
   const many=await boot();
   await getEl(many.elements,'choose-folder').onclick();
   stub(many.ctx,{lookup:async()=>[{id:1,name:'other',aliases:[],pageUrl:''},{id:2,name:'another',aliases:[],pageUrl:''}],posts:async()=>[],details:async()=>({counts:{}})});
   const third=[];
   many.state.pageListeners[0]({type:'artist-library.create',text:'modare'},null,value=>third.push(value));
   await wait(30);
-  assert.equal(third[0].ok,false);assert.match(third[0].reason,/2 个候选/);
-  assert.equal(many.state.rows.length,0);
+  assert.equal(third[0].ok,true,'多个候选时也要建卡：'+JSON.stringify(third[0]));
+  assert.equal(third[0].partial,true,'不能替用户挑，所以这一张是待补资料的空卡');
+  assert.equal(third[0].name,'modare','用的是选中的文字，不是随便挑的候选');
+  assert.equal(third[0].danbooruId,null,'不替用户挑，就不写编号');
+  assert.equal(many.state.rows.length,1);
   /* 已经在库里：不重复建卡，并把已有那张的 uid 带回去好定位 */
   const exists=await boot();
   await getEl(exists.elements,'choose-folder').onclick();
@@ -2172,4 +2180,60 @@ test('识别画师：名字类搜索落空时补一次主页地址搜索',async(
   const row=findByClass(getEl(elements,'quick-results'),'candidate');
   assert.ok(row,'补搜命中后要列出候选：'+asked.join(' | '));
   assert.ok(asked.some(url=>new URL(url).searchParams.has('search[url_matches]')),'要试过主页地址这一路：'+asked.join(' | '));
+});
+
+
+/* ── 回归：右键建卡——认不出来也照建，5 个排队要依次建 ─────────────── */
+
+test('右键菜单：认不出画师时也要建一张空卡，资料留给你自己补',async()=>{
+  const {state,ctx,dir}=await connectedApp();
+  stub(ctx,{lookup:async()=>[],posts:async()=>[],details:async()=>({counts:{}})});
+  useRealPlan(ctx);
+  const replies=[];
+  state.pageListeners[0]({type:'artist-library.create',text:'yotte615',requestId:'r1',sourceTabId:42},null,value=>replies.push(value));
+  await wait(80);
+  assert.equal(replies.length,1);
+  assert.equal(replies[0].ok,true,'认不出来也要把卡建出来：'+JSON.stringify(replies[0]));
+  assert.equal(replies[0].partial,true,'要标明这是一张资料待补的卡');
+  const saved=await ctx.FolderStore.read(dir);
+  assert.equal(saved.artists.length,1,'库里要出现这一位');
+  assert.equal(saved.artists[0].name,'yotte615','卡名就用选中的文字');
+  assert.equal(saved.artists[0].danbooruId,null,'没认出来就不写编号');
+  assert.equal(saved.artists[0].works.length,0,'也没有作品');
+});
+test('右键菜单：画师已经在库里时仍然不重复建卡',async()=>{
+  const {state,ctx,dir}=await connectedApp();
+  stub(ctx,{lookup:async()=>[{id:196870,name:'yotte615',aliases:[],pageUrl:'https://danbooru.donmai.us/artists/196870'}],posts:async()=>[post('1')],details:async()=>({counts:{total:5}})});
+  useRealPlan(ctx);
+  const replies=[];const send=value=>replies.push(value);
+  state.pageListeners[0]({type:'artist-library.create',text:'yotte615',requestId:'r1',sourceTabId:42},null,send);
+  await wait(80);
+  state.pageListeners[0]({type:'artist-library.create',text:'yotte615',requestId:'r2',sourceTabId:42},null,send);
+  await wait(80);
+  assert.equal(replies.length,2);
+  assert.equal(replies[0].ok,true,'第一次建卡成功：'+JSON.stringify(replies[0]));
+  assert.equal(replies[1].ok,false,'同一个画师第二次不该再建：'+JSON.stringify(replies[1]));
+  assert.match(String(replies[1].reason),/已经在画师库里/);
+  assert.equal((await ctx.FolderStore.read(dir)).artists.length,1);
+});
+test('右键菜单：排队 5 个且文件夹还没就绪时，要全部等到就绪再依次建卡',async()=>{
+  const actions=Array.from({length:5},(_,i)=>({kind:'create',text:'artist'+i,requestId:'r'+i,sourceTabId:42}));
+  const {elements,state,ctx}=await boot({actions});
+  const dir=new FakeDir('排队测试');ctx.window.showDirectoryPicker=async()=>dir;
+  let issued=0;
+  stub(ctx,{lookup:async plan=>{const id=1000+(++issued);return [{id,name:plan.query,aliases:[],pageUrl:'https://danbooru.donmai.us/artists/'+id}];},posts:async()=>[],details:async()=>({counts:{total:3}})});
+  useRealPlan(ctx);
+  await wait(80);
+  assert.equal((await ctx.FolderStore.read(dir)).artists.length,0,'文件夹还没接上，一张都不该建');
+  /* 状态栏此刻可能被「未连接扩展」的检查结果覆盖，所以这里只断言行为：5 个都在等，
+     一个都不该被判定失败（旧的单变量等待位只会等第一个，其余四个会当场失败）。 */
+  const rejected=state.pageMessages.filter(message=>message?.type==='created'&&message.result?.ok===false);
+  assert.deepEqual(rejected,[],'文件夹没就绪时不该出现失败回执：'+JSON.stringify(rejected.map(message=>message.result.reason)));
+  await getEl(elements,'choose-folder').onclick();
+  await wait(400);
+  const saved=await ctx.FolderStore.read(dir);
+  assert.equal(saved.artists.length,5,'接上文件夹后 5 张都要建出来：'+JSON.stringify(saved.artists.map(a=>a.name)));
+  /* 注意 [...saved.artists]：saved 来自 vm 上下文，直接用它的 map 会得到另一个 realm 的数组，
+     deepStrictEqual 比原型时会判不等（哪怕内容一模一样）。 */
+  assert.deepEqual([...saved.artists].map(a=>RealArtistId.parse(a.uid)?.seq),[1,2,3,4,5],'序号要依次发放，不能全撞在 0001：'+JSON.stringify([...saved.artists].map(a=>a.uid)));
 });
