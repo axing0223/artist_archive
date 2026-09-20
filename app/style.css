@@ -117,7 +117,12 @@ main{max-width:1440px;margin:0 auto;padding:30px 28px 12px;min-width:0;overflow-
 .artist-collecting::before{content:'';flex:none;width:9px;height:9px;border:2px solid var(--accent-soft);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite}
 /* 每位画师占一行：信息在上，五张作品在下，所有尺寸都不换列、不裁图。 */
 #gallery{display:grid;gap:16px;margin-top:22px}
-.artist-slot{min-width:0;scroll-margin-top:200px;overflow-anchor:auto}
+.artist-slot{position:relative;min-width:0;scroll-margin-top:200px;overflow-anchor:auto}
+/* 换内容时盖在上面的旧内容副本：只负责渐隐，淡完自己走。
+   选择器必须写成两个类——副本克隆自卡片、自带 .artist，而 .artist 是 position:relative，
+   同为单类、优先级相同且 .artist 更靠后，会把绝对定位顶掉，副本就落回文档流跑到新内容下面去（上一版正是这么错的）。
+   max-height + overflow 是给收缩用的：副本比正在变矮的占位高，不裁就会盖住下面的卡片。 */
+.artist.card-ghost{position:absolute;top:0;left:0;right:0;z-index:1;max-height:100%;overflow:hidden;pointer-events:none}
 .artist-slot:empty{border:1px solid var(--line-soft);border-radius:12px;background:var(--panel)}
 .artist{min-width:0;position:relative;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:13px 12px 8px;transition:border-color .18s}
 .artist:hover{border-color:var(--faint)}

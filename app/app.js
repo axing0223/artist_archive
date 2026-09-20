@@ -601,6 +601,8 @@
     if(draft&&!editingId)rows.push(draft);
     else if(draft&&editingId&&!rows.some(a=>a.uid===editingId)){const editing=data.artists.find(a=>a.uid===editingId);if(editing)rows.unshift(editing);}
     ArtistGallery.render($('gallery'),rows,card,cardKey,patchCard);
+    /* 编辑态收起后，作品格的图片到这里才释放：上面那次重画已经拿旧内容克隆过渐隐副本了。 */
+    if(editorImagesPending&&!draft){editorImagesPending=false;ArtistImages.dispose('editor');}
     $('empty').hidden=rows.length!==0;
     $('library-summary').textContent=summary.total+' 位画师 · '+summary.works+' 张作品参考 · '+summary.tests+' 张测试风格图';
     $('sample-date').textContent=data.date?'样本日期 '+data.date:'';
@@ -699,7 +701,11 @@
     /* 收起同样就地收缩：高度动画在画廊那边，不走「淡出再重画」。 */
     closeEditor();render();
   }
-  function closeEditor(){editorFocusVersion++;if(draft)ArtistGallery.pin(editingId||draft.uid,false);ArtistImages.dispose('editor');closeWorkPicker();editingId=null;draft=null;editorError=null;editorToggle=null;editorExpand=null;paintEditorWorks=null;}
+  /* 编辑态作品格的图片不能在这里就释放：卡片还要留一份副本做渐隐，而克隆必须发生在图片被清空之前
+     （释放会把 img 的 src 摘掉，克隆出来就是一张空卡）。真正的释放推迟到下一次 render——
+     那时新内容已经就位、渐隐副本也已经克隆好了。 */
+  let editorImagesPending=false;
+  function closeEditor(){editorFocusVersion++;if(draft)ArtistGallery.pin(editingId||draft.uid,false);editorImagesPending=true;closeWorkPicker();editingId=null;draft=null;editorError=null;editorToggle=null;editorExpand=null;paintEditorWorks=null;}
   /* 从候选里挑出唯一可信的那一位：名字完全一致优先，只有一位候选时也接受。
      其余情况返回 null —— 宁可没有编号，也不写错。 */
   const pickCandidate=(found,name)=>{

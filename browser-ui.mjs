@@ -69,11 +69,14 @@ try{
  await verifyFive('1080×1920 竖屏');
  /* 点「编辑」应当是同一张卡片就地变高、下面的卡片被平滑推开，
     而不是旧卡片淡出、新卡片再出现。 */
- const morph=await evaluate(`(()=>{const card=document.querySelector('.artist:not(.is-editing)');const slot=card.closest('.artist-slot');const uid=slot.dataset.uid;const before=slot.getBoundingClientRect().height;const old=card;[...card.querySelectorAll('.artist-actions button')].find(n=>n.textContent==='编辑').click();return {before:Math.round(before),after:Math.round(slot.getBoundingClientRect().height),editing:!!slot.querySelector('.is-editing'),slotAlive:slot.isConnected&&slot.dataset.uid===uid,animations:slot.getAnimations().length,morphing:old.classList.contains('is-morphing')};})()`);
+ const morph=await evaluate(`(()=>{const card=document.querySelector('.artist:not(.is-editing)');const slot=card.closest('.artist-slot');const uid=slot.dataset.uid;const before=slot.getBoundingClientRect().height;const old=card;[...card.querySelectorAll('.artist-actions button')].find(n=>n.textContent==='编辑').click();const ghost=slot.querySelector('.card-ghost'),fresh=slot.children[0],sr=slot.getBoundingClientRect(),gr=ghost?ghost.getBoundingClientRect():null;return {before:Math.round(before),after:Math.round(slot.getBoundingClientRect().height),editing:fresh.classList.contains('is-editing'),slotAlive:slot.isConnected&&slot.dataset.uid===uid,animations:slot.getAnimations().length,morphing:old.classList.contains('is-morphing'),ghost:!!ghost,ghostFading:ghost?ghost.getAnimations().length:0,freshFading:fresh.getAnimations().length,ghostTop:gr?Math.round(gr.top-sr.top):null,ghostOverflow:gr?Math.round(gr.bottom-sr.bottom):null};})()`);
  assert.equal(morph.editing,true,'点编辑后同一块占位里应立刻是编辑态：'+JSON.stringify(morph));
  assert.equal(morph.slotAlive,true,'占位不能被拆掉重建：'+JSON.stringify(morph));
  assert.ok(morph.animations>0,'展开要有高度过渡，而不是瞬间跳变：'+JSON.stringify(morph));
  assert.equal(morph.morphing,false,'不再走「旧卡片淡出再重画」的老路：'+JSON.stringify(morph));
+ assert.ok(morph.ghostTop!==null&&Math.abs(morph.ghostTop)<=2,'渐隐副本必须覆盖在占位顶部，不能掉到新内容下面：'+JSON.stringify(morph));
+ assert.ok(morph.ghostOverflow<=1,'渐隐副本不能把占位撑高：'+JSON.stringify(morph));
+ assert.ok(morph.ghostFading>0&&morph.freshFading>0,'旧内容渐隐、新内容渐显：'+JSON.stringify(morph));
  await sleep(650);await capture('editor-top');
  await evaluate('document.querySelector(".artist-expand button").click()');await sleep(650);
  assert.ok(await evaluate('document.activeElement===document.querySelector(".work-picker .candidate-previews")'),'手动展开的键盘焦点位于作品区域');
@@ -81,10 +84,14 @@ try{
  const editorWorks=await evaluate('(()=>{const w=document.querySelector(".is-editing .works").getBoundingClientRect(),b=document.querySelector(".library-controls").getBoundingClientRect();return Math.round(w.top-b.bottom);})()');
  assert.ok(editorWorks>=0&&editorWorks<200,'展开后视线交给作品格，且紧接在固定工具栏下方：间距 '+editorWorks+'px');
  await capture('picker-portrait');
- const collapse=await evaluate(`(()=>{const card=document.querySelector('.is-editing');const slot=card.closest('.artist-slot');const before=slot.getBoundingClientRect().height;const old=card;[...card.querySelectorAll('.artist-actions button')].find(n=>n.textContent==='取消').click();return {before:Math.round(before),after:Math.round(slot.getBoundingClientRect().height),editing:!!slot.querySelector('.is-editing'),animations:slot.getAnimations().length,morphing:old.classList.contains('is-morphing')};})()`);
+ const collapse=await evaluate(`(()=>{const card=document.querySelector('.artist.is-editing:not(.card-ghost)');const slot=card.closest('.artist-slot');const before=slot.getBoundingClientRect().height;const old=card;[...card.querySelectorAll('.artist-actions button')].find(n=>n.textContent==='取消').click();const ghost=slot.querySelector('.card-ghost'),fresh=slot.children[0],sr=slot.getBoundingClientRect(),gr=ghost?ghost.getBoundingClientRect():null;return {before:Math.round(before),after:Math.round(slot.getBoundingClientRect().height),editing:fresh.classList.contains('is-editing'),animations:slot.getAnimations().length,morphing:old.classList.contains('is-morphing'),ghost:!!ghost,ghostFading:ghost?ghost.getAnimations().length:0,freshFading:fresh.getAnimations().length,ghostImages:ghost?[...ghost.querySelectorAll('img')].filter(i=>i.getAttribute('src')).length:0,ghostTop:gr?Math.round(gr.top-sr.top):null,ghostOverflow:gr?Math.round(gr.bottom-sr.bottom):null};})()`);
  assert.equal(collapse.editing,false,'取消后同一块占位里立刻回到浏览态：'+JSON.stringify(collapse));
  assert.ok(collapse.animations>0,'收起也要平滑收缩，而不是瞬间跳回去：'+JSON.stringify(collapse));
  assert.equal(collapse.morphing,false,'收起同样不走淡出老路：'+JSON.stringify(collapse));
+ assert.ok(collapse.ghostTop!==null&&Math.abs(collapse.ghostTop)<=2,'渐隐副本必须覆盖在占位顶部：'+JSON.stringify(collapse));
+ assert.ok(collapse.ghostOverflow<=1,'收缩时副本不能溢出占位去盖住下面的卡片：'+JSON.stringify(collapse));
+ assert.ok(collapse.ghostImages>0,'渐隐副本里的图片不能是空的：'+JSON.stringify(collapse));
+ assert.ok(collapse.freshFading>0,'收起后浏览态内容也要渐显：'+JSON.stringify(collapse));
  await sleep(450);await evaluate('window.scrollTo(0,0)');await sleep(450);
 
  /* 评分角标故意溢出卡片左上角 10px：卡片滚过固定筛选栏时，它连「筛选栏左右内边距之外那条缝」
