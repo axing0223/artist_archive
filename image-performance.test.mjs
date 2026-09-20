@@ -18,9 +18,12 @@ test('队列最多同时执行 3 个请求，取消排队任务不触发取图',
 });
 test('连续滚动的 2000 个占位保留顺序，但只构建附近卡片并释放离开的卡片',async()=>{
   const observers=[],disposed=[];let built=0;
-  class Element{constructor(){this.style={};this.dataset={};this.children=[];}append(child){this.children.push(child);}replaceChildren(...nodes){this.children=nodes;}getBoundingClientRect(){return {height:320};}}
-  class IO{constructor(fn){this.fn=fn;observers.push(this);}observe(){}disconnect(){}}
-  class RO{observe(){}unobserve(){}disconnect(){}}
+  class Element{
+    remove(){if(this.parentNode){const p=this.parentNode;p.children=p.children.filter(n=>n!==this);this.parentNode=null;}}
+    insertBefore(node,before){if(node===before)return;node.remove();const i=this.children.indexOf(before);node.parentNode=this;if(i<0)this.children.push(node);else this.children.splice(i,0,node);}
+constructor(){this.style={};this.dataset={};this.children=[];}append(child){this.children.push(child);}replaceChildren(...nodes){this.children=nodes;}getBoundingClientRect(){return {height:320};}}
+  class IO{constructor(fn){this.fn=fn;observers.push(this);}observe(){}unobserve(){}disconnect(){}}
+  class RO{observe(){}unobserve(){}unobserve(){}disconnect(){}}
   const window={innerWidth:1200},context={window,document:{createElement:()=>new Element()},IntersectionObserver:IO,ResizeObserver:RO,ArtistImages:{dispose:id=>disposed.push(id)}};
   vm.runInNewContext(await fs.readFile('app/virtual-gallery.js','utf8'),context);const gallery=new Element(),rows=Array.from({length:2000},(_,i)=>({uid:'artist-'+i}));window.ArtistGallery.render(gallery,rows,()=>{built++;return new Element();});
   assert.equal(gallery.children.length,2000);assert.equal(built,0);const near=gallery.children.slice(0,4);observers[0].fn(near.map(target=>({target,isIntersecting:true})));assert.equal(built,4);assert.equal(window.ArtistGallery.visible().length,4);
@@ -47,9 +50,12 @@ test('原图只有在线地址时经扩展取回，同一张第二次直接命�
 });
 test('编辑中的卡片被钉住后滚出视野也不释放，取消钉住即恢复',async()=>{
   const observers=[],disposed=[];let built=0;
-  class Element{constructor(){this.style={};this.dataset={};this.children=[];}append(child){this.children.push(child);}replaceChildren(...nodes){this.children=nodes;}getBoundingClientRect(){return {height:320};}}
-  class IO{constructor(fn){this.fn=fn;observers.push(this);}observe(){}disconnect(){}}
-  class RO{observe(){}unobserve(){}disconnect(){}}
+  class Element{
+    remove(){if(this.parentNode){const p=this.parentNode;p.children=p.children.filter(n=>n!==this);this.parentNode=null;}}
+    insertBefore(node,before){if(node===before)return;node.remove();const i=this.children.indexOf(before);node.parentNode=this;if(i<0)this.children.push(node);else this.children.splice(i,0,node);}
+constructor(){this.style={};this.dataset={};this.children=[];}append(child){this.children.push(child);}replaceChildren(...nodes){this.children=nodes;}getBoundingClientRect(){return {height:320};}}
+  class IO{constructor(fn){this.fn=fn;observers.push(this);}observe(){}unobserve(){}disconnect(){}}
+  class RO{observe(){}unobserve(){}unobserve(){}disconnect(){}}
   const window={innerWidth:1200},context={window,document:{createElement:()=>new Element()},IntersectionObserver:IO,ResizeObserver:RO,ArtistImages:{dispose:id=>disposed.push(id)}};
   vm.runInNewContext(await fs.readFile('app/virtual-gallery.js','utf8'),context);
   const gallery=new Element(),rows=[{uid:'a'},{uid:'b'}];
@@ -66,9 +72,12 @@ test('编辑中的卡片被钉住后滚出视野也不释放，取消钉住即�
 });
 test('同一批画师重绘时不重建占位，只重画已挂载的卡片',async()=>{
   const observers=[];let built=0,created=0;
-  class Element{constructor(){created++;this.style={};this.dataset={};this.children=[];}append(child){this.children.push(child);}replaceChildren(...nodes){this.children=nodes;}getBoundingClientRect(){return {height:320};}}
-  class IO{constructor(fn){this.fn=fn;observers.push(this);}observe(){}disconnect(){}}
-  class RO{observe(){}unobserve(){}disconnect(){}}
+  class Element{
+    remove(){if(this.parentNode){const p=this.parentNode;p.children=p.children.filter(n=>n!==this);this.parentNode=null;}}
+    insertBefore(node,before){if(node===before)return;node.remove();const i=this.children.indexOf(before);node.parentNode=this;if(i<0)this.children.push(node);else this.children.splice(i,0,node);}
+constructor(){created++;this.style={};this.dataset={};this.children=[];}append(child){this.children.push(child);}replaceChildren(...nodes){this.children=nodes;}getBoundingClientRect(){return {height:320};}}
+  class IO{constructor(fn){this.fn=fn;observers.push(this);}observe(){}unobserve(){}disconnect(){}}
+  class RO{observe(){}unobserve(){}unobserve(){}disconnect(){}}
   const window={innerWidth:1200},context={window,document:{createElement:()=>new Element()},IntersectionObserver:IO,ResizeObserver:RO,ArtistImages:{dispose(){}}};
   vm.runInNewContext(await fs.readFile('app/virtual-gallery.js','utf8'),context);
   const gallery=new Element(),rows=[{uid:'a',n:1},{uid:'b',n:1}];
@@ -90,6 +99,9 @@ test('同一批画师重绘时不重建占位，只重画已挂载的卡片',asy
 function stage(){
   const observers=[],disposed=[];
   class Element{
+    remove(){if(this.parentNode){const p=this.parentNode;p.children=p.children.filter(n=>n!==this);this.parentNode=null;}}
+    insertBefore(node,before){if(node===before)return;node.remove();const i=this.children.indexOf(before);node.parentNode=this;if(i<0)this.children.push(node);else this.children.splice(i,0,node);}
+
     constructor(){this.style={};this.dataset={};this.children=[];this.animations=[];}
     append(child){child.parentNode=this;this.children.push(child);}
     replaceChildren(...nodes){for(const node of nodes)node.parentNode=this;this.children=nodes.filter(Boolean);}
@@ -100,8 +112,8 @@ function stage(){
       return {top:this.top||0,height:this.height||0,left:0};
     }
   }
-  class IO{constructor(fn){this.fn=fn;observers.push(this);}observe(){}unobserve(){}disconnect(){}}
-  class RO{observe(){}unobserve(){}disconnect(){}}
+  class IO{constructor(fn){this.fn=fn;observers.push(this);}observe(){}unobserve(){}unobserve(){}disconnect(){}}
+  class RO{observe(){}unobserve(){}unobserve(){}disconnect(){}}
   const window={innerWidth:1200,innerHeight:800},gallery=new Element();gallery.isStage=true;
   return {Element,window,gallery,observers,disposed,context:{window,document:{createElement:()=>new Element()},IntersectionObserver:IO,ResizeObserver:RO,ArtistImages:{dispose:id=>disposed.push(id)}}};
 }
@@ -370,4 +382,27 @@ test('编辑卡片收起但顺序不变时，下方卡片也从原位置平滑�
  assert.equal(sibling.animations[0].frames[0].transform,'translateY(380px)');
  clearAnimations(gallery);window.ArtistGallery.render(gallery,[{uid:'a',editing:false},rows[1]],make);
  assert.equal(sibling.animations.length,0,'落盘后的重复渲染不重新播放移动动画');
+});
+
+
+test('新增或删除画师只增删对应占位，复用观察器和其余节点',async()=>{
+ const kit=stage(),{gallery,observers,window}=kit;vm.runInNewContext(await fs.readFile('app/virtual-gallery.js','utf8'),kit.context);
+ const rows=[{uid:'a'},{uid:'b'}];window.ArtistGallery.render(gallery,rows,()=>new kit.Element());mountAll(observers,gallery);
+ const kept=[...gallery.children];let detached=0;for(const slot of kept){const original=slot.remove;slot.remove=function(){detached++;original.call(this);};}
+ window.ArtistGallery.render(gallery,[...rows,{uid:'c'}],()=>new kit.Element());
+ assert.equal(detached,0,'追加时不能从父容器移走已有节点');assert.equal(observers.length,1,'不能给全部占位重建观察器');
+ window.ArtistGallery.render(gallery,rows,()=>new kit.Element());assert.equal(detached,0);assert.deepEqual(gallery.children,kept);
+ // 已经移除的占位收到旧观察事件也不能挂载成另一位画师。
+ const stale=new kit.Element();stale.dataset={uid:'c',index:0};observers[0].fn([{target:stale,isIntersecting:true}]);
+ assert.equal(window.ArtistGallery.visible().length,2);
+ window.ArtistGallery.clear();assert.equal(gallery.children.length,0,'切换资料库清理原有占位');
+});
+
+test('局部卡片更新成功时不销毁整张卡的图片组',async()=>{
+ const kit=stage(),{gallery,observers,window}=kit;vm.runInNewContext(await fs.readFile('app/virtual-gallery.js','utf8'),kit.context);
+ let patches=0;const patch=(node,artist)=>{patches++;node.value=artist.value;return true;};
+ window.ArtistGallery.render(gallery,[{uid:'a',value:1}],()=>new kit.Element(),null,patch);mountAll(observers,gallery);
+ const node=gallery.children[0].children[0];kit.disposed.length=0;
+ window.ArtistGallery.render(gallery,[{uid:'a',value:2}],()=>{throw Error('不应整卡重建');},null,patch);
+ assert.equal(patches,1);assert.equal(node.value,2);assert.equal(gallery.children[0].children[0],node);assert.deepEqual(kit.disposed,[]);
 });

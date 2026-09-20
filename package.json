@@ -9,7 +9,8 @@
     "test:browser": "node browser-smoke.mjs",
     "preview": "node ui-preview.mjs",
     "test:ui": "node browser-ui.mjs",
-    "test:edit-performance": "node browser-edit-performance.mjs"
+    "test:edit-performance": "node browser-edit-performance.mjs",
+    "test:work-performance": "node browser-work-performance.mjs"
   },
   "engines": {
     "node": ">=20"
