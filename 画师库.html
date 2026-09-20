@@ -551,7 +551,7 @@ to{opacity:1;transform:none}
   <main id="workspace" tabindex="-1">
     <div class="collection-heading"><div><p class="eyebrow">YOUR CREATIVE REFERENCE</p><h1>画师与作品<span class="title-dot">.</span></h1><p id="library-summary" class="intro">正在打开画师库…</p></div><div class="collection-actions"><details id="library-menu" class="action-menu"><summary>更多操作 <span aria-hidden="true">⌄</span></summary><div class="menu-panel"><button id="add-artist">手动添加画师</button><button id="export-data">导出资料备份</button><button id="import-data">从备份恢复资料</button><p>JSON 包含资料与图片链接。<br>完整备份请复制数据文件夹。</p><hr><button id="extension-status">检测图片助手…</button><button id="command-open">快捷操作 <kbd>Ctrl K</kbd></button></div></details><details id="test-menu" class="action-menu"><summary>测试风格图 <span aria-hidden="true">⌄</span></summary><div class="menu-panel"><p>与作品参考并排对比画风</p><button id="test-import-open">导入测试风格图</button><button id="gen-batch-open">批量生成测试风格图</button><button id="gen-settings-open">NovelAI 生图参数</button></div></details><button id="batch-artists" class="action">批量采集画师</button><button id="quick-open" class="action primary-action">＋ 添加画师</button><input id="import-file" type="file" accept=".json" hidden></div></div>
     <section class="library-controls" aria-label="查找画师">
-      <div class="search-row"><label class="search"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg><span class="sr-only">搜索画师、笔名、标签与备注</span><input id="search" type="search" placeholder="搜索画师、笔名、标签与备注" autocomplete="off" aria-keyshortcuts="/"><kbd>/</kbd></label><label class="sort-control"><span class="sr-only">画师排序</span><select id="library-sort"><option value="order">序号顺序</option><option value="name">名称 A–Z</option><option value="score">参考评分优先</option><option value="works">收录图片最多</option></select></label><button id="density-toggle" class="action" aria-pressed="false" title="切换图片显示密度">紧凑视图</button><button id="filter-toggle" class="action" aria-expanded="false" aria-controls="filter-panel">筛选 <span id="filter-number" hidden></span></button></div>
+      <div class="search-row"><label class="search"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg><span class="sr-only">搜索画师、笔名、标签与备注</span><input id="search" type="search" placeholder="搜索画师、笔名、标签与备注" autocomplete="off" aria-keyshortcuts="/"><kbd>/</kbd></label><label class="sort-control"><span class="sr-only">画师排序</span><select id="library-sort"><option value="order">序号顺序</option><option value="name">名称 A–Z</option><option value="score">参考评分优先</option><option value="works">收录图片最多</option></select></label><button id="sort-direction" class="action" type="button" aria-pressed="false" title="升序">↑</button><button id="density-toggle" class="action" aria-pressed="false" title="切换图片显示密度">紧凑视图</button><button id="filter-toggle" class="action" aria-expanded="false" aria-controls="filter-panel">筛选 <span id="filter-number" hidden></span></button></div>
       <div class="category-row"><nav id="categories" class="categories" aria-label="画师分类"></nav><button id="manage-tags" class="icon-button" title="管理分类与标签" aria-label="管理分类与标签">＋</button></div>
       <div id="filter-panel" class="filter-panel" hidden><section aria-labelledby="tags-title"><h2 id="tags-title">画风标签 <small>多选时同时匹配</small></h2><div id="tags" class="tags"></div></section><section aria-labelledby="scores-title"><h2 id="scores-title">参考评分 <small>可多选</small></h2><div id="scores" class="score-filter"></div></section><button id="reset" class="reset">清除全部筛选</button></div>
     </section>
@@ -2032,14 +2032,22 @@ to{opacity:1;transform:none}
   }
   return {
    summary(artists){prepare(artists);return stats;},
-   select(artists,{category='全部',tags=new Set(),scores=new Set(),query='',sort='order'}={}){
+   select(artists,{category='全部',tags=new Set(),scores=new Set(),query='',sort='order',desc=false}={}){
     prepare(artists);const mode=['name','score','works'].includes(sort)?sort:'order';
-    if(!sorted.has(mode))sorted.set(mode,[...entries].sort((a,b)=>{
-     const delta=mode==='name'?collator.compare(a.artist.name,b.artist.name):mode==='score'?(b.artist.score||0)-(a.artist.score||0):b.artist.works.length-a.artist.works.length;
-     return delta||a.index-b.index;
-    }));
+    /* 方向进缓存键：升序与降序各排一份，来回切换不用反复排。 */
+    const key=mode+(desc?'~desc':'');
+    if(!sorted.has(key)){
+     const list=[...entries].sort((a,b)=>{
+      /* order 就是快照原本的顺序：delta 恒为 0，自然落到下面的 index 比较。 */
+      const delta=mode==='name'?collator.compare(a.artist.name,b.artist.name):mode==='score'?(b.artist.score||0)-(a.artist.score||0):mode==='works'?b.artist.works.length-a.artist.works.length:0;
+      return delta||a.index-b.index;
+     });
+     /* 同分（同评分 / 同张数）时仍按序号稳定排列，所以整份反过来就是纯倒序。 */
+     if(desc)list.reverse();
+     sorted.set(key,list);
+    }
     const words=query.trim().toLocaleLowerCase('zh-CN').split(/\s+/).filter(Boolean),activeTags=[...tags];
-    return sorted.get(mode).filter(({artist:a,search})=>(category==='全部'||(category==='待判断'?!a.category:a.category===category))&&activeTags.every(t=>a.tags.includes(t))&&(!scores.size||scores.has(a.score||0))&&words.every(word=>search.includes(word))).map(entry=>entry.artist);
+    return sorted.get(key).filter(({artist:a,search})=>(category==='全部'||(category==='待判断'?!a.category:a.category===category))&&activeTags.every(t=>a.tags.includes(t))&&(!scores.size||scores.has(a.score||0))&&words.every(word=>search.includes(word))).map(entry=>entry.artist);
    },
    clear(){source=null;length=0;entries=[];stats=null;sorted.clear();}
   };
@@ -2126,7 +2134,7 @@ to{opacity:1;transform:none}
   document.addEventListener('toggle',event=>{const menu=event.target;if(menu.matches?.('.action-menu')&&menu.open)document.querySelectorAll('.action-menu[open]').forEach(other=>{if(other!==menu)other.open=false;});},true);
   document.addEventListener('click',event=>{const action=event.target.closest('.menu-panel button');if(!event.target.closest('.action-menu')||(action&&!action.classList.contains('is-armed')))closeMenus();});
   const tabs=[$('tab-category'),$('tab-tag')];tabs.forEach((tab,index)=>tab.addEventListener('keydown',event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;event.preventDefault();const next=event.key==='Home'?0:event.key==='End'?1:1-index;tabs[next].click();tabs[next].focus();}));
-  for(const id of ['choose-folder','extension-status','empty-action','filter-toggle','theme-toggle','density-toggle','command-open','command-search','status-toggle','back-top','search','library-sort','reset'])$(id).disabled=false;
+  for(const id of ['choose-folder','extension-status','empty-action','filter-toggle','theme-toggle','density-toggle','sort-direction','command-open','command-search','status-toggle','back-top','search','library-sort','reset'])$(id).disabled=false;
   document.querySelectorAll('[data-close-dialog]').forEach(button=>button.disabled=false);
  }
  window.ArtistWorkspace={init,update,status,openQuick,captureFilterFocus};
@@ -2155,7 +2163,9 @@ to{opacity:1;transform:none}
   /* 卡片固定 5 格。开了「固定测试风格图」后最右 2 格归测试风格 1、2，作品图不能占用。 */
   const PREVIEW_SLOTS=5,RESERVED_SLOTS=2,UPLOAD_TYPES=['image/jpeg','image/png','image/webp','image/gif','image/avif'];
   const reservedOf=()=>data&&data.fixedTestSlots?RESERVED_SLOTS:0;
-  const state={category:'全部',tags:new Set(),scores:new Set(),query:'',sort:'order'};
+  const state={category:'全部',tags:new Set(),scores:new Set(),query:'',sort:'order',desc:false};
+  /* 排序方向按钮：升序 ↑ / 降序 ↓，当前方向写在按钮自己身上。 */
+  const paintSortDirection=()=>{const b=$('sort-direction');if(!b)return;b.textContent=state.desc?'↓':'↑';b.setAttribute('aria-pressed',String(state.desc));b.title=state.desc?'当前：降序（点击改为升序）':'当前：升序（点击改为降序）';};
   const libraryIndex=window.ArtistLibraryIndex.create();
   let filterSignature='',editorRevision=0;
   const reducedMotion=()=>typeof matchMedia==='function'&&matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -2746,11 +2756,24 @@ to{opacity:1;transform:none}
   }
   let editorPicker=null,editorHost=null,editorError=null,editorToggle=null,editorExpand=null,paintEditorWorks=null,editorFocusVersion=0;
   function focusFirstArtist(){
-    editorFocusVersion++;requestAnimationFrame(()=>{
+    const version=++editorFocusVersion;
+    requestAnimationFrame(()=>{
+      if(version!==editorFocusVersion)return;
       const first=$('gallery').firstElementChild;if(!first){$('empty').tabIndex=-1;$('empty').focus?.({preventScroll:true});return;}
       ArtistGallery.mount(first.dataset.uid);const card=first.querySelector('.artist');if(!card)return;
-      card.tabIndex=-1;card.style.setProperty('scroll-margin-top',(($('categories').closest?.('.library-controls')?.offsetHeight||120)+(document.querySelector('.app-header')?.offsetHeight||66)+14)+'px');
+      const margin=()=>(($('categories').closest?.('.library-controls')?.offsetHeight||120)+(document.querySelector('.app-header')?.offsetHeight||66)+14)+'px';
+      card.tabIndex=-1;card.style.setProperty('scroll-margin-top',margin());
       card.focus({preventScroll:true});card.scrollIntoView({block:'start',behavior:reducedMotion()?'auto':'smooth'});
+      /* 与 focusEditingCard 同一个坑：平滑滚动期间卡片会陆续挂载、文档高度一直在变，
+         目标位置会漂（实测会多滚约一个卡片的高度，第一张就被固定栏整个盖住，看着像落在第二张）。
+         滚完校验一次：已经对齐就不动它，偏了才瞬时补齐，不叠第二层动画。 */
+      setTimeout(()=>{
+        if(version!==editorFocusVersion)return;
+        const now=$('gallery').firstElementChild,box=now?.querySelector('.artist');if(!box)return;
+        box.style.setProperty('scroll-margin-top',margin());
+        const want=parseFloat(getComputedStyle(box).scrollMarginTop)||0;
+        if(Math.abs(box.getBoundingClientRect().top-want)>2)box.scrollIntoView({block:'start',behavior:'auto'});
+      },reducedMotion()?0:420);
     });
   }
   function setEditorError(message){if(editorError)editorError.textContent=message;}
@@ -3669,7 +3692,10 @@ to{opacity:1;transform:none}
     let searchTimer;
     const searchChanged=e=>{if(e.isComposing)return;state.query=e.target.value.trim().toLowerCase();clearTimeout(searchTimer);searchTimer=setTimeout(render,120);};
     $('search').oninput=searchChanged;$('search').addEventListener('compositionend',searchChanged);
-    $('library-sort').onchange=()=>{state.sort=$('library-sort').value;render();};$('reset').onclick=()=>{reset();render();};$('close-viewer').onclick=()=>$('viewer').close();
+    $('library-sort').onchange=()=>{state.sort=$('library-sort').value;render();};
+    $('sort-direction').onclick=()=>{state.desc=!state.desc;paintSortDirection();render();};
+    paintSortDirection();
+    $('reset').onclick=()=>{reset();render();};$('close-viewer').onclick=()=>$('viewer').close();
     ArtistViewer.init({getData:()=>data,getFolder:()=>folder,save,notify:status});
     $('viewer').addEventListener('close',()=>ArtistViewer.dispose());$('save-original').onclick=()=>ArtistViewer.saveOriginal();
     // 遮罩点击、键盘导航与导航焦点交由工作台统一处理。

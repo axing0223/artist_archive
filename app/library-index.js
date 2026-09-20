@@ -18,14 +18,22 @@
   }
   return {
    summary(artists){prepare(artists);return stats;},
-   select(artists,{category='全部',tags=new Set(),scores=new Set(),query='',sort='order'}={}){
+   select(artists,{category='全部',tags=new Set(),scores=new Set(),query='',sort='order',desc=false}={}){
     prepare(artists);const mode=['name','score','works'].includes(sort)?sort:'order';
-    if(!sorted.has(mode))sorted.set(mode,[...entries].sort((a,b)=>{
-     const delta=mode==='name'?collator.compare(a.artist.name,b.artist.name):mode==='score'?(b.artist.score||0)-(a.artist.score||0):b.artist.works.length-a.artist.works.length;
-     return delta||a.index-b.index;
-    }));
+    /* 方向进缓存键：升序与降序各排一份，来回切换不用反复排。 */
+    const key=mode+(desc?'~desc':'');
+    if(!sorted.has(key)){
+     const list=[...entries].sort((a,b)=>{
+      /* order 就是快照原本的顺序：delta 恒为 0，自然落到下面的 index 比较。 */
+      const delta=mode==='name'?collator.compare(a.artist.name,b.artist.name):mode==='score'?(b.artist.score||0)-(a.artist.score||0):mode==='works'?b.artist.works.length-a.artist.works.length:0;
+      return delta||a.index-b.index;
+     });
+     /* 同分（同评分 / 同张数）时仍按序号稳定排列，所以整份反过来就是纯倒序。 */
+     if(desc)list.reverse();
+     sorted.set(key,list);
+    }
     const words=query.trim().toLocaleLowerCase('zh-CN').split(/\s+/).filter(Boolean),activeTags=[...tags];
-    return sorted.get(mode).filter(({artist:a,search})=>(category==='全部'||(category==='待判断'?!a.category:a.category===category))&&activeTags.every(t=>a.tags.includes(t))&&(!scores.size||scores.has(a.score||0))&&words.every(word=>search.includes(word))).map(entry=>entry.artist);
+    return sorted.get(key).filter(({artist:a,search})=>(category==='全部'||(category==='待判断'?!a.category:a.category===category))&&activeTags.every(t=>a.tags.includes(t))&&(!scores.size||scores.has(a.score||0))&&words.every(word=>search.includes(word))).map(entry=>entry.artist);
    },
    clear(){source=null;length=0;entries=[];stats=null;sorted.clear();}
   };

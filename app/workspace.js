@@ -78,7 +78,7 @@
   document.addEventListener('toggle',event=>{const menu=event.target;if(menu.matches?.('.action-menu')&&menu.open)document.querySelectorAll('.action-menu[open]').forEach(other=>{if(other!==menu)other.open=false;});},true);
   document.addEventListener('click',event=>{const action=event.target.closest('.menu-panel button');if(!event.target.closest('.action-menu')||(action&&!action.classList.contains('is-armed')))closeMenus();});
   const tabs=[$('tab-category'),$('tab-tag')];tabs.forEach((tab,index)=>tab.addEventListener('keydown',event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;event.preventDefault();const next=event.key==='Home'?0:event.key==='End'?1:1-index;tabs[next].click();tabs[next].focus();}));
-  for(const id of ['choose-folder','extension-status','empty-action','filter-toggle','theme-toggle','density-toggle','command-open','command-search','status-toggle','back-top','search','library-sort','reset'])$(id).disabled=false;
+  for(const id of ['choose-folder','extension-status','empty-action','filter-toggle','theme-toggle','density-toggle','sort-direction','command-open','command-search','status-toggle','back-top','search','library-sort','reset'])$(id).disabled=false;
   document.querySelectorAll('[data-close-dialog]').forEach(button=>button.disabled=false);
  }
  window.ArtistWorkspace={init,update,status,openQuick,captureFilterFocus};

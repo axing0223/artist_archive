@@ -22,7 +22,9 @@
   /* 卡片固定 5 格。开了「固定测试风格图」后最右 2 格归测试风格 1、2，作品图不能占用。 */
   const PREVIEW_SLOTS=5,RESERVED_SLOTS=2,UPLOAD_TYPES=['image/jpeg','image/png','image/webp','image/gif','image/avif'];
   const reservedOf=()=>data&&data.fixedTestSlots?RESERVED_SLOTS:0;
-  const state={category:'全部',tags:new Set(),scores:new Set(),query:'',sort:'order'};
+  const state={category:'全部',tags:new Set(),scores:new Set(),query:'',sort:'order',desc:false};
+  /* 排序方向按钮：升序 ↑ / 降序 ↓，当前方向写在按钮自己身上。 */
+  const paintSortDirection=()=>{const b=$('sort-direction');if(!b)return;b.textContent=state.desc?'↓':'↑';b.setAttribute('aria-pressed',String(state.desc));b.title=state.desc?'当前：降序（点击改为升序）':'当前：升序（点击改为降序）';};
   const libraryIndex=window.ArtistLibraryIndex.create();
   let filterSignature='',editorRevision=0;
   const reducedMotion=()=>typeof matchMedia==='function'&&matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -613,11 +615,24 @@
   }
   let editorPicker=null,editorHost=null,editorError=null,editorToggle=null,editorExpand=null,paintEditorWorks=null,editorFocusVersion=0;
   function focusFirstArtist(){
-    editorFocusVersion++;requestAnimationFrame(()=>{
+    const version=++editorFocusVersion;
+    requestAnimationFrame(()=>{
+      if(version!==editorFocusVersion)return;
       const first=$('gallery').firstElementChild;if(!first){$('empty').tabIndex=-1;$('empty').focus?.({preventScroll:true});return;}
       ArtistGallery.mount(first.dataset.uid);const card=first.querySelector('.artist');if(!card)return;
-      card.tabIndex=-1;card.style.setProperty('scroll-margin-top',(($('categories').closest?.('.library-controls')?.offsetHeight||120)+(document.querySelector('.app-header')?.offsetHeight||66)+14)+'px');
+      const margin=()=>(($('categories').closest?.('.library-controls')?.offsetHeight||120)+(document.querySelector('.app-header')?.offsetHeight||66)+14)+'px';
+      card.tabIndex=-1;card.style.setProperty('scroll-margin-top',margin());
       card.focus({preventScroll:true});card.scrollIntoView({block:'start',behavior:reducedMotion()?'auto':'smooth'});
+      /* 与 focusEditingCard 同一个坑：平滑滚动期间卡片会陆续挂载、文档高度一直在变，
+         目标位置会漂（实测会多滚约一个卡片的高度，第一张就被固定栏整个盖住，看着像落在第二张）。
+         滚完校验一次：已经对齐就不动它，偏了才瞬时补齐，不叠第二层动画。 */
+      setTimeout(()=>{
+        if(version!==editorFocusVersion)return;
+        const now=$('gallery').firstElementChild,box=now?.querySelector('.artist');if(!box)return;
+        box.style.setProperty('scroll-margin-top',margin());
+        const want=parseFloat(getComputedStyle(box).scrollMarginTop)||0;
+        if(Math.abs(box.getBoundingClientRect().top-want)>2)box.scrollIntoView({block:'start',behavior:'auto'});
+      },reducedMotion()?0:420);
     });
   }
   function setEditorError(message){if(editorError)editorError.textContent=message;}
@@ -1536,7 +1551,10 @@
     let searchTimer;
     const searchChanged=e=>{if(e.isComposing)return;state.query=e.target.value.trim().toLowerCase();clearTimeout(searchTimer);searchTimer=setTimeout(render,120);};
     $('search').oninput=searchChanged;$('search').addEventListener('compositionend',searchChanged);
-    $('library-sort').onchange=()=>{state.sort=$('library-sort').value;render();};$('reset').onclick=()=>{reset();render();};$('close-viewer').onclick=()=>$('viewer').close();
+    $('library-sort').onchange=()=>{state.sort=$('library-sort').value;render();};
+    $('sort-direction').onclick=()=>{state.desc=!state.desc;paintSortDirection();render();};
+    paintSortDirection();
+    $('reset').onclick=()=>{reset();render();};$('close-viewer').onclick=()=>$('viewer').close();
     ArtistViewer.init({getData:()=>data,getFolder:()=>folder,save,notify:status});
     $('viewer').addEventListener('close',()=>ArtistViewer.dispose());$('save-original').onclick=()=>ArtistViewer.saveOriginal();
     // 遮罩点击、键盘导航与导航焦点交由工作台统一处理。

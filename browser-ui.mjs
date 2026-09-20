@@ -67,6 +67,21 @@ try{
  const fiveImages=()=>JSON.stringify([...document.querySelectorAll('.artist:not(.is-editing) .works')].map(row=>{const works=[...row.querySelectorAll(':scope > .work')],rects=works.map(n=>n.getBoundingClientRect());return {count:works.length,oneLine:Math.max(...rects.map(r=>r.top))-Math.min(...rects.map(r=>r.top))<1,fits:rects.every(r=>r.left>=0&&r.right<=innerWidth),contain:[...row.querySelectorAll('img')].every(img=>getComputedStyle(img).objectFit==='contain')};}));
  const verifyFive=async label=>{const rows=JSON.parse(await evaluate('('+fiveImages.toString()+')()'));assert.ok(rows.length>0,label+' 必须显示卡片');assert.ok(rows.every(row=>row.count===5&&row.oneLine&&row.fits&&row.contain),label+' 五图完整同行：'+JSON.stringify(rows));};
  await verifyFive('1080×1920 竖屏');
+ /* 切分类后第一张卡要停在固定筛选栏下方：曾经因为平滑滚动期间文档高度一直在变，
+    滚动目标漂移，整张卡被筛选栏盖住，看着像停在了第二张。 */
+ await evaluate(`(()=>{[...document.querySelectorAll('#categories button')].find(b=>b.dataset.filterKey==='category:二次元').click();})()`);
+ await sleep(900);
+ const firstCard=await evaluate(`(()=>{const slot=document.querySelector('#gallery .artist-slot'),card=slot&&slot.querySelector('.artist'),bar=document.querySelector('.library-controls');if(!card)return {ok:false,reason:'这一分类下没有卡片'};const r=card.getBoundingClientRect();return {cardTop:Math.round(r.top),cardBottom:Math.round(r.bottom),barBottom:Math.round(bar.getBoundingClientRect().bottom),focused:document.activeElement===card||card.contains(document.activeElement),name:card.querySelector('.artist-name')?.textContent};})()`);
+ assert.ok(firstCard.cardTop>=firstCard.barBottom-2,'切分类后第一张卡要落在固定栏下方，不能被盖住：'+JSON.stringify(firstCard));
+ assert.ok(firstCard.focused,'焦点要落在第一张卡上：'+JSON.stringify(firstCard));
+ /* 排序方向：点一下第一位应该换人。 */
+ const flipped=await evaluate(`(()=>{const nameOf=()=>document.querySelector('#gallery .artist-slot .artist-name')?.textContent;const before=nameOf();document.getElementById('sort-direction').click();return {before,after:nameOf(),label:document.getElementById('sort-direction').textContent};})()`);
+ assert.notEqual(flipped.before,flipped.after,'切换排序方向后第一位应该换人：'+JSON.stringify(flipped));
+ await sleep(400);
+ assert.equal(await evaluate('document.getElementById("sort-direction").getAttribute("aria-pressed")'),'true','按钮要记住当前是降序');
+ await evaluate('document.getElementById("sort-direction").click()');
+ await evaluate(`(()=>{[...document.querySelectorAll('#categories button')].find(b=>b.dataset.filterKey==='category:全部').click();})()`);
+ await sleep(800);
  /* 点「编辑」应当是同一张卡片就地变高、下面的卡片被平滑推开，
     而不是旧卡片淡出、新卡片再出现。 */
  const morph=await evaluate(`(()=>{const card=document.querySelector('.artist:not(.is-editing)');const slot=card.closest('.artist-slot');const uid=slot.dataset.uid;const before=slot.getBoundingClientRect().height;const old=card;[...card.querySelectorAll('.artist-actions button')].find(n=>n.textContent==='编辑').click();const ghost=slot.querySelector('.card-ghost'),fresh=slot.children[0],sr=slot.getBoundingClientRect(),gr=ghost?ghost.getBoundingClientRect():null;return {before:Math.round(before),after:Math.round(slot.getBoundingClientRect().height),editing:fresh.classList.contains('is-editing'),slotAlive:slot.isConnected&&slot.dataset.uid===uid,animations:slot.getAnimations().length,morphing:old.classList.contains('is-morphing'),ghost:!!ghost,ghostFading:ghost?ghost.getAnimations().length:0,freshFading:fresh.getAnimations().length,ghostTop:gr?Math.round(gr.top-sr.top):null,ghostOverflow:gr?Math.round(gr.bottom-sr.bottom):null};})()`);
