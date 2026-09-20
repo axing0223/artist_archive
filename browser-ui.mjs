@@ -83,11 +83,12 @@ try{
  const editorWorks=await evaluate('(()=>{const w=document.querySelector(".is-editing .works").getBoundingClientRect(),b=document.querySelector(".library-controls").getBoundingClientRect();return Math.round(w.top-b.bottom);})()');
  assert.ok(editorWorks>=0&&editorWorks<200,'展开后视线交给作品格，且紧接在固定工具栏下方：间距 '+editorWorks+'px');
  await capture('picker-portrait');
- const collapse=await evaluate(`(()=>{const card=document.querySelector('.artist.is-editing:not(.card-ghost)');const slot=card.closest('.artist-slot');const before=slot.getBoundingClientRect().height;const old=card;[...card.querySelectorAll('.artist-actions button')].find(n=>n.textContent==='取消').click();const ghost=slot.querySelector('.card-ghost');const fresh=slot.children[0];return {before:Math.round(before),after:Math.round(slot.getBoundingClientRect().height),editing:fresh.classList.contains('is-editing'),animations:slot.getAnimations().length,morphing:old.classList.contains('is-morphing'),ghost:!!ghost,ghostFading:ghost?ghost.getAnimations().length:0,freshFading:fresh.getAnimations().length};})()`);
+ const collapse=await evaluate(`(()=>{const card=document.querySelector('.artist.is-editing:not(.card-ghost)');const slot=card.closest('.artist-slot');const before=slot.getBoundingClientRect().height;const old=card;[...card.querySelectorAll('.artist-actions button')].find(n=>n.textContent==='取消').click();const ghost=slot.querySelector('.card-ghost');const fresh=slot.children[0];return {before:Math.round(before),after:Math.round(slot.getBoundingClientRect().height),editing:fresh.classList.contains('is-editing'),animations:slot.getAnimations().length,morphing:old.classList.contains('is-morphing'),ghost:!!ghost,ghostFading:ghost?ghost.getAnimations().length:0,freshFading:fresh.getAnimations().length,ghostImages:ghost?[...ghost.querySelectorAll('img')].filter(i=>i.getAttribute('src')).length:0};})()`);
  assert.equal(collapse.editing,false,'取消后同一块占位里立刻回到浏览态：'+JSON.stringify(collapse));
  assert.ok(collapse.animations>0,'收起也要平滑收缩，而不是瞬间跳回去：'+JSON.stringify(collapse));
  assert.equal(collapse.morphing,false,'收起同样不走淡出老路：'+JSON.stringify(collapse));
  assert.ok(collapse.ghost&&collapse.ghostFading>0,'收起时编辑态内容也要渐隐：'+JSON.stringify(collapse));
+ assert.ok(collapse.ghostImages>0,'渐隐副本里的图片不能是空的，否则看着像整卡重载：'+JSON.stringify(collapse));
  assert.ok(collapse.freshFading>0,'收起后浏览态内容也要渐显：'+JSON.stringify(collapse));
  await sleep(450);await evaluate('window.scrollTo(0,0)');await sleep(450);
 
