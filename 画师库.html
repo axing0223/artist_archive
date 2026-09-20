@@ -125,7 +125,9 @@ main{max-width:1440px;margin:0 auto;padding:30px 28px 12px;min-width:0;overflow-
 .artist-collecting::before{content:'';flex:none;width:9px;height:9px;border:2px solid var(--accent-soft);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite}
 /* 每位画师占一行：信息在上，五张作品在下，所有尺寸都不换列、不裁图。 */
 #gallery{display:grid;gap:16px;margin-top:22px}
-.artist-slot{min-width:0;scroll-margin-top:200px;overflow-anchor:auto}
+.artist-slot{position:relative;min-width:0;scroll-margin-top:200px;overflow-anchor:auto}
+/* 换内容时盖在上面的那份旧内容副本：只负责渐隐，淡完就自己走。 */
+.card-ghost{position:absolute;top:0;left:0;right:0;z-index:1;pointer-events:none}
 .artist-slot:empty{border:1px solid var(--line-soft);border-radius:12px;background:var(--panel)}
 .artist{min-width:0;position:relative;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:13px 12px 8px;transition:border-color .18s}
 .artist:hover{border-color:var(--faint)}
@@ -1577,8 +1579,21 @@ to{opacity:1;transform:none}
     /* 卡片高度会变（进出编辑态就是典型）：先按住旧高度，再动画到新高度。
        下面的卡片顺着文档流被一起推开，而不是整块瞬间跳上去。 */
     const before=mounted.has(uid)?slot.getBoundingClientRect().height:0;
-    if(!patch?.(slot.children[0],artist)){ArtistImages.dispose('card:'+uid);slot.replaceChildren(make(artist));}
+    const previous=slot.children[0];
+    /* 整块换内容时（浏览态 ↔ 编辑态）给旧内容留一份静态副本渐隐，新内容同时渐显：
+       直接换掉是「啪」地一下，看不出是同一张卡在变。副本必须在 dispose 之前克隆，
+       否则图片绑定已经释放。patch 成功（就地微调）不走这条路——那种变化本来就很轻。 */
+    const replaced=!patch?.(previous,artist);
+    const ghost=replaced&&previous&&!calm()&&typeof previous.cloneNode==='function'&&typeof slot.animate==='function'?previous.cloneNode(true):null;
+    if(replaced){ArtistImages.dispose('card:'+uid);slot.replaceChildren(make(artist));}
     mounted.set(uid,artist);painted.set(uid,key);
+    const fresh=slot.children[0];
+    if(ghost&&fresh){
+      ghost.classList.add('card-ghost');slot.append(ghost);
+      const fade=ghost.animate([{opacity:1},{opacity:0}],{duration:200,easing:'ease-out',fill:'forwards'});
+      const drop=()=>ghost.remove();fade.onfinish=drop;fade.oncancel=drop;
+      fresh.animate([{opacity:0},{opacity:1}],{duration:200,easing:'ease-out'});
+    }
     if(before>0&&!calm()&&typeof slot.animate==='function'){
       const after=slot.getBoundingClientRect().height;
       if(Math.abs(after-before)>1){
