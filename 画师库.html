@@ -1772,6 +1772,17 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
     const works=slot.querySelector('.works'),box=works?.getBoundingClientRect();
     return {left:box?box.left:null,width:box?box.width:null,thumbs:[...slot.querySelectorAll('.thumb,.work-empty,.work-generate')].map(node=>({node,height:node.getBoundingClientRect().height}))};
   }
+  /* 把即将被 CSS 藏起来的元素冻在它原来的位置淡出：藏掉之后它就不再渲染，动画也就没意义了。
+     position/left/top/width 都是临时的内联值，动画一结束全部撤掉，不留副作用。 */
+  function fadeOutFrozen(node,rect,cardRect){
+    const style=node.style;
+    style.display='block';style.position='absolute';style.zIndex='1';style.margin='0';
+    style.left=(rect.left-cardRect.left)+'px';style.top=(rect.top-cardRect.top)+'px';style.width=rect.width+'px';
+    const fade=node.animate([{opacity:1},{opacity:0}],{duration:LAYOUT_MS,easing:'ease-in'});
+    const settle=()=>{for(const name of ['display','position','zIndex','margin','left','top','width'])style[name]='';};
+    fade.onfinish=settle;fade.oncancel=settle;
+    layoutAnimations.push(fade);
+  }
   const LAYOUT_MS=320,TEXT_MS=160,TEXT_STAGGER_MS=45;
   let layoutAnimations=[];
   /* 换布局（舒适 ↔ 紧凑）时把版面走成一段动画，走完再让文字按顺序淡入。分两段是有意的：
@@ -1789,11 +1800,26 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
        而且各自的收尾回调会把新动画刚设好的抬层属性抹掉。 */
     for(const animation of layoutAnimations)animation.cancel?.();
     layoutAnimations=[];
+    /* 同一份数据的两种写法（舒适视图是独立一项「数据截至日前作品」，紧凑视图并进括号里）：
+       切换后会被 CSS 藏成 display:none 的那一个，得在版面段里就淡出去，不能等文字段。
+       它的旧位置要先量下来——切换之后它就不渲染了，量不到。 */
+    const leaving=[];
+    for(const node of document.querySelectorAll('.artist .artist-before-count,.artist .artist-before-inline')){
+      const card=node.closest?.('.artist');
+      if(!card||getComputedStyle(node).display==='none')continue;
+      leaving.push({node,rect:node.getBoundingClientRect(),cardRect:card.getBoundingClientRect()});
+    }
     const before=new Map();
     for(const [uid,slot] of slots)if(mounted.has(uid))before.set(uid,previewGeometry(slot));
     mutate();
     // 离屏占位要立刻按新布局修正，否则它们还留着旧高度，滚到那里会跳一下。
     remeasure();
+    /* 切换后确实被藏起来的那些，冻住旧位置淡出——和版面段同时走，所以它是「走」不是「啪」地消失。
+       顺序有讲究：冻住时会给它加上内联的 display:block，而下面按行淡入是按 display 判断的，
+       所以必须把它们记进 frozen、在文字段里排除掉；否则同一个元素会同时挂着淡出和淡入两个动画，
+       后建的那个（fill:'backwards' 的淡入）会把它一直按在透明上。 */
+    const frozen=new Set();
+    for(const item of leaving)if(item.node.isConnected&&getComputedStyle(item.node).display==='none'){frozen.add(item.node);fadeOutFrozen(item.node,item.rect,item.cardRect);}
     for(const [uid,slot] of slots){
       const was=before.get(uid);if(!was)continue;
       const card=slot.firstElementChild;
@@ -1831,12 +1857,12 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
          判断「这一行要不要淡入」只看 display，不看当前高度：备注的 ::details-content 是从
          0 高度过渡展开的，切换那一瞬间量到的高度还是 0，用高度过滤会把整段备注漏掉。 */
       const rows=[
-        [...card.querySelectorAll('.serial,.artist-site-count,.artist-meta')],
+        [...card.querySelectorAll('.serial,.artist-site-count,.artist-before-count,.artist-meta')],
         [card.querySelector('h2')],
         [card.querySelector('.alias')],
         [card.querySelector('.artist-notes')],
       ];
-      rows.forEach((nodes,step)=>nodes.filter(node=>node&&getComputedStyle(node).display!=='none').forEach(node=>{
+      rows.forEach((nodes,step)=>nodes.filter(node=>node&&!frozen.has(node)&&getComputedStyle(node).display!=='none').forEach(node=>{
         if(typeof node.animate!=='function')return;
         layoutAnimations.push(node.animate([{opacity:0},{opacity:1}],{duration:TEXT_MS,delay:LAYOUT_MS+step*TEXT_STAGGER_MS,easing:'ease-out',fill:'backwards'}));
       }));
