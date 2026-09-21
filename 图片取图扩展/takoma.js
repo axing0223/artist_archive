@@ -23,6 +23,7 @@
   const VIEWER_CLASS = 'tk-viewer';
   const LAYOUT_KEY = 'takoma-helper.layout';
   const LARGE_URL = 'https://danbooru.donmai.us/posts?tags=';
+  const VIEWER_HINT = '点击图片以外任何位置，或按 Esc 关闭';
   let lastTag = '';
 
   /* 用户主动关闭 = 也允许同一个词再弹一次；渲染内部换标签用 removePanel，不动 lastTag。 */
@@ -150,7 +151,8 @@
 @keyframes tk-thumb-in{from{opacity:0;transform:translateY(10px) scale(.97)}to{opacity:1;transform:none}}
 @keyframes tk-pop{0%{opacity:0;transform:scale(.86)}60%{transform:scale(1.04)}100%{opacity:1;transform:none}}
 @keyframes tk-viewer-in{from{opacity:0;transform:scale(.94)}to{opacity:1;transform:none}}
-@keyframes tk-viewer-out{from{opacity:1;transform:none}to{opacity:0;transform:scale(.96)}}
+/* 关闭只做纯渐变：不缩放、不位移。整块遮罩连图一起淡走，不给原图加额外动作。 */
+@keyframes tk-viewer-out{from{opacity:1}to{opacity:0}}
 .tk{animation:tk-panel-in .24s cubic-bezier(.2,.9,.25,1)}
 .tk-body{animation:tk-body-in .22s ease}
 .tk-badge{animation:tk-pop .3s cubic-bezier(.2,.9,.25,1)}
@@ -200,8 +202,11 @@
     + `</div>`;
 
   /* 二级界面：只装一张原图，铺满视口。点图片以外的任何地方都关掉；
-     图片本身吃掉点击，免得在图上松手也关。Esc 由下面的 keydown 统一处理。 */
-  const showViewer = src => {
+     图片本身吃掉点击，免得在图上松手也关。Esc 由下面的 keydown 统一处理。
+     返回两个"迟到也能安全调用"的方法：界面先开、原图后到（见下面点缩略图那段），
+     而用户可能在原图回来之前就把它关掉了、或者又点开了别的图——两个方法都先确认
+     「我这一份还是当前那一个二级界面」再动手，免得迟到的结果写进一个已经作废的界面。 */
+  const showViewer = (src, noteText = VIEWER_HINT) => {
     closeViewer();
     const host = document.createElement('div');
     host.id = VIEWER_ID;
@@ -213,10 +218,15 @@
     image.addEventListener('click', event => event.stopPropagation());
     const note = document.createElement('div');
     note.className = 'tk-note';
-    note.textContent = '点击图片以外任何位置，或按 Esc 关闭';
+    note.textContent = noteText;
     root.append(image, note);
     host.addEventListener('click', () => closeViewer(true));
     document.documentElement.append(host);
+    const alive = () => document.getElementById(VIEWER_ID) === host;
+    return {
+      setSource: url => { if (alive()) image.src = url; },
+      setNote: text => { if (alive()) note.textContent = text; },
+    };
   };
 
   const head = (tag, state, badge) => `<div class="tk-head">`
@@ -298,15 +308,16 @@
       if (addButton) { addArtist(addButton); return; }
       const image = event.target?.closest?.('img[src]');
       if (!image) return;
-      let src = image.dataset.large || image.src;
-      if (image.dataset.uid != null) {
-        try {
-          const big = await chrome.runtime.sendMessage({ type: 'takoma.lookup-large', uid: image.dataset.uid, index: Number(image.dataset.index) || 0 });
-          if (big?.ok && big.url) src = big.url;
-        } catch {}
-        if (document.getElementById(HOST_ID) !== host) return;
-      }
-      showViewer(src);
+      /* 先开界面、再加载原图，和站点那边的图保持一致：站点的 data-large 本来就是原图地址，
+         交给浏览器自己边下边显示；库内的图要现从磁盘读，那就先用缩略图占位把界面开出来，
+         读到原图再换上去——不然点了要干等，两边手感不一样。 */
+      const viewer = showViewer(image.dataset.large || image.src);
+      if (image.dataset.uid == null) return;
+      viewer.setNote('正在读取原图…');
+      let big = null;
+      try { big = await chrome.runtime.sendMessage({ type: 'takoma.lookup-large', uid: image.dataset.uid, index: Number(image.dataset.index) || 0 }); } catch {}
+      if (big?.ok && big.url) { viewer.setSource(big.url); viewer.setNote(VIEWER_HINT); }
+      else viewer.setNote('原图没读出来，先看缩略图');
     });
 
     const [hit, remote] = await Promise.all([ask('takoma.lookup', tag), ask('takoma.danbooru', tag, page)]);
