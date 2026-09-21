@@ -71,7 +71,7 @@ try{
    舒适＝信息在上、五张大预览竖排；紧凑＝左边一列身份信息、右边五张缩小的预览横排。
    （以前「紧凑」只把某个 margin 差 4px，所以看着和舒适一模一样。）
    切换时量的是动画走完之后的稳定值——过渡中间的高度不是任何一套布局的真实值。 */
- const density=await evaluate(`(async()=>{const settle=()=>new Promise(r=>setTimeout(r,420));const measure=()=>{const card=document.querySelector('#gallery .artist'),h2=card.querySelector('h2'),works=card.querySelector('.works'),info=card.querySelector('.artist-info'),thumb=card.querySelector('.thumb');const r=card.getBoundingClientRect(),ir=info.getBoundingClientRect(),wr=works.getBoundingClientRect();return {cardH:Math.round(r.height),nameFont:parseFloat(getComputedStyle(h2).fontSize),workGap:Math.round(parseFloat(getComputedStyle(works).columnGap)),padTop:Math.round(parseFloat(getComputedStyle(card).paddingTop)),thumbH:Math.round(thumb.getBoundingClientRect().height),infoTop:Math.round(ir.top-r.top),infoLeft:Math.round(ir.left-r.left),worksTop:Math.round(wr.top-r.top),worksLeft:Math.round(wr.left-r.left)};};const comfortable=measure();document.getElementById('density-toggle').click();const running=document.getAnimations().filter(a=>a.playState==='running').length;const midThumb=Math.round(await new Promise(r=>setTimeout(()=>r(document.querySelector('#gallery .thumb').getBoundingClientRect().height),90)));await settle();const compact=measure();document.getElementById('density-toggle').click();await settle();return {comfortable,compact,running,midThumb,density:document.documentElement.dataset.density};})()`);
+ const density=await evaluate(`(async()=>{const settle=()=>new Promise(r=>setTimeout(r,420));const measure=()=>{const card=document.querySelector('#gallery .artist'),h2=card.querySelector('h2'),works=card.querySelector('.works'),info=card.querySelector('.artist-info'),thumb=card.querySelector('.thumb'),actions=card.querySelector('.artist-actions'),meta=card.querySelector('.artist-meta'),before=card.querySelector('.artist-before-count'),inline=card.querySelector('.artist-before-inline'),notes=card.querySelector('.artist-notes');const r=card.getBoundingClientRect(),ir=info.getBoundingClientRect(),wr=works.getBoundingClientRect(),ar=actions.getBoundingClientRect(),mr=meta.getBoundingClientRect();return {cardH:Math.round(r.height),nameFont:parseFloat(getComputedStyle(h2).fontSize),workGap:Math.round(parseFloat(getComputedStyle(works).columnGap)),padTop:Math.round(parseFloat(getComputedStyle(card).paddingTop)),thumbH:Math.round(thumb.getBoundingClientRect().height),infoTop:Math.round(ir.top-r.top),infoLeft:Math.round(ir.left-r.left),worksTop:Math.round(wr.top-r.top),worksLeft:Math.round(wr.left-r.left),actionsTop:Math.round(ar.top-r.top),actionsRight:Math.round(r.right-ar.right),metaTop:Math.round(mr.top-r.top),metaLeft:Math.round(mr.left-r.left),beforeDisplay:getComputedStyle(before).display,inlineDisplay:getComputedStyle(inline).display,inlineText:String(inline.textContent),summaryDisplay:notes?getComputedStyle(notes.querySelector('summary')).display:null,notesOpen:notes?notes.open:null,notesTextH:notes?Math.round((notes.querySelector('.description')||notes).getBoundingClientRect().height):null,notesRight:notes?Math.round(notes.getBoundingClientRect().right-r.left):null};};const comfortable=measure();document.getElementById('density-toggle').click();const running=document.getAnimations().filter(a=>a.playState==='running').length;const midThumb=Math.round(await new Promise(r=>setTimeout(()=>r(document.querySelector('#gallery .thumb').getBoundingClientRect().height),90)));await settle();const compact=measure();document.getElementById('density-toggle').click();await settle();return {comfortable,compact,running,midThumb,density:document.documentElement.dataset.density};})()`);
  assert.ok(density.running>0,'切换布局要有过渡动画：'+JSON.stringify(density));
  assert.ok(density.midThumb<density.comfortable.thumbH-10&&density.midThumb>density.compact.thumbH+10,'预览要缩放着过去，不能一步跳过去：'+JSON.stringify(density));
  assert.equal(density.density,'comfortable','切换两下要回到舒适视图');
@@ -83,8 +83,28 @@ try{
  /* 排法本身不同：舒适是「信息在上、预览在下、预览从卡片左边铺开」，
     紧凑是「信息在左、预览在右、两者同一行」。 */
  assert.ok(density.comfortable.worksTop>=density.comfortable.infoTop+20,'舒适视图的预览要排在信息下方：'+JSON.stringify(density));
- assert.ok(density.compact.worksTop<=density.compact.infoTop+8,'紧凑视图的预览要和信息同一行：'+JSON.stringify(density));
  assert.ok(density.compact.worksLeft>=density.comfortable.worksLeft+100,'紧凑视图的预览要挪到信息列右边：'+JSON.stringify(density));
+ /* 操作按钮两套视图都要停在卡片右上角（紧凑视图以前堆在左列底下）。 */
+ assert.ok(density.comfortable.actionsRight<=16&&density.compact.actionsRight<=16,'两套视图的按钮都要在卡片右上角：'+JSON.stringify(density));
+ assert.ok(density.compact.actionsTop<density.compact.worksTop,'紧凑视图的按钮要排在预览上方：'+JSON.stringify(density));
+ assert.ok(density.compact.actionsTop<20,'紧凑视图的按钮要贴着卡片上沿：'+JSON.stringify(density));
+ /* 分类与标签破窗跨在上边框上，左缘对齐预览列。 */
+ assert.ok(density.comfortable.metaTop>=0,'舒适视图的分类还留在名字那一行：'+JSON.stringify(density));
+ assert.ok(density.compact.metaTop<0,'紧凑视图的分类要破窗到卡片上边框之上：'+JSON.stringify(density));
+ assert.ok(Math.abs(density.compact.metaLeft-density.compact.worksLeft)<=2,'破窗的分类要从预览列左缘开始向右排：'+JSON.stringify(density));
+ /* 截至量：紧凑视图缩成括号跟在站点作品后面，舒适视图仍是独立一项。 */
+ assert.equal(density.comfortable.inlineDisplay,'none','舒适视图不该出现括号简写：'+JSON.stringify(density));
+ assert.notEqual(density.comfortable.beforeDisplay,'none','舒适视图要有独立的截至量一项：'+JSON.stringify(density));
+ assert.equal(density.compact.beforeDisplay,'none','紧凑视图不再单独占一行显示截至量：'+JSON.stringify(density));
+ assert.equal(density.compact.inlineDisplay,'inline','紧凑视图要显示括号简写：'+JSON.stringify(density));
+ assert.match(density.compact.inlineText,/^ \(\d+\)$/,'括号里要是截至量数字：'+JSON.stringify(density));
+ /* 画风与备注：紧凑视图默认就是展开的（没点过、open 仍是 false，内容却有真实高度），
+    而且留在左列里，不横跨整卡底部。 */
+ assert.notEqual(density.comfortable.summaryDisplay,'none','舒适视图仍保留「画风与备注」这个折叠条：'+JSON.stringify(density));
+ assert.equal(density.compact.summaryDisplay,'none','紧凑视图不再显示折叠条：'+JSON.stringify(density));
+ assert.equal(density.compact.notesOpen,false,'测试没有打开过它，靠 CSS 直接显示：'+JSON.stringify(density));
+ assert.ok(density.compact.notesTextH>0,'紧凑视图的画风描述要直接可见：'+JSON.stringify(density));
+ assert.ok(density.compact.notesRight<=density.compact.worksLeft,'备注要留在左列里、不横跨整卡底部：'+JSON.stringify(density));
  await capture('density-comfortable');
  await evaluate('document.getElementById("density-toggle").click()');await sleep(420);
  await capture('density-compact');

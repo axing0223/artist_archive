@@ -373,26 +373,38 @@ html[data-density=comfortable] .artist-info{gap:11px;margin-bottom:8px}
 html[data-density=comfortable] .artist h2{font-size:21px}
 html[data-density=comfortable] .works{gap:10px}
 html[data-density=comfortable] .artist-footer{margin-top:6px;padding-top:6px}
-/* 紧凑：左列固定宽度放身份信息，右列整块放预览，备注横跨底部。 */
+/* 紧凑：左列放身份信息 + 画风备注，右列整块放预览；分类标签破窗到上边框上，操作按钮停在右上角。 */
 html[data-density=compact] #gallery{gap:18px}
-html[data-density=compact] .artist:not(.is-editing){display:grid;grid-template-columns:220px minmax(0,1fr);grid-template-areas:"info works" "footer footer";align-items:start;column-gap:14px;padding:9px 11px 7px}
-html[data-density=compact] .artist:not(.is-editing) .artist-info{grid-area:info;flex-direction:column;align-items:stretch;justify-content:flex-start;gap:5px;margin-bottom:0}
+html[data-density=compact] .artist:not(.is-editing){--compact-col:220px;--compact-gap:14px;--compact-pad:11px;display:grid;grid-template-columns:var(--compact-col) minmax(0,1fr);grid-template-areas:"info works" "notes works";align-items:start;column-gap:var(--compact-gap);padding:9px var(--compact-pad) 7px}
+html[data-density=compact] .artist:not(.is-editing) .artist-info{grid-area:info;flex-direction:column;align-items:flex-start;justify-content:flex-start;gap:5px;margin-bottom:0}
 html[data-density=compact] .artist:not(.is-editing) .name-row{gap:3px 7px}
-html[data-density=compact] .artist:not(.is-editing) .artist-meta{border-inline-start:0;padding-inline-start:0;gap:5px}
-html[data-density=compact] .artist:not(.is-editing) .secondary{display:none}
-html[data-density=compact] .artist:not(.is-editing) .artist-actions{justify-content:flex-start;gap:5px}
-html[data-density=compact] .artist:not(.is-editing) .works{grid-area:works;gap:6px}
+/* 分类与标签破窗跨在卡片上边框上，从预览列左缘开始向右排（和参考评分同一套路数）。
+   左边界必须跟网格第一列对齐，所以用同一组变量算，不写死像素；底色取卡片色，
+   跨在边线上的那半截才会把边框线盖住，看着像从卡片里长出来的一小块。 */
+html[data-density=compact] .artist:not(.is-editing) .artist-meta{position:absolute;top:-9px;left:calc(var(--compact-pad) + var(--compact-col) + var(--compact-gap));right:var(--compact-pad);height:18px;align-items:center;flex-wrap:nowrap;overflow:hidden;gap:5px;border-inline-start:0;padding-inline:7px;border-radius:4px;background:var(--panel)}
+html[data-density=compact] .artist:not(.is-editing) .secondary{flex-wrap:nowrap;overflow:hidden}
+/* 操作按钮停在卡片右上角，和舒适视图一致。绝对定位，就不必为它单独撑起一行网格。
+   top 让开破窗的 meta（它下沿在 9px），免得两块叠在一起。 */
+html[data-density=compact] .artist:not(.is-editing) .artist-actions{position:absolute;top:11px;right:var(--compact-pad);gap:5px}
+html[data-density=compact] .artist:not(.is-editing) .works{grid-area:works;gap:6px;margin-top:32px}
 /* 紧凑视图的高度由它自己那条滑杆决定：设置里两条滑杆互不影响。 */
 html[data-density=compact] .artist:not(.is-editing) :is(.thumb,.work-empty,.work-generate){height:var(--card-size-compact)}
 html[data-density=compact] .artist:not(.is-editing) .work figcaption{margin-top:2px;min-height:15px;font-size:11px}
 html[data-density=compact] .artist:not(.is-editing) .work.is-test::before{top:4px;left:4px;font-size:10px;padding:1px 4px}
-html[data-density=compact] .artist:not(.is-editing) .artist-footer{grid-area:footer;margin-top:4px;padding-top:4px}
+/* 画风与备注跟在身份信息下面，不再横跨整卡底部，也不再是一个折叠条。 */
+html[data-density=compact] .artist:not(.is-editing) .artist-footer{grid-area:notes;margin-top:4px;padding-top:4px;border-top:0}
 html[data-density=compact] .artist:not(.is-editing) .serial{font-size:11px}
 html[data-density=compact] .artist:not(.is-editing) .alias{font-size:12px}
-html[data-density=compact] .artist:not(.is-editing) .secondary span,html[data-density=compact] .artist:not(.is-editing) .artist-site-count,html[data-density=compact] .artist:not(.is-editing) .artist-before-count{font-size:11px}
+html[data-density=compact] .artist:not(.is-editing) .secondary span,html[data-density=compact] .artist:not(.is-editing) .artist-site-count,html[data-density=compact] .artist:not(.is-editing) .artist-before-inline{font-size:11px}
 html[data-density=compact] .artist:not(.is-editing) :is(.artist-site-count,.artist-before-count){border-inline-start:0;padding-inline-start:0}
+/* 截至量缩成括号跟在站点作品后面，不再单独占一行。 */
+html[data-density=compact] .artist:not(.is-editing) .artist-before-count{display:none}
+html[data-density=compact] .artist:not(.is-editing) .artist-before-inline{display:inline}
 html[data-density=compact] .artist:not(.is-editing) h2{font-size:18px;line-height:1.3}
 html[data-density=compact] .artist:not(.is-editing) .artist-notes{max-width:100%;font-size:12px}
+html[data-density=compact] .artist:not(.is-editing) .artist-notes>summary{display:none}
+/* 备注常态就是展开的：details 关着时内容是靠 UA 的 content-visibility 藏起来的，这里放出来。 */
+html[data-density=compact] .artist:not(.is-editing) .artist-notes::details-content{height:auto;opacity:1;content-visibility:visible}
 html[data-density=compact] .artist:not(.is-editing) .description,html[data-density=compact] .artist:not(.is-editing) .sample-note{font-size:13px;line-height:1.6}
 @media(min-width:1200px){main{padding-left:36px;padding-right:36px}
 .artist{padding-left:14px;padding-right:14px}
@@ -548,6 +560,8 @@ to{opacity:1;transform:none}
 .artist-site-count,.artist-before-count{font-size:12px;color:var(--muted);border-inline-start:1px solid var(--faint);padding-inline-start:10px;white-space:nowrap}
 /* 站点作品少于 50：整项标红，一屏卡片里一眼能挑出来。 */
 .artist-site-count.is-low{color:var(--danger);background:var(--danger-bg);border-inline-start-color:var(--danger);border-radius:4px;padding-inline-end:6px;font-weight:600}
+/* 截至量的简略形态（紧凑视图用），跟在「站点作品 N」后面；默认藏起来，由紧凑视图那条规则放出来。 */
+.artist-before-inline{display:none;color:var(--muted)}
 .artist-footer:empty{display:none}
 .artist-footer{justify-content:flex-start}
 .is-armed:is(.danger,.slot-delete,.primary-action,.danger-link),.artist-actions>.danger.is-armed{color:#fff}
@@ -2253,6 +2267,8 @@ to{opacity:1;transform:none}
   const state={category:'全部',tags:new Set(),scores:new Set(),special:new Set(),query:'',sort:'order',desc:false};
   /* 特殊筛选：按「缺什么」找画师。键名会进筛选键与 aria，保持英文短横线。 */
   const SPECIAL_FILTERS=[['low-works','作品少于 50'],['no-test','没有测试风格图']];
+  /* 「没读到」在数据里是 null 而不是缺字段，而 Number(null)===0：不能直接拿数字判断。 */
+  const knownCount=value=>value!==null&&value!==undefined&&value!=='';
   /* 排序方向按钮：升序 ↑ / 降序 ↓，当前方向写在按钮自己身上。 */
   const paintSortDirection=()=>{const b=$('sort-direction');if(!b)return;b.textContent=state.desc?'↓':'↑';b.setAttribute('aria-pressed',String(state.desc));b.title=state.desc?'当前：降序（点击改为升序）':'当前：升序（点击改为降序）';};
   const libraryIndex=window.ArtistLibraryIndex.create();
@@ -2661,8 +2677,11 @@ to{opacity:1;transform:none}
     if(a.alias)row.append(el('span','alias',a.alias));
     /* 站点作品少于 50 的整项标红：这一档基本等于刚起步或快清号了，值得一眼从一屏卡片里挑出来。
        注意「没读到」在数据里是 null 而不是缺字段——Number(null)===0，写成数字判断会把没读到的当成 0。 */
-    const siteTotal=a.counts?.total,lowWorks=siteTotal!==null&&siteTotal!==undefined&&siteTotal!==''&&Number(siteTotal)<50;
-    const count=el('span','artist-site-count'+(lowWorks?' is-low':''),'站点作品 '+(siteTotal??'未读取'));count.title='本库收录 '+a.works.length+' 张；截至日期：'+(a.counts?.beforeDate||data.cutoffDate);row.append(count);
+    const siteTotal=a.counts?.total,lowWorks=knownCount(siteTotal)&&Number(siteTotal)<50;
+    const count=el('span','artist-site-count'+(lowWorks?' is-low':''),'站点作品 '+(siteTotal??'未读取'));count.title='本库收录 '+a.works.length+' 张；截至日期：'+(a.counts?.beforeDate||data.cutoffDate);
+    /* 紧凑视图把截至量缩成括号跟在后面，省掉一整行；舒适视图由 CSS 藏起来，两边共用同一份数据。 */
+    if(knownCount(a.counts?.beforeTotal))count.append(el('span','artist-before-inline',' ('+a.counts.beforeTotal+')'));
+    row.append(count);
     /* 站点作品是「现在有多少」，这一项是「截至日期之前有多少」：两者并排才看得出涨了多少。 */
     const beforeCount=el('span','artist-before-count','数据截至日前作品 '+(a.counts?.beforeTotal??'未读取'));beforeCount.title='截至日期：'+(a.counts?.beforeDate||data.cutoffDate);row.append(beforeCount);
     const meta=el('div','artist-meta');meta.append(el('span',a.category?'primary':'pending-badge',a.category||'待判断'));
