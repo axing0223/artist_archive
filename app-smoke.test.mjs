@@ -2085,6 +2085,24 @@ test('回归：导入测试风格图期间落地的保存不能被旧快照覆�
   assert.equal(stored.saveLargeImages,true,'并发保存的设置不能被导入带出的旧快照抹掉');
   assert.equal(stored.artists[0].works.length,1,'导入的测试风格图要落在这位画师身上');
 });
+test('回归：导入测试风格图写盘失败时不能报「完成」',async()=>{
+  /* app.js 的 save() 失败时返回 false，而且改动已经先落进内存快照了（磁盘没写成）。
+     这里就照这个行为造：内存里多了一张图、磁盘其实没有。 */
+  const {elements,ctx}=await boot();
+  let stored={version:1,categories:[],tags:[],saveLargeImages:false,artists:[{uid:'0001-甲-manual',order:1,name:'甲',category:null,score:null,aliases:[],alias:null,tags:[],artistUrl:'',description:'',note:'',works:[]}]};
+  const host={getData:()=>stored,getBusy:()=>false,
+    readImage:async()=>'data:image/png;base64,AAAA',
+    thumbnail:async()=>'data:image/png;base64,AAAA',
+    save:async next=>{stored=typeof next==='function'?next(structuredClone(stored)):next;return false;}};
+  ctx.ArtistTestImages.init(host);ctx.ArtistTestImages.files=[{name:'t.png',type:'image/png',size:10}];
+  getEl(elements,'test-start').value='1';getEl(elements,'test-seq').value='1';
+  await ctx.ArtistTestImages.runImport();
+  const message=getEl(elements,'test-message').textContent;
+  assert.doesNotMatch(message,/完成/,'写盘没成功就不能说「完成」——原来的文案与磁盘状态正好相反');
+  assert.match(message,/没有写进磁盘/,'要明确告诉用户这次没写进去');
+  assert.match(message,/数据/,'而且要把补救办法指向复制数据文件夹（资料备份里不含图片）');
+  assert.equal(stored.artists[0].works.length,1,'改动仍留在内存里，用户重试时不该丢');
+});
 
 
 /* ── 回归：候选作品区的视线落点 ─────────────────────────────────────── */
