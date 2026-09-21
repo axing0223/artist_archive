@@ -350,6 +350,79 @@ test('作品真的变了照样重写 信息.json 并清掉不再引用的旧图�
     assert.ok(!(await fs.readdir(images)).includes(stale),'不再被引用的旧图片要清掉');
   }finally{await fs.rm(root,{recursive:true,force:true});}
 });
+/* 改标签名 / 删标签是「只动元数据」：图片一格都没变，就不该去开图片目录、更不该做旧图清理。
+   走 'meta' 标记的这条路，落盘的只有被改动的那些 信息.json。 */
+test('只改标签名时不去碰图片目录，只重写带该标签的画师',async()=>{
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),'artist-meta-')),counters={dir:0,file:0,write:0,remove:0};
+  try{
+    const library=sampleLibrary(40),dir=new NodeDir(root,counters);
+    await store.write(dir,library);
+    const renamed=structuredClone(library);
+    renamed.tags=['新名'];
+    renamed.artists.forEach((artist,index)=>{if(index%2===0)artist.tags=['新名'];});
+    const before={...counters};
+    await store.write(dir,renamed,'meta');
+    /* 20 位带标签的画师各一份 信息.json，外加一次 画师库.json 索引。 */
+    assert.equal(counters.write-before.write,21,'只该重写带这个标签的画师，外加索引');
+    /* 20 位画师目录 + 索引所在的「数据」根目录；不带 'meta' 时这里会是 40 次以上。 */
+    assert.ok(counters.dir-before.dir<=22,'不该去开图片目录，实际开了 '+(counters.dir-before.dir)+' 次目录');
+    assert.equal(counters.remove-before.remove,0,'元数据改动不该删任何东西');
+    const index=JSON.parse(await fs.readFile(path.join(root,'画师库.json'),'utf8'));
+    assert.deepEqual(index.tags,['新名']);
+    assert.equal(JSON.parse(await fs.readFile(path.join(root,'画师','0001-tester0-1000','信息.json'),'utf8')).tags[0],'新名');
+    assert.deepEqual(JSON.parse(await fs.readFile(path.join(root,'画师','0002-tester1-1001','信息.json'),'utf8')).tags,[],'没带这个标签的画师一个字都不该改');
+  }finally{await fs.rm(root,{recursive:true,force:true});}
+});
+/* 反过来守住最危险的一种走法：有画师的图片还只是 data: 内联没落盘时，
+   'meta' 这条路会把「图片字段还是 data:」的旧文件写回去，等于把刚选的图丢掉。
+   所以它必须自己退回完整路径——这条断言就是这个保险丝。 */
+test('还有图片没落盘时，标了 meta 也必须退回完整路径把图写下来',async()=>{
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),'artist-meta-inline-')),counters={dir:0,file:0,write:0,remove:0};
+  const pixel='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==';
+  try{
+    const library=sampleLibrary(2),dir=new NodeDir(root,counters);
+    await store.write(dir,library);
+    const withInline=structuredClone(library);withInline.tags=['新名'];
+    withInline.artists[0].tags=['新名'];withInline.artists[0].works[0].thumb=pixel;
+    const before={...counters};
+    const saved=await store.write(dir,withInline,'meta');
+    assert.ok(saved.artists[0].works[0].thumb.startsWith('缩略图/'),'内联图片必须落盘，不能被 meta 快路径跳过');
+    assert.ok(counters.write-before.write>=2,'至少要写那张图和 信息.json');
+    const onDisk=JSON.parse(await fs.readFile(path.join(root,'画师',withInline.artists[0].uid,'信息.json'),'utf8'));
+    assert.equal(onDisk.works[0].thumb,saved.artists[0].works[0].thumb,'落盘的 信息.json 必须指向刚落下的图片');
+    assert.deepEqual((await fs.readdir(path.join(root,'画师',withInline.artists[0].uid,'缩略图'))).length,1,'缩略图目录里正好一张图');
+  }finally{await fs.rm(root,{recursive:true,force:true});}
+});
+/* 落盘改成并发池之后最容易踩的一个坑：完成的先后顺序不是原顺序。
+   画师顺序就是索引顺序，一旦按完成顺序拼结果，磁盘上的 画师库.json 就会乱序。 */
+test('并发落盘之后画师顺序仍与原顺序一致',async()=>{
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),'artist-order-')),counters={dir:0,file:0,write:0,remove:0};
+  try{
+    const library=sampleLibrary(60),dir=new NodeDir(root,counters);
+    const saved=await store.write(dir,library);
+    assert.deepEqual(saved.artists.map(a=>a.uid),library.artists.map(a=>a.uid),'返回的画师顺序必须与传入一致');
+    assert.deepEqual(JSON.parse(await fs.readFile(path.join(root,'画师库.json'),'utf8')).artists,library.artists.map(a=>a.uid),'磁盘上的索引顺序必须与传入一致');
+    assert.deepEqual((await store.read(dir)).artists.map(a=>a.uid),library.artists.map(a=>a.uid),'读回来还是同一个顺序');
+  }finally{await fs.rm(root,{recursive:true,force:true});}
+});
+/* 待办 1.6.1 点名的另一半：`order` 不进指纹之后，「新增 / 删除 / 拖拽排序画师」
+   都不该再重写后面那几百个 信息.json。删除已有用例覆盖，这里守住「只换顺序」这一种：
+   顺序信息本来就存在 画师库.json 的 uid 列表里，画师文件里的 order 只是顺手记一笔。 */
+test('只调整画师顺序时不重写任何 信息.json，只提交索引',async()=>{
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),'artist-reorder-')),counters={dir:0,file:0,write:0,remove:0};
+  try{
+    const library=sampleLibrary(120),dir=new NodeDir(root,counters);
+    await store.write(dir,library);
+    /* 与 app.js 的拖拽排序一样：换位置、再重排序号。 */
+    const reordered={...library,artists:library.artists.slice().reverse().map((artist,index)=>({...artist,order:index+1}))};
+    const before={...counters};
+    const saved=await store.write(dir,reordered);
+    assert.equal(counters.write-before.write,1,'只换顺序时只该写一次索引，实际写了 '+(counters.write-before.write)+' 个文件');
+    assert.ok(counters.dir-before.dir<=4,'不该逐位打开画师目录，实际查了 '+(counters.dir-before.dir)+' 次');
+    assert.deepEqual(saved.artists.map(a=>a.uid),reordered.artists.map(a=>a.uid));
+    assert.deepEqual(JSON.parse(await fs.readFile(path.join(root,'画师库.json'),'utf8')).artists,reordered.artists.map(a=>a.uid));
+  }finally{await fs.rm(root,{recursive:true,force:true});}
+});
 test('扩展版本过旧时不启用接口通道，直接退回直连而不是干等到超时',async()=>{
   const code=await fs.readFile('app/extension-bridge.js','utf8'),content=await fs.readFile('图片取图扩展/content.js','utf8');
   const canFetch=async version=>{

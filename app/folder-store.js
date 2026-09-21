@@ -2,6 +2,9 @@
   'use strict';
   const ArtistId=root.ArtistId||(typeof module!=='undefined'?require('./artist-id.js'):null);
   const IMAGE_KINDS=['thumb','large'],SIZES=['thumb','preview','large'],FOLDER_OF={thumb:'缩略图',large:'大图'},LEGACY_FOLDER='预览图',MAX_IMAGE_BYTES=50*1024*1024;
+  /* 落盘并发度：每位画师的目录互相独立，串行写是白等。取 6 与 app/image-loader.js 的取图并发 3
+     保持同一量级——再高只是在抢同一个磁盘队列，收益有限。 */
+  const WRITE_CONCURRENCY=6;
   const TYPES={jpeg:'image/jpeg',png:'image/png',webp:'image/webp',gif:'image/gif',avif:'image/avif'};
   /* 图片文件名两种都认：老图片是内容哈希（24 位十六进制），新的测试风格图叫「画师tag-测试风格N.png」。
      ownedNamePattern 只匹配我们自己写出来的这两种名字，清理与迁移都按它来，
@@ -198,14 +201,36 @@
       await stream.write(']}');}
     await stream.write(']}');
   }
-  async function write(dir,data){
+  /* 只写「信息.json」的落盘路径（改标签名、删标签这类纯元数据改动）。
+     走进来时已经确认过：这位画师的图片只以本地路径或在线链接存在，没有待落盘的 data: 图，
+     所以既不用打开图片目录，也不该做旧图清理——那两笔开销跟元数据毫无关系。
+     返回写进文件的那份对象；调用方负责按它更新指纹与结果数组。 */
+  async function writeArtistMeta(artists,a){
+    const folder=await artists.getDirectoryHandle(a.uid,{create:true}),copy={...a,uid:a.uid};
+    await put(folder,'信息.json',JSON.stringify(copy,null,2));
+    return copy;
+  }
+  async function write(dir,data,mode=null){
     if(data.version!==1||!Array.isArray(data.artists)||data.artists.length>20000)throw Error('画师库格式错误');
     const ids=new Set();for(const a of data.artists){if(!ArtistId.valid(a.uid)||ids.has(a.uid)||!Array.isArray(a.works))throw Error('画师标识格式错误');ids.add(a.uid);if(a.works.some(w=>!validWork(w)))throw Error('图片格式错误');}
     let previous=[];try{previous=(await json(dir,'画师库.json')).artists;}catch(e){if(e.name!=='NotFoundError')throw e;}
-    const before=snapshots.get(dir)||new Map(),mapped=legacy.get(dir)||new Map(),moved=new Map(mapped),records=new Map(),artists=await dir.getDirectoryHandle('画师',{create:true}),result={...data,artists:[]},cleanup=[];
-    for(const a of data.artists){
+    const before=snapshots.get(dir)||new Map(),mapped=legacy.get(dir)||new Map(),moved=new Map(mapped),records=new Map(),artists=await dir.getDirectoryHandle('画师',{create:true}),result={...data,artists:new Array(data.artists.length)},cleanup=[];
+    /* meta：本次只动元数据，别碰图片——除非有画师正带着没落盘的 data: 图（那说明调用方判断错了，
+       这种情况下按完整路径走，宁可慢也不能把图片引用清掉）。 */
+    let meta=mode==='meta';
+    if(meta)for(const a of data.artists)if(a.works.some(w=>IMAGE_KINDS.some(kind=>typeof w[kind]==='string'&&w[kind].startsWith('data:')))){meta=false;break;}
+    /* 逐个画师落盘。每人的目录互相独立，所以可以并发；但**输出位置必须先定好**：
+       并发完成顺序不等于原顺序，若按完成顺序 push，画师顺序（也就是索引顺序）会被打乱。
+       索引必须在所有人写完之后再提交（下面那一步），否则中途失败会留下"索引里有、盘上没有"的残局。
+       注意：跳过落盘的三个分支在 await 之前就返回了，所以并发不会打乱它们的判定。 */
+    const finish=async(a,index)=>{
       const stamp=signature(a);
-      if(!moved.has(a.uid)&&before.get(a.uid)===stamp){records.set(a.uid,stamp);result.artists.push(a);continue;}
+      if(meta&&!moved.has(a.uid)&&before.get(a.uid)===stamp){records.set(a.uid,stamp);result.artists[index]=a;return;}
+      if(meta){const copy=await writeArtistMeta(artists,a);records.set(a.uid,signature(copy));result.artists[index]=copy;return;}
+      /* !moved.has(uid) 这一半不是冗余：uid 迁移过（旧库升级 / 改名补编号）时指纹必然一致，
+         可磁盘上该做的是「把旧目录的图片搬到新目录」。少了它就会跳过整个循环体，
+         新目录不会建、旧目录却在后面被当成废弃目录删掉——图片直接丢。 */
+      if(!moved.has(a.uid)&&before.get(a.uid)===stamp){records.set(a.uid,stamp);result.artists[index]=a;return;}
       const oldUid=moved.get(a.uid); // 索引提交前保留映射，失败后仍可读旧图并重试。
       const folder=await artists.getDirectoryHandle(a.uid,{create:true}),copy=structuredClone(a),used={},taken={};
       for(const kind of IMAGE_KINDS){
@@ -242,8 +267,23 @@
           await (await (await folder.getDirectoryHandle(sub)).getFileHandle(name)).getFile();
         }
       }
-      await put(folder,'信息.json',JSON.stringify(copy,null,2));records.set(a.uid,signature(copy));result.artists.push(copy);cleanup.push({folder,used});
+      await put(folder,'信息.json',JSON.stringify(copy,null,2));records.set(a.uid,signature(copy));result.artists[index]=copy;cleanup.push({folder,used});
+    };
+    /* 并发池。索引写盘那一步必须在所有画师落盘之后，所以这里等的是全部任务。
+       出错时先立起 stopped 让还在跑的 worker 停下（否则重跑一遍会白写几百个文件），
+       再把已经在飞的任务收干净，最后抛出第一个错误。 */
+    let cursor=0,firstError=null,stopped=false;
+    const worker=async()=>{
+      while(!stopped&&cursor<data.artists.length){const index=cursor++;await finish(data.artists[index],index);}
+    };
+    const workers=Array.from({length:Math.max(1,Math.min(WRITE_CONCURRENCY,data.artists.length))},worker);
+    try{
+      await Promise.all(workers);
+    }catch(error){
+      stopped=true;firstError=error;
+      await Promise.allSettled(workers);
     }
+    if(firstError)throw firstError;
     await put(dir,'画师库.json',JSON.stringify({...data,artists:[...ids]},null,2));snapshots.set(dir,records);legacy.set(dir,new Map());
     for(const {folder,used} of cleanup)for(const kind of IMAGE_KINDS)try{const images=await folder.getDirectoryHandle(FOLDER_OF[kind]);for await(const entry of images.values())if(entry.kind==='file'&&ownedNamePattern.test(entry.name)&&!used[kind].has(entry.name))await images.removeEntry(entry.name);}catch(error){warn('旧图片清理失败（'+error.message+'）');}
     /* 下面两段会删到同一批目录：登记过改名的旧目录，往往就是上一次索引里有、这次没有的那个。

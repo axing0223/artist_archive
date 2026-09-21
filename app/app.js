@@ -111,9 +111,9 @@
       status(ok?'已复制'+what+'：'+text:'复制失败，请手动选中复制。',!ok);
     }catch{status('复制失败，请手动选中复制。',true);}
   }
-  async function write(value,targetFolder=folder){
+  async function write(value,targetFolder=folder,mode=null){
     if(!targetFolder)throw Error('请先选择数据文件夹');
-    const saved=await FolderStore.write(targetFolder,value);
+    const saved=await FolderStore.write(targetFolder,value,mode);
     const normalized=normalize(saved),persisted=new Map(),byArtist=new Map();
     // 真正覆盖了同路径文件仍需使旧缓存失效；新预览则沿用已经显示的相同内容。
     for(let i=0;i<value.artists.length;i++)for(let j=0;j<value.artists[i].works.length;j++){
@@ -205,8 +205,10 @@
   }
   /* 业务校验拒绝（重名、目标已被删除…）与真正的写盘失败是两回事，不能混成一个 catch。 */
   const reject=message=>Object.assign(Error(message),{validation:true});
-  // onApplied 在数据校验合并后呈现本次操作，界面无需等待文件系统往返。
-  function save(next,message='已保存到数据文件夹',onApplied){
+  /* onApplied 在数据校验合并后呈现本次操作，界面无需等待文件系统往返。
+     mode 是给落盘路径的提示：只有「改标签名 / 删标签」这类纯元数据操作才传 'meta'，
+     它让 folder-store 跳过图片目录与旧图清理——那些开销跟元数据毫无关系。 */
+  function save(next,message='已保存到数据文件夹',onApplied,mode=null){
     const targetFolder=folder;
     if(pendingSaves++===0){
       busy=true;
@@ -216,7 +218,7 @@
       try{
         if(targetFolder!==folder)throw Error('数据文件夹已经切换，未写入旧任务');
         data=typeof next==='function'?next(clone(data)):next;
-        status('正在保存…');if(onApplied)onApplied();else render();data=await write(data,targetFolder);volatile=false;
+        status('正在保存…');if(onApplied)onApplied();else render();data=await write(data,targetFolder,mode);volatile=false;
         const warnings=FolderStore.takeWarnings(),label=typeof message==='function'?message():message;status(warnings.length?label+'；'+warnings.join('；'):label,warnings.length>0);
         return true;
       }catch(error){
@@ -1031,12 +1033,12 @@
         if(!name||name===from){listTags();return;}
         if(data.tags.includes(name)){alert('这个标签已存在。');listTags();return;}
         const next=clone(data);next.tags=next.tags.map(x=>x===from?name:x);next.artists.forEach(a=>a.tags=a.tags.map(x=>x===from?name:x));if(state.tags.delete(from))state.tags.add(name);
-        return save(next).then(listTags);
+        return save(next,`已把标签「${from}」改名为「${name}」`,undefined,'meta').then(listTags);
       },
       onRemove:async from=>{
         const used=data.artists.filter(a=>a.tags.includes(from)).length;
         const next=clone(data);next.tags=next.tags.filter(x=>x!==from);next.artists.forEach(a=>a.tags=a.tags.filter(x=>x!==from));state.tags.delete(from);
-        await save(next,used?`已删除标签「${from}」，${used} 位画师已移除该标签`:`已删除标签「${from}」`);listTags();
+        await save(next,used?`已删除标签「${from}」，${used} 位画师已移除该标签`:`已删除标签「${from}」`,undefined,'meta');listTags();
       }
     })));
     fillManageEmpty('tag-empty',filter,visible.length,'标签');
