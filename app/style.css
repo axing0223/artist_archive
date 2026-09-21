@@ -1,5 +1,5 @@
 /* Portrait workspace — neutral surfaces, full-width five-image comparisons. */
-:root{font-family:"Segoe UI","Microsoft YaHei",sans-serif;font-synthesis:none;color-scheme:dark;--bg:#111617;--panel:#1b2224;--raised:#273234;--input:#141b1d;--line:#364346;--line-soft:#2a3538;--text:#e9efee;--muted:#abbcb9;--faint:#8d9e9c;--accent:#a5dfcc;--accent-text:#123d31;--accent-soft:#293f39;--warm:#e2c398;--warm-bg:#3a3228;--danger:#f1aba9;--danger-bg:#442b2e;--danger-solid:#aa3c48;--identity:#1e2829;--shadow:0 20px 64px #0006;--header:66px;--card-size:190px;--card-size-compact:95px;background:var(--bg);color:var(--text)}
+:root{font-family:"Segoe UI","Microsoft YaHei",sans-serif;font-synthesis:none;color-scheme:dark;--bg:#111617;--panel:#1b2224;--raised:#273234;--input:#141b1d;--line:#364346;--line-soft:#2a3538;--text:#e9efee;--muted:#abbcb9;--faint:#8d9e9c;--accent:#a5dfcc;--accent-text:#123d31;--accent-soft:#293f39;--warm:#e2c398;--warm-bg:#3a3228;--danger:#f1aba9;--danger-bg:#442b2e;--danger-solid:#aa3c48;--identity:#1e2829;--shadow:0 20px 64px #0006;--header:66px;--card-size:190px;--card-size-compact:95px;--motion-fast:140ms;--motion-base:220ms;--motion-slow:340ms;--ease-out:cubic-bezier(.22,.61,.36,1);--ease-spring:linear(0,.28 7%,.62 14%,.9 22%,1.04 31%,1.07 40%,1.04 50%,1 60%,.995 72%,1);background:var(--bg);color:var(--text)}
 :root[data-theme=light]{color-scheme:light;--bg:#eef1ef;--panel:#fff;--raised:#e8eeeb;--input:#f3f6f4;--line:#c7d4ce;--line-soft:#e0e7e3;--text:#22362f;--muted:#536d62;--faint:#657c71;--accent:#246e55;--accent-text:#fff;--accent-soft:#e0efe6;--warm:#88602d;--warm-bg:#f8eedf;--danger:#a63b46;--danger-bg:#f9e9eb;--danger-solid:#aa3c48;--identity:#f6f9f7;--shadow:0 20px 64px #203b2926}
 *{box-sizing:border-box}
 html{scrollbar-gutter:stable;scroll-padding-top:0}
@@ -180,6 +180,12 @@ img:not([src]){opacity:0}
 .gen-progress{font-size:12px;text-align:center;padding:0 6px;color:var(--muted)}
 .work.is-drop-target{outline:2px dashed var(--accent);outline-offset:3px;border-radius:7px}
 .work.is-drop-target .thumb{background:var(--accent-soft)}
+/* 悬停那张预览抬起来，左右相邻的按距离衰减跟着抬一点（转场库的 avatar group hover）。
+   纯视觉位移、不参与布局；prefers-reduced-motion 的全局开关会自动把过渡关掉。 */
+.work{transition:transform var(--motion-base) var(--ease-spring)}
+.works:has(.work:hover) .work{transform:translateY(-2px)}
+.work:hover+.work,.work:has(+ .work:hover){transform:translateY(-4px)}
+.work:hover{transform:translateY(-6px)}
 .artist-footer{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:4px 12px;margin-top:4px;padding-top:4px;border-top:1px solid var(--line-soft)}
 .work-count{font-size:12px;color:var(--faint)}
 .artist-notes{font-size:13px;color:var(--muted);text-align:left;max-width:65%}
@@ -556,7 +562,8 @@ to{opacity:1;transform:none}
 .action-menu{interpolate-size:allow-keywords}
 .action-menu::details-content{opacity:0;transition:opacity .16s,content-visibility .16s allow-discrete}
 .action-menu[open]::details-content{opacity:1}
-.action-menu .menu-panel{transform:translateY(-4px);transition:transform .16s,opacity .16s}
+/* 菜单从触发它的那个角长出来（转场库的 origin-aware dropdown），而不是原地淡入。 */
+.action-menu .menu-panel{transform:translateY(-6px) scale(.96);transform-origin:top left;transition:transform var(--motion-base) var(--ease-spring),opacity var(--motion-fast)}
 .action-menu[open] .menu-panel{transform:none}
 .artist,.library-controls,.app-header,.status-bar{transition:background-color .18s,border-color .18s,color .18s}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after,*::backdrop,*::details-content{animation:none!important;transition:none!important;scroll-behavior:auto!important}}

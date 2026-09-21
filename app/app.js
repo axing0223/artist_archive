@@ -28,10 +28,22 @@
   /* 「没读到」在数据里是 null 而不是缺字段，而 Number(null)===0：不能直接拿数字判断。 */
   const knownCount=value=>value!==null&&value!==undefined&&value!=='';
   /* 排序方向按钮：升序 ↑ / 降序 ↓，当前方向写在按钮自己身上。 */
-  const paintSortDirection=()=>{const b=$('sort-direction');if(!b)return;b.textContent=state.desc?'↓':'↑';b.setAttribute('aria-pressed',String(state.desc));b.title=state.desc?'当前：降序（点击改为升序）':'当前：升序（点击改为降序）';};
+  const paintSortDirection=()=>{const b=$('sort-direction');if(!b)return;swapIcon(b,state.desc?'↓':'↑');b.setAttribute('aria-pressed',String(state.desc));b.title=state.desc?'当前：降序（点击改为升序）':'当前：升序（点击改为降序）';};
   const libraryIndex=window.ArtistLibraryIndex.create();
   let filterSignature='',editorRevision=0;
   const reducedMotion=()=>typeof matchMedia==='function'&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+  /* 动效小工具：都先问一句「系统里关了动效吗」，关了就一个都不放。
+     弹簧曲线与 style.css 里的 --ease-spring 是同一组数值，改一处要改两处。 */
+  const SPRING='linear(0,.28 7%,.62 14%,.9 22%,1.04 31%,1.07 40%,1.04 50%,1 60%,.995 72%,1)';
+  const canAnimate=node=>!reducedMotion()&&typeof node?.animate==='function';
+  /* 数字变了弹一下（转场库的 number pop-in）：短、带一点模糊、不挪动布局。 */
+  const popText=node=>{if(canAnimate(node))node.animate([{opacity:.35,filter:'blur(3px)',transform:'translateY(3px) scale(.96)'},{opacity:1,filter:'blur(0)',transform:'none'}],{duration:260,easing:'ease-out'});};
+  /* 新出现的徽标从左上角斜着弹进来（转场库的 notification badge）。 */
+  const popIn=node=>{if(canAnimate(node))node.animate([{opacity:0,transform:'translate(-4px,-4px) scale(.7)'},{opacity:1,transform:'none'}],{duration:320,easing:SPRING});};
+  /* 校验失败抖一下，自己回到原位，不用清理内联样式（转场库的 error shake）。 */
+  const shake=node=>{if(canAnimate(node))node.animate([{transform:'none'},{transform:'translateX(-5px)'},{transform:'translateX(5px)'},{transform:'translateX(-3px)'},{transform:'translateX(2px)'},{transform:'none'}],{duration:300,easing:'ease-in-out'});};
+  /* 图标换成另一个字形时缩放淡入，而不是直接替换（转场库的 icon swap）。 */
+  const swapIcon=(node,text)=>{if(!node||node.textContent===text)return;node.textContent=text;if(canAnimate(node))node.animate([{opacity:0,transform:'scale(.6)'},{opacity:1,transform:'none'}],{duration:200,easing:SPRING});};
   const PREF_KEY='artist-library.thumb-height',PREF_CARD='artist-library.card-size',PREF_CARD_COMPACT='artist-library.card-size-compact';
   const savePref=(key,value)=>{try{localStorage.setItem(key,String(value));}catch{}};
   /* 两套视图各配各的预览高度：舒适视图读 --card-size，紧凑视图读 --card-size-compact。 */
@@ -83,7 +95,7 @@
   /* 文案真的变了才轻轻淡一下：保存、生图、检测都会写状态栏，一直闪反而吵。 */
   function status(t,error=false){
     const node=$('storage-status');
-    if(!reducedMotion()&&node.textContent!==t&&typeof node.animate==='function')node.animate([{opacity:.45},{opacity:1}],{duration:200,easing:'ease-out'});
+    if(!reducedMotion()&&node.textContent!==t&&typeof node.animate==='function')node.animate([{opacity:.25,filter:'blur(2px)',transform:'translateY(2px)'},{opacity:1,filter:'blur(0)',transform:'none'}],{duration:220,easing:'ease-out'});
     node.textContent=t;node.classList.toggle('error',error);node.title=t;
     window.ArtistWorkspace?.status(t,error);if(data)paintTasks();
   }
@@ -431,7 +443,7 @@
     article.dataset.artist=a.name;article.setAttribute('aria-label','画师 '+a.name);
     const heading=el('h2'),name=btn(a.name,()=>copyText(a.name,'画师 tag'),'artist-name');name.title='点击复制画师 tag';name.setAttribute('aria-label','复制画师 tag：'+a.name);heading.append(name);
     row.append(el('span','serial',String(seqOf(a)).padStart(4,'0')),heading);
-    if(collectingUid===a.uid)row.append(el('span','artist-collecting','采集中'));
+    if(collectingUid===a.uid){const badge=el('span','artist-collecting','采集中');if(!previous?.querySelector?.('.artist-collecting'))popIn(badge);row.append(badge);}
     if(a.alias)row.append(el('span','alias',a.alias));
     /* 站点作品少于 50 的整项标红：这一档基本等于刚起步或快清号了，值得一眼从一屏卡片里挑出来。
        注意「没读到」在数据里是 null 而不是缺字段——Number(null)===0，写成数字判断会把没读到的当成 0。 */
@@ -443,6 +455,9 @@
     if(knownCount(a.counts?.beforeTotal))count.append(el('span','artist-before-inline','（'+a.counts.beforeTotal+'）'));
     count.title='本库收录 '+a.works.length+' 张；截至日期：'+(a.counts?.beforeDate||data.cutoffDate);
     row.append(count);
+    /* 只有数字真的变了才弹——每次重画都弹就成了噪音。 */
+    const oldCount=previous?.querySelector?.('.artist-site-count');
+    if(oldCount&&oldCount.textContent!==count.textContent)popText(count);
     const meta=el('div','artist-meta');meta.append(el('span',a.category?'primary':'pending-badge',a.category||'待判断'));
     if(a.tags.length){const tags=el('div','secondary');a.tags.forEach(t=>tags.append(el('span','',t)));meta.append(tags);}
     if(previous)for(const node of [...article.children])if(node.className.startsWith('score-badge'))node.remove();
@@ -676,7 +691,7 @@
       revealElement(card);
     });
   }
-  function setEditorError(message){if(editorError)editorError.textContent=message;}
+  function setEditorError(message){if(editorError)editorError.textContent=message;if(message)shake(editorError);}
   /* 收起要把容器本身从页面移除：dispose() 已经清空了它的内容，只清内容会留下一个空壳。 */
   function closeWorkPicker(){if(editorPicker){editorPicker.dispose();editorPicker=null;}if(editorHost){editorHost.remove?.();editorHost=null;}if(editorToggle)editorToggle.textContent='展开读取';}
   /* 换排序、翻页之后把视线交回画师作品：候选列表换了一批，人还停在原地就不用动（nearest 只在看不见时才滚）。 */
