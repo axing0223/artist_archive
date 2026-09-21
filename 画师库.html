@@ -373,18 +373,27 @@ html[data-density=comfortable] .artist-info{gap:11px;margin-bottom:8px}
 html[data-density=comfortable] .artist h2{font-size:21px}
 html[data-density=comfortable] .works{gap:10px}
 html[data-density=comfortable] .artist-footer{margin-top:6px;padding-top:6px}
-/* 紧凑：左列放身份信息 + 画风备注，右列整块放预览；分类标签破窗到上边框上，操作按钮停在右上角。 */
+/* 紧凑：左列按《使用说明》那句与参考图重排——序号与数量一行、名字单独一行、笔名做成小 chip，
+   画风描述与备注跟在下面；分类与标签浮到上边框之上；操作按钮停在右上角。 */
 html[data-density=compact] #gallery{gap:18px}
 html[data-density=compact] .artist:not(.is-editing){--compact-col:220px;--compact-gap:14px;--compact-pad:11px;display:grid;grid-template-columns:var(--compact-col) minmax(0,1fr);grid-template-areas:"info works" "notes works";align-items:start;column-gap:var(--compact-gap);padding:9px var(--compact-pad) 7px}
-html[data-density=compact] .artist:not(.is-editing) .artist-info{grid-area:info;flex-direction:column;align-items:flex-start;justify-content:flex-start;gap:5px;margin-bottom:0}
-html[data-density=compact] .artist:not(.is-editing) .name-row{gap:3px 7px}
-/* 分类与标签破窗跨在卡片上边框上，从预览列左缘开始向右排（和参考评分同一套路数）。
-   左边界必须跟网格第一列对齐，所以用同一组变量算，不写死像素；底色取卡片色，
-   跨在边线上的那半截才会把边框线盖住，看着像从卡片里长出来的一小块。 */
-html[data-density=compact] .artist:not(.is-editing) .artist-meta{position:absolute;top:-9px;left:calc(var(--compact-pad) + var(--compact-col) + var(--compact-gap));right:var(--compact-pad);height:18px;align-items:center;flex-wrap:nowrap;overflow:hidden;gap:5px;border-inline-start:0;padding-inline:7px;border-radius:4px;background:var(--panel)}
-html[data-density=compact] .artist:not(.is-editing) .secondary{flex-wrap:nowrap;overflow:hidden}
-/* 操作按钮停在卡片右上角，和舒适视图一致。绝对定位，就不必为它单独撑起一行网格。
-   top 让开破窗的 meta（它下沿在 9px），免得两块叠在一起。 */
+html[data-density=compact] .artist:not(.is-editing) .artist-info{grid-area:info;flex-direction:column;align-items:stretch;justify-content:flex-start;gap:7px;margin-bottom:0}
+/* 左列四行：①序号 + 作品数量 ②名字 ③笔名 ④采集中（有才出现）。 */
+html[data-density=compact] .artist:not(.is-editing) .name-row{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:baseline;gap:4px 8px}
+html[data-density=compact] .artist:not(.is-editing) .name-row>.serial{grid-area:1/1}
+html[data-density=compact] .artist:not(.is-editing) .name-row>.artist-site-count{grid-area:1/2;justify-self:start}
+html[data-density=compact] .artist:not(.is-editing) .name-row>h2{grid-area:2/1/3/3}
+html[data-density=compact] .artist:not(.is-editing) .name-row>.alias{grid-area:3/1/4/3;justify-self:start;background:var(--raised);color:var(--text);border-radius:4px;padding:1px 6px}
+html[data-density=compact] .artist:not(.is-editing) .name-row>.artist-collecting{grid-area:4/1/5/3;justify-self:start}
+/* 分类与标签浮在上边框之上那条缝里：横带自己不要底色（要的话就像贴了一块白牌），
+   底色留给每个 chip 自己；整条都在缝里，所以边框线不会从文字中间穿过去。
+   左边界必须跟网格第一列对齐，用同一组变量算，不写死像素。 */
+html[data-density=compact] .artist:not(.is-editing) .artist-meta{position:absolute;top:-17px;left:calc(var(--compact-pad) + var(--compact-col) + var(--compact-gap));right:var(--compact-pad);height:16px;align-items:center;flex-wrap:nowrap;overflow:hidden;gap:4px;border-inline-start:0;padding:0;background:none}
+html[data-density=compact] .artist:not(.is-editing) .secondary{gap:4px}
+html[data-density=compact] .artist:not(.is-editing) .secondary span{background:var(--raised);color:var(--text);border-radius:4px;padding:1px 6px;font-size:11px}
+html[data-density=compact] .artist:not(.is-editing) .secondary span+span::before{content:none}
+/* 操作按钮停在卡片右上角，和舒适视图一致。绝对定位，就不必为它单独撑起一行网格；
+   top 让开浮在上面的那条分类标签，免得两块叠在一起。 */
 html[data-density=compact] .artist:not(.is-editing) .artist-actions{position:absolute;top:11px;right:var(--compact-pad);gap:5px}
 html[data-density=compact] .artist:not(.is-editing) .works{grid-area:works;gap:6px;margin-top:32px}
 /* 紧凑视图的高度由它自己那条滑杆决定：设置里两条滑杆互不影响。 */
@@ -392,20 +401,22 @@ html[data-density=compact] .artist:not(.is-editing) :is(.thumb,.work-empty,.work
 html[data-density=compact] .artist:not(.is-editing) .work figcaption{margin-top:2px;min-height:15px;font-size:11px}
 html[data-density=compact] .artist:not(.is-editing) .work.is-test::before{top:4px;left:4px;font-size:10px;padding:1px 4px}
 /* 画风与备注跟在身份信息下面，不再横跨整卡底部，也不再是一个折叠条。 */
-html[data-density=compact] .artist:not(.is-editing) .artist-footer{grid-area:notes;margin-top:4px;padding-top:4px;border-top:0}
+html[data-density=compact] .artist:not(.is-editing) .artist-footer{grid-area:notes;margin-top:6px;padding-top:6px;border-top:0}
 html[data-density=compact] .artist:not(.is-editing) .serial{font-size:11px}
-html[data-density=compact] .artist:not(.is-editing) .alias{font-size:12px}
+html[data-density=compact] .artist:not(.is-editing) .alias{font-size:11px}
 html[data-density=compact] .artist:not(.is-editing) .secondary span,html[data-density=compact] .artist:not(.is-editing) .artist-site-count,html[data-density=compact] .artist:not(.is-editing) .artist-before-inline{font-size:11px}
 html[data-density=compact] .artist:not(.is-editing) :is(.artist-site-count,.artist-before-count){border-inline-start:0;padding-inline-start:0}
-/* 截至量缩成括号跟在站点作品后面，不再单独占一行。 */
+/* 「作品数量：N（M）」是紧凑视图的说法；舒适视图仍用「站点作品 N」+ 独立的截至量那一项。 */
+html[data-density=compact] .artist:not(.is-editing) .count-wide{display:none}
+html[data-density=compact] .artist:not(.is-editing) .count-compact{display:inline}
 html[data-density=compact] .artist:not(.is-editing) .artist-before-count{display:none}
 html[data-density=compact] .artist:not(.is-editing) .artist-before-inline{display:inline}
-html[data-density=compact] .artist:not(.is-editing) h2{font-size:18px;line-height:1.3}
+html[data-density=compact] .artist:not(.is-editing) h2{font-size:20px;line-height:1.3}
 html[data-density=compact] .artist:not(.is-editing) .artist-notes{max-width:100%;font-size:12px}
 html[data-density=compact] .artist:not(.is-editing) .artist-notes>summary{display:none}
 /* 备注常态就是展开的：details 关着时内容是靠 UA 的 content-visibility 藏起来的，这里放出来。 */
 html[data-density=compact] .artist:not(.is-editing) .artist-notes::details-content{height:auto;opacity:1;content-visibility:visible}
-html[data-density=compact] .artist:not(.is-editing) .description,html[data-density=compact] .artist:not(.is-editing) .sample-note{font-size:13px;line-height:1.6}
+html[data-density=compact] .artist:not(.is-editing) .description,html[data-density=compact] .artist:not(.is-editing) .sample-note{font-size:13px;line-height:1.7;margin:3px 0 0}
 @media(min-width:1200px){main{padding-left:36px;padding-right:36px}
 .artist{padding-left:14px;padding-right:14px}
 .works{gap:12px}
@@ -562,6 +573,8 @@ to{opacity:1;transform:none}
 .artist-site-count.is-low{color:var(--danger);background:var(--danger-bg);border-inline-start-color:var(--danger);border-radius:4px;padding-inline-end:6px;font-weight:600}
 /* 截至量的简略形态（紧凑视图用），跟在「站点作品 N」后面；默认藏起来，由紧凑视图那条规则放出来。 */
 .artist-before-inline{display:none;color:var(--muted)}
+/* 紧凑视图的数量说法（「作品数量：N（M）」），默认藏起来，由紧凑视图那条规则放出来。 */
+.count-compact{display:none}
 .artist-footer:empty{display:none}
 .artist-footer{justify-content:flex-start}
 .is-armed:is(.danger,.slot-delete,.primary-action,.danger-link),.artist-actions>.danger.is-armed{color:#fff}
@@ -2678,9 +2691,13 @@ to{opacity:1;transform:none}
     /* 站点作品少于 50 的整项标红：这一档基本等于刚起步或快清号了，值得一眼从一屏卡片里挑出来。
        注意「没读到」在数据里是 null 而不是缺字段——Number(null)===0，写成数字判断会把没读到的当成 0。 */
     const siteTotal=a.counts?.total,lowWorks=knownCount(siteTotal)&&Number(siteTotal)<50;
-    const count=el('span','artist-site-count'+(lowWorks?' is-low':''),'站点作品 '+(siteTotal??'未读取'));count.title='本库收录 '+a.works.length+' 张；截至日期：'+(a.counts?.beforeDate||data.cutoffDate);
-    /* 紧凑视图把截至量缩成括号跟在后面，省掉一整行；舒适视图由 CSS 藏起来，两边共用同一份数据。 */
-    if(knownCount(a.counts?.beforeTotal))count.append(el('span','artist-before-inline',' ('+a.counts.beforeTotal+')'));
+    const count=el('span','artist-site-count'+(lowWorks?' is-low':''));count.title='本库收录 '+a.works.length+' 张；截至日期：'+(a.counts?.beforeDate||data.cutoffDate);
+    /* 两套视图各用各的说法：舒适视图是「站点作品 N」（截至量另起一项），
+       紧凑视图按《使用说明》里那句合成一行「作品数量：N（M）」。两套文字都挂在同一项里、
+       由 CSS 挑一个显示——切换密度就不必重画卡片（重画会让图片重新加载，正是要避免的闪烁）。 */
+    count.append(el('span','count-wide','站点作品 '+(siteTotal??'未读取')));
+    count.append(el('span','count-compact','作品数量：'+(siteTotal??'未读取')));
+    if(knownCount(a.counts?.beforeTotal))count.append(el('span','artist-before-inline','（'+a.counts.beforeTotal+'）'));
     row.append(count);
     /* 站点作品是「现在有多少」，这一项是「截至日期之前有多少」：两者并排才看得出涨了多少。 */
     const beforeCount=el('span','artist-before-count','数据截至日前作品 '+(a.counts?.beforeTotal??'未读取'));beforeCount.title='截至日期：'+(a.counts?.beforeDate||data.cutoffDate);row.append(beforeCount);

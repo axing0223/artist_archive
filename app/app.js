@@ -436,9 +436,13 @@
     /* 站点作品少于 50 的整项标红：这一档基本等于刚起步或快清号了，值得一眼从一屏卡片里挑出来。
        注意「没读到」在数据里是 null 而不是缺字段——Number(null)===0，写成数字判断会把没读到的当成 0。 */
     const siteTotal=a.counts?.total,lowWorks=knownCount(siteTotal)&&Number(siteTotal)<50;
-    const count=el('span','artist-site-count'+(lowWorks?' is-low':''),'站点作品 '+(siteTotal??'未读取'));count.title='本库收录 '+a.works.length+' 张；截至日期：'+(a.counts?.beforeDate||data.cutoffDate);
-    /* 紧凑视图把截至量缩成括号跟在后面，省掉一整行；舒适视图由 CSS 藏起来，两边共用同一份数据。 */
-    if(knownCount(a.counts?.beforeTotal))count.append(el('span','artist-before-inline',' ('+a.counts.beforeTotal+')'));
+    const count=el('span','artist-site-count'+(lowWorks?' is-low':''));count.title='本库收录 '+a.works.length+' 张；截至日期：'+(a.counts?.beforeDate||data.cutoffDate);
+    /* 两套视图各用各的说法：舒适视图是「站点作品 N」（截至量另起一项），
+       紧凑视图按《使用说明》里那句合成一行「作品数量：N（M）」。两套文字都挂在同一项里、
+       由 CSS 挑一个显示——切换密度就不必重画卡片（重画会让图片重新加载，正是要避免的闪烁）。 */
+    count.append(el('span','count-wide','站点作品 '+(siteTotal??'未读取')));
+    count.append(el('span','count-compact','作品数量：'+(siteTotal??'未读取')));
+    if(knownCount(a.counts?.beforeTotal))count.append(el('span','artist-before-inline','（'+a.counts.beforeTotal+'）'));
     row.append(count);
     /* 站点作品是「现在有多少」，这一项是「截至日期之前有多少」：两者并排才看得出涨了多少。 */
     const beforeCount=el('span','artist-before-count','数据截至日前作品 '+(a.counts?.beforeTotal??'未读取'));beforeCount.title='截至日期：'+(a.counts?.beforeDate||data.cutoffDate);row.append(beforeCount);
