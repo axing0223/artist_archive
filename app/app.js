@@ -1053,8 +1053,8 @@
   }
   async function enrichArtists(targets,order=DEFAULT_WORK_ORDER){
     const message=$('batch-message'),total=targets.length;
-    let done=0,failed=0,renamed=0,images=0;
-    const text=()=>`正在采集 ${done} / ${total} · 补编号 ${renamed} · 缩略图 ${images} 张${failed?` · 失败 ${failed}`:''}`;
+    let done=0,failed=0,renamed=0,images=0,degraded=0;
+    const text=()=>`正在采集 ${done} / ${total} · 补编号 ${renamed} · 缩略图 ${images} 张${degraded?` · 数量待补 ${degraded}`:''}${failed?` · 失败 ${failed}`:''}`;
     try{
     for(const job of targets){
       if(batchStop)break;
@@ -1063,9 +1063,21 @@
       const name=source.name,cutoffDate=data.cutoffDate;
       setCollecting(job.uid);
       try{
-        const detail=await ArtistLookup.details(name,cutoffDate,{previews:true,order});
-        if(detail.countsError)throw Error('作品数量读取失败');
+        /* 先认人、再查作品：站点上真正有作品的是「正式名」，输入的那串往往只是别名或推特号
+           （mikazukimo_4780 就是这种情况）。以往顺序是反的——先用输入名查完数量与作品、
+           之后才去核对正式名，于是识别画师与右键建卡都能读到作品，只有批量采集采回 0 张。 */
         let hit=null;try{hit=await lookupArtist(name);}catch{}
+        const queryName=hit&&hit.canonical?hit.canonical:name;
+        const detail=await ArtistLookup.details(queryName,cutoffDate,{previews:true,order});
+        /* 作品、数量是两路各自独立的请求，失败要说清是哪一路，而且一位只算一次「待补」：
+           - 什么都没读到 = 失败（以往这种情况不打失败也不写原因，汇总只写「缩略图 0 张」，像采成功了）；
+           - 只缺数量 = 待补，作品照常落盘（以往数量一失败就整位作废，连读回来的作品也一起丢）；
+           - 只缺作品 = 待补，且原因必须写出来（这就是 mikazukimo_4780 那一次：编号和数量都写进去了，
+             缩略图一张没有，汇总里完全看不出来）。 */
+        const hasWorks=Array.isArray(detail.works)&&detail.works.length>0,hasCount=!!detail.counts&&detail.counts.total!==null;
+        if(!hasWorks&&!hasCount){failed++;if(batchFailed.length<5)batchFailed.push(name+'：作品列表与数量都读取失败'+(detail.previewError?'（'+detail.previewError+'）':'')+'，再提交同一名单会重试');continue;}
+        if(detail.countsError){degraded++;if(batchFailed.length<5)batchFailed.push(name+'：作品数量读取失败，再提交同一名单会补');}
+        else if(hasCount&&!hasWorks){degraded++;if(batchFailed.length<5)batchFailed.push(name+'：作品列表读取失败'+(detail.previewError?'（'+detail.previewError+'）':'')+'，只剩编号与数量，再提交同一名单可补作品');}
         const works=await cacheWorks(job.uid,detail.works.slice(0,BATCH_WORKS));
         const saved=await save(next=>{
           const artist=next.artists.find(a=>a.uid===job.uid);
@@ -1079,7 +1091,9 @@
           if(hit&&hit.aliases.length)artist.aliases=hit.aliases;
           // 保留请求期间上传、编辑或生成的作品，只追加尚未保存的采集结果。
           const added=works.filter(w=>!artist.works.some(existing=>w.id?existing.id===w.id:w.url&&existing.url===w.url));
-          artist.works.push(...added);artist.counts={...artist.counts,...detail.counts};
+          artist.works.push(...added);
+          // 数量读失败时保留原值（不写 checkedAt），再次提交同一名单会重试这一位。
+          if(hasCount)artist.counts={...artist.counts,...detail.counts};
           images+=added.filter(w=>typeof w.thumb==='string'&&w.thumb.startsWith('data:')).length;
           return next;
         },text());
@@ -1087,7 +1101,7 @@
       }catch(error){failed++;if(batchFailed.length<5)batchFailed.push(name+'：'+error.message);}
       const line=text();message.textContent=line;status(line);
     }
-    return {done,failed,renamed,images};
+    return {done,failed,renamed,images,degraded};
     }finally{setCollecting(null);}
   }
   /* 超过这个人数、又勾了「同时生成测试风格图」时，按钮要变红再确认一次。 */
@@ -1123,7 +1137,7 @@
     }
     disarmBatch();
     const next=clone(data),seen=new Set(next.artists.map(a=>a.name.toLowerCase())),targets=[];let count=0;
-    for(const name of names){if(seen.has(name.toLowerCase())){const existing=next.artists.find(a=>a.name.toLowerCase()===name.toLowerCase());if(collect&&!existing.counts?.checkedAt&&!targets.some(job=>job.uid===existing.uid))targets.push({uid:existing.uid,name:existing.name});continue;}seen.add(name.toLowerCase());if(next.artists.length>=20000){$('batch-message').textContent='最多支持 20,000 位画师。';return;}next.artists.push({uid:ArtistId.issue(next.artists,{name}),order:next.artists.length+1,name,category:null,score:null,aliases:[],alias:null,tags:[],artistUrl:'https://danbooru.donmai.us/posts?tags='+encodeURIComponent(name),description:'',note:'',works:[]});targets.push({uid:next.artists[next.artists.length-1].uid,name});count++;}
+    for(const name of names){if(seen.has(name.toLowerCase())){const existing=next.artists.find(a=>a.name.toLowerCase()===name.toLowerCase());if(collect&&!existing.counts?.checkedAt&&!targets.some(job=>job.uid===existing.uid))targets.push({uid:existing.uid,name:existing.name});continue;}seen.add(name.toLowerCase());if(next.artists.length>=20000){$('batch-message').textContent='最多支持 20,000 位画师。';return;}next.artists.push({uid:ArtistId.issue(next.artists,{name}),order:next.artists.length+1,name,category:null,score:null,aliases:[],alias:null,tags:[],counts:{total:null,checkedAt:'',beforeDate:'',beforeTotal:null},artistUrl:'https://danbooru.donmai.us/posts?tags='+encodeURIComponent(name),description:'',note:'',works:[]});targets.push({uid:next.artists[next.artists.length-1].uid,name});count++;}
     batchStop=false;batchFailed.length=0;
     /* 采完就能看着新卡一张张补上：清掉筛选，把分类切到「待判断」——新加的画师都落在这里。 */
     reset();state.category='待判断';
@@ -1137,7 +1151,10 @@
       try{result=await enrichArtists(targets,order);}
       finally{setBatchRunning(false);}
       if(result.storageFailed)return;
-      const finished=`${summary}。采集 ${result.done} 位 · 补编号 ${result.renamed} · 缩略图 ${result.images} 张${result.failed?` · 失败 ${result.failed}（${batchFailed.join('；')}）`:''}${batchStop?' · 已中止，再次提交同一名单会跳过已采集的画师':''}。`;
+      /* 失败与「待补」的原因都要写进汇总：以往明细只在「失败 N>0」时才拼上去，
+         于是「编号认出来了、数量也回来了，作品却一张没采到」这种半成品一声不响地过去了。 */
+      const notes=batchFailed.length?`（${batchFailed.join('；')}${batchFailed.length<result.failed+result.degraded?'；…':''}）`:'';
+      const finished=`${summary}。采集 ${result.done} 位 · 补编号 ${result.renamed} · 缩略图 ${result.images} 张${result.degraded?` · 待补 ${result.degraded} 位`+notes:''}${result.failed?` · 失败 ${result.failed} 位`+(result.degraded?'':notes):''}${batchStop?' · 已中止，再次提交同一名单会跳过已采集的画师':''}。`;
       $('batch-message').textContent=finished;status(finished);
     }else $('batch-message').textContent=summary+'。';
     /* 采集完再排队：那时 uid 才是最终的，排进去的才会真的找到人。 */

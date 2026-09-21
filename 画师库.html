@@ -161,6 +161,9 @@ main{max-width:1440px;margin:0 auto;padding:30px 28px 12px;min-width:0;overflow-
 .edit-button{border:1px solid transparent;border-radius:6px;background:var(--raised);color:var(--muted);padding:4px 9px;font-size:13px}
 .edit-button:hover{background:var(--raised);color:var(--text)}
 a.edit-button{padding:4px 7px}
+/* 按下时轻微内缩，让点击有手感（社区组件库通用的 press feedback）。纯视觉，不参与布局。 */
+button{transition:transform var(--motion-fast) var(--ease-out)}
+button:not(:disabled):active{transform:scale(.97)}
 .works{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:9px;min-width:0;align-content:start}
 .work{position:relative;margin:0;min-width:0}
 .thumb{display:block;width:100%;height:var(--card-size);padding:0;background:var(--input);border:1px solid var(--line-soft);border-radius:6px;overflow:hidden;cursor:zoom-in}
@@ -244,11 +247,12 @@ footer .reset{font-size:12px}
 .artist.is-focus-flash{animation:focus-flash 2s ease-out}
 dialog{border:1px solid var(--line);border-radius:14px;background:var(--panel);color:var(--text);padding:0;box-shadow:var(--shadow);max-width:96vw;width:min(960px,94vw);max-height:88dvh;overflow:auto;overscroll-behavior:contain}
 dialog::backdrop{background:#080b14aa;backdrop-filter:blur(5px)}
-dialog{opacity:0;transform:translateY(12px) scale(.985);transition:opacity .18s ease,transform .18s ease,display .18s allow-discrete,overlay .18s allow-discrete}
+dialog{opacity:0;transform:translateY(14px) scale(.96);transition:opacity var(--motion-base) ease,transform var(--motion-base) var(--ease-spring),display var(--motion-base) allow-discrete,overlay var(--motion-base) allow-discrete}
 dialog[open]{opacity:1;transform:none}
-dialog::backdrop{opacity:0;transition:opacity .18s ease,display .18s allow-discrete,overlay .18s allow-discrete}
+dialog::backdrop{opacity:0;transition:opacity var(--motion-base) ease,display var(--motion-base) allow-discrete,overlay var(--motion-base) allow-discrete}
 dialog[open]::backdrop{opacity:1}
-@starting-style{dialog[open]{opacity:0;transform:translateY(12px) scale(.985)}dialog[open]::backdrop{opacity:0}}
+/* 弹窗用弹簧曲线缩放着出场（转场库的 modal open / close）：比线性缓动更像"落下来"。 */
+@starting-style{dialog[open]{opacity:0;transform:translateY(14px) scale(.96)}dialog[open]::backdrop{opacity:0}}
 body:has(dialog[open]){overflow:hidden}
 .small-dialog{width:min(690px,94vw)}
 .wide-dialog{width:min(1120px,96vw)}
@@ -791,11 +795,15 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
   const orderTag=value=>/^[a-z][a-z_]*$/.test(String(value||''))?String(value):'id_desc';
   /* 优先走扩展：它带登录 Cookie，图片地址字段只对"可见用户"返回，页面匿名直连拿不到。
      扩展不在、或版本太旧不认接口通道时退回页面直连，数量类接口照常可用。
-     返回形状与 fetch 的 Response 一致（ok/status/json）。 */
+     返回形状与 fetch 的 Response 一致（ok/status/json）。
+     init.timeoutMs 是「本次请求自己的上限」：给了就按它掐断，不再套用调用层写死的超时——
+     详情读取里几路请求开销差很多，共用一个信号时快的那路会被慢的那路一起掐掉。 */
   async function defaultFetcher(url,init={}){
+    const {timeoutMs,...options}=init;
+    if(timeoutMs>0&&!options.signal)options.signal=AbortSignal.timeout(timeoutMs);
     const bridge=root.ArtistExtension;
-    if(bridge&&bridge.canFetchApi===true&&typeof bridge.api==='function')return bridge.api(url,init?.signal);
-    return fetch(url,init);
+    if(bridge&&bridge.canFetchApi===true&&typeof bridge.api==='function')return bridge.api(url,options.signal);
+    return fetch(url,options);
   }
   function plan(value,{match='any'}={}){
     const input=String(value).trim();
@@ -846,25 +854,57 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
       previewUrl:https(pick('720x720'))||https(pick('360x360')),
       largeUrl:https(post.file_url)||https(pick('original'))||https(post.large_file_url)||https(pick('720x720'))};
   };
-  async function posts(name,{limit=20,page=1,signal,fetcher=defaultFetcher,order='id_desc'}={}){
+  async function posts(name,{limit=20,page=1,signal,fetcher=defaultFetcher,order='id_desc',timeoutMs}={}){
     const params=new URLSearchParams({tags:name+' order:'+orderTag(order),limit:String(limit),page:String(page)});
-    const response=await fetcher(origin+'/posts.json?'+params,{signal,credentials:'omit',headers:{Accept:'application/json'}});
-    if(!response.ok)throw Error(response.status===429?'请求过于频繁，请稍后重试。':'作品列表读取失败（'+response.status+'）。');
+    /* 调用方自带 signal（翻页会把上一页掐掉）就听它的；没带时给一个自己的上限，
+       免得一次请求挂死后整条采集链一直等。 */
+    const response=await fetcher(origin+'/posts.json?'+params,{...(signal?{signal}:{timeoutMs:timeoutMs??20000}),credentials:'omit',headers:{Accept:'application/json'}});
+    if(!response.ok)throw Error(response.status===429?'请求过于频繁，请稍后重试。':'作品列表读取失败（HTTP '+response.status+'）。');
     let payload;try{payload=await response.json();}catch{throw Error('站点未返回作品数据，请稍后重试。');}
     if(!Array.isArray(payload))throw Error('站点未返回作品数据，请稍后重试。');
     return payload.filter(post=>post&&Number.isSafeInteger(post.id)&&post.id>0).map(workOf);
   }
-  async function details(name,date,{fetcher=defaultFetcher,previews=true,order='id_desc'}={}){
-    const get=async(endpoint,params)=>{const r=await fetcher(origin+endpoint+'?'+new URLSearchParams(params),{signal:AbortSignal.timeout(15000),credentials:'omit',headers:{Accept:'application/json'}});if(!r.ok)throw Error('读取受限：'+r.status);return r.json();};
+  /* 失败原因要说得出人话：内部信号被掐断是超时，站点/通道出错要带上状态码，
+     否则界面上只会留下一句无法判断的「读取失败」。 */
+  const reasonOf=error=>error?.name==='TimeoutError'||error?.name==='AbortError'?'读取超时':error?.message||String(error);
+  async function details(name,date,{fetcher=defaultFetcher,previews=true,order='id_desc',timeout=20000,retryDelay=600,signal}={}){
+    const openedAt=Date.now();
+    /* 剩下的预算：整次详情读取共享一个上限，但每路请求各拿一份独立信号。
+       共用一份信号时，慢的那一路（大标签的数量统计能跑十几秒）一到点就把同一批里
+       已经快回来的作品列表一起掐掉——编号与数量都写进去了，缩略图却一张不剩。 */
+    const budget=()=>{const left=timeout-(Date.now()-openedAt);if(left<=0)throw Error('读取超时');return left;};
+    const get=async(endpoint,params,timeoutMs)=>{
+      const url=origin+endpoint+'?'+new URLSearchParams(params);
+      const r=await fetcher(url,{...(signal?{signal}:{}),credentials:'omit',headers:{Accept:'application/json'},timeoutMs:Math.min(timeoutMs??budget(),budget())});
+      if(!r.ok)throw Error(endpoint+'：站点返回 HTTP '+r.status);
+      return r.json();
+    };
     const checkedAt=new Date().toISOString();
     const count=async(tags)=>{const j=await get('/counts/posts.json',{tags,estimate_count:'false'});const n=j?.counts?.posts;if(!Number.isSafeInteger(n)||n<0)throw Error('数量未返回');return n;};
-    const jobs=[count(name),previews?get('/posts.json',{tags:name+' order:'+orderTag(order),limit:'5'}):Promise.resolve([])];
-    if(date&&/^\d{4}-\d{2}-\d{2}$/.test(date))jobs.push(count(name+' date:<'+date));
+    const countOf=tags=>{const task=count(tags);task.catch(()=>{});return task;};
+    /* 作品列表只重试这一路：数量那一路失败只影响数量本身，不值得为它再压一次站点。
+       重试共用同一份总预算，所以不会把一次采集拖成两倍长；预算已尽就不再试第二次。 */
+    const worksOnce=()=>get('/posts.json',{tags:name+' order:'+orderTag(order),limit:'5'});
+    const fetchWorks=async()=>{
+      try{return await worksOnce();}
+      catch(error){
+        const wrapped=reasonOf(error);
+        if(signal?.aborted)throw Error(wrapped);
+        let left=0;try{left=budget();}catch{throw Error(wrapped);}
+        if(left<=retryDelay)throw Error(wrapped);
+        await new Promise(resolve=>setTimeout(resolve,retryDelay));
+        return worksOnce();
+      }
+    };
+    const jobs=[countOf(name),previews?fetchWorks():Promise.resolve([])];
+    if(date&&/^\d{4}-\d{2}-\d{2}$/.test(date))jobs.push(countOf(name+' date:<'+date));
     const results=await Promise.allSettled(jobs),ok=i=>results[i]?.status==='fulfilled';
     const counts={checkedAt,total:ok(0)?results[0].value:null,beforeDate:date||null,beforeTotal:ok(2)?results[2].value:null};
     const rows=ok(1)&&Array.isArray(results[1].value)?results[1].value:[];
     const works=rows.filter(post=>post&&Number.isSafeInteger(post.id)&&post.id>0).map(workOf);
-    return {counts,works,previewError:!ok(1),countsError:!ok(0)||(!!date&&!ok(2))};
+    /* previewError 以往只是个布尔：调用方拿不到「为什么没读到」，只能干看着 0 张。
+       现在失败时带原因（字符串），成功时为空串——仍然假值，判断方式不用改。 */
+    return {counts,works,previewError:ok(1)?'':reasonOf(results[1].reason),countsError:!ok(0)||(!!date&&!ok(2))};
   }
   const api={plan,candidates,lookup,posts,details,workOf};root.ArtistLookup=api;if(typeof module!=='undefined')module.exports=api;
 })(globalThis);
@@ -3489,8 +3529,8 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
   }
   async function enrichArtists(targets,order=DEFAULT_WORK_ORDER){
     const message=$('batch-message'),total=targets.length;
-    let done=0,failed=0,renamed=0,images=0;
-    const text=()=>`正在采集 ${done} / ${total} · 补编号 ${renamed} · 缩略图 ${images} 张${failed?` · 失败 ${failed}`:''}`;
+    let done=0,failed=0,renamed=0,images=0,degraded=0;
+    const text=()=>`正在采集 ${done} / ${total} · 补编号 ${renamed} · 缩略图 ${images} 张${degraded?` · 数量待补 ${degraded}`:''}${failed?` · 失败 ${failed}`:''}`;
     try{
     for(const job of targets){
       if(batchStop)break;
@@ -3499,9 +3539,21 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
       const name=source.name,cutoffDate=data.cutoffDate;
       setCollecting(job.uid);
       try{
-        const detail=await ArtistLookup.details(name,cutoffDate,{previews:true,order});
-        if(detail.countsError)throw Error('作品数量读取失败');
+        /* 先认人、再查作品：站点上真正有作品的是「正式名」，输入的那串往往只是别名或推特号
+           （mikazukimo_4780 就是这种情况）。以往顺序是反的——先用输入名查完数量与作品、
+           之后才去核对正式名，于是识别画师与右键建卡都能读到作品，只有批量采集采回 0 张。 */
         let hit=null;try{hit=await lookupArtist(name);}catch{}
+        const queryName=hit&&hit.canonical?hit.canonical:name;
+        const detail=await ArtistLookup.details(queryName,cutoffDate,{previews:true,order});
+        /* 作品、数量是两路各自独立的请求，失败要说清是哪一路，而且一位只算一次「待补」：
+           - 什么都没读到 = 失败（以往这种情况不打失败也不写原因，汇总只写「缩略图 0 张」，像采成功了）；
+           - 只缺数量 = 待补，作品照常落盘（以往数量一失败就整位作废，连读回来的作品也一起丢）；
+           - 只缺作品 = 待补，且原因必须写出来（这就是 mikazukimo_4780 那一次：编号和数量都写进去了，
+             缩略图一张没有，汇总里完全看不出来）。 */
+        const hasWorks=Array.isArray(detail.works)&&detail.works.length>0,hasCount=!!detail.counts&&detail.counts.total!==null;
+        if(!hasWorks&&!hasCount){failed++;if(batchFailed.length<5)batchFailed.push(name+'：作品列表与数量都读取失败'+(detail.previewError?'（'+detail.previewError+'）':'')+'，再提交同一名单会重试');continue;}
+        if(detail.countsError){degraded++;if(batchFailed.length<5)batchFailed.push(name+'：作品数量读取失败，再提交同一名单会补');}
+        else if(hasCount&&!hasWorks){degraded++;if(batchFailed.length<5)batchFailed.push(name+'：作品列表读取失败'+(detail.previewError?'（'+detail.previewError+'）':'')+'，只剩编号与数量，再提交同一名单可补作品');}
         const works=await cacheWorks(job.uid,detail.works.slice(0,BATCH_WORKS));
         const saved=await save(next=>{
           const artist=next.artists.find(a=>a.uid===job.uid);
@@ -3515,7 +3567,9 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
           if(hit&&hit.aliases.length)artist.aliases=hit.aliases;
           // 保留请求期间上传、编辑或生成的作品，只追加尚未保存的采集结果。
           const added=works.filter(w=>!artist.works.some(existing=>w.id?existing.id===w.id:w.url&&existing.url===w.url));
-          artist.works.push(...added);artist.counts={...artist.counts,...detail.counts};
+          artist.works.push(...added);
+          // 数量读失败时保留原值（不写 checkedAt），再次提交同一名单会重试这一位。
+          if(hasCount)artist.counts={...artist.counts,...detail.counts};
           images+=added.filter(w=>typeof w.thumb==='string'&&w.thumb.startsWith('data:')).length;
           return next;
         },text());
@@ -3523,7 +3577,7 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
       }catch(error){failed++;if(batchFailed.length<5)batchFailed.push(name+'：'+error.message);}
       const line=text();message.textContent=line;status(line);
     }
-    return {done,failed,renamed,images};
+    return {done,failed,renamed,images,degraded};
     }finally{setCollecting(null);}
   }
   /* 超过这个人数、又勾了「同时生成测试风格图」时，按钮要变红再确认一次。 */
@@ -3559,7 +3613,7 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
     }
     disarmBatch();
     const next=clone(data),seen=new Set(next.artists.map(a=>a.name.toLowerCase())),targets=[];let count=0;
-    for(const name of names){if(seen.has(name.toLowerCase())){const existing=next.artists.find(a=>a.name.toLowerCase()===name.toLowerCase());if(collect&&!existing.counts?.checkedAt&&!targets.some(job=>job.uid===existing.uid))targets.push({uid:existing.uid,name:existing.name});continue;}seen.add(name.toLowerCase());if(next.artists.length>=20000){$('batch-message').textContent='最多支持 20,000 位画师。';return;}next.artists.push({uid:ArtistId.issue(next.artists,{name}),order:next.artists.length+1,name,category:null,score:null,aliases:[],alias:null,tags:[],artistUrl:'https://danbooru.donmai.us/posts?tags='+encodeURIComponent(name),description:'',note:'',works:[]});targets.push({uid:next.artists[next.artists.length-1].uid,name});count++;}
+    for(const name of names){if(seen.has(name.toLowerCase())){const existing=next.artists.find(a=>a.name.toLowerCase()===name.toLowerCase());if(collect&&!existing.counts?.checkedAt&&!targets.some(job=>job.uid===existing.uid))targets.push({uid:existing.uid,name:existing.name});continue;}seen.add(name.toLowerCase());if(next.artists.length>=20000){$('batch-message').textContent='最多支持 20,000 位画师。';return;}next.artists.push({uid:ArtistId.issue(next.artists,{name}),order:next.artists.length+1,name,category:null,score:null,aliases:[],alias:null,tags:[],counts:{total:null,checkedAt:'',beforeDate:'',beforeTotal:null},artistUrl:'https://danbooru.donmai.us/posts?tags='+encodeURIComponent(name),description:'',note:'',works:[]});targets.push({uid:next.artists[next.artists.length-1].uid,name});count++;}
     batchStop=false;batchFailed.length=0;
     /* 采完就能看着新卡一张张补上：清掉筛选，把分类切到「待判断」——新加的画师都落在这里。 */
     reset();state.category='待判断';
@@ -3573,7 +3627,10 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
       try{result=await enrichArtists(targets,order);}
       finally{setBatchRunning(false);}
       if(result.storageFailed)return;
-      const finished=`${summary}。采集 ${result.done} 位 · 补编号 ${result.renamed} · 缩略图 ${result.images} 张${result.failed?` · 失败 ${result.failed}（${batchFailed.join('；')}）`:''}${batchStop?' · 已中止，再次提交同一名单会跳过已采集的画师':''}。`;
+      /* 失败与「待补」的原因都要写进汇总：以往明细只在「失败 N>0」时才拼上去，
+         于是「编号认出来了、数量也回来了，作品却一张没采到」这种半成品一声不响地过去了。 */
+      const notes=batchFailed.length?`（${batchFailed.join('；')}${batchFailed.length<result.failed+result.degraded?'；…':''}）`:'';
+      const finished=`${summary}。采集 ${result.done} 位 · 补编号 ${result.renamed} · 缩略图 ${result.images} 张${result.degraded?` · 待补 ${result.degraded} 位`+notes:''}${result.failed?` · 失败 ${result.failed} 位`+(result.degraded?'':notes):''}${batchStop?' · 已中止，再次提交同一名单会跳过已采集的画师':''}。`;
       $('batch-message').textContent=finished;status(finished);
     }else $('batch-message').textContent=summary+'。';
     /* 采集完再排队：那时 uid 才是最终的，排进去的才会真的找到人。 */

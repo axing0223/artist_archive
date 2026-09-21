@@ -153,6 +153,9 @@ main{max-width:1440px;margin:0 auto;padding:30px 28px 12px;min-width:0;overflow-
 .edit-button{border:1px solid transparent;border-radius:6px;background:var(--raised);color:var(--muted);padding:4px 9px;font-size:13px}
 .edit-button:hover{background:var(--raised);color:var(--text)}
 a.edit-button{padding:4px 7px}
+/* 按下时轻微内缩，让点击有手感（社区组件库通用的 press feedback）。纯视觉，不参与布局。 */
+button{transition:transform var(--motion-fast) var(--ease-out)}
+button:not(:disabled):active{transform:scale(.97)}
 .works{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:9px;min-width:0;align-content:start}
 .work{position:relative;margin:0;min-width:0}
 .thumb{display:block;width:100%;height:var(--card-size);padding:0;background:var(--input);border:1px solid var(--line-soft);border-radius:6px;overflow:hidden;cursor:zoom-in}
@@ -236,11 +239,12 @@ footer .reset{font-size:12px}
 .artist.is-focus-flash{animation:focus-flash 2s ease-out}
 dialog{border:1px solid var(--line);border-radius:14px;background:var(--panel);color:var(--text);padding:0;box-shadow:var(--shadow);max-width:96vw;width:min(960px,94vw);max-height:88dvh;overflow:auto;overscroll-behavior:contain}
 dialog::backdrop{background:#080b14aa;backdrop-filter:blur(5px)}
-dialog{opacity:0;transform:translateY(12px) scale(.985);transition:opacity .18s ease,transform .18s ease,display .18s allow-discrete,overlay .18s allow-discrete}
+dialog{opacity:0;transform:translateY(14px) scale(.96);transition:opacity var(--motion-base) ease,transform var(--motion-base) var(--ease-spring),display var(--motion-base) allow-discrete,overlay var(--motion-base) allow-discrete}
 dialog[open]{opacity:1;transform:none}
-dialog::backdrop{opacity:0;transition:opacity .18s ease,display .18s allow-discrete,overlay .18s allow-discrete}
+dialog::backdrop{opacity:0;transition:opacity var(--motion-base) ease,display var(--motion-base) allow-discrete,overlay var(--motion-base) allow-discrete}
 dialog[open]::backdrop{opacity:1}
-@starting-style{dialog[open]{opacity:0;transform:translateY(12px) scale(.985)}dialog[open]::backdrop{opacity:0}}
+/* 弹窗用弹簧曲线缩放着出场（转场库的 modal open / close）：比线性缓动更像"落下来"。 */
+@starting-style{dialog[open]{opacity:0;transform:translateY(14px) scale(.96)}dialog[open]::backdrop{opacity:0}}
 body:has(dialog[open]){overflow:hidden}
 .small-dialog{width:min(690px,94vw)}
 .wide-dialog{width:min(1120px,96vw)}

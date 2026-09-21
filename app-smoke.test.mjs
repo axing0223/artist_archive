@@ -111,7 +111,7 @@ FileUrl.createObjectURL=()=>'blob:x';FileUrl.revokeObjectURL=()=>{};
     ArtistImages:{bind(){},unbind(){},dispose(){},setFolder(){},clear(){},dataUrl:async()=>'data:image/jpeg;base64,/9j/2Q==',fetch:async()=>new Blob([])},
     ArtistExtension:{connected:false,canGenerate:false,canAccount:false,version:'',generate:async()=>{throw Error('未连接');},subscription:async()=>{throw Error('未连接');},check:async()=>{throw Error('测试中未连接扩展');},image:async()=>{throw Error('未连接');},resolve:async()=>{throw Error('未连接');}},
     ArtistGallery:{render(container,rows,card,keyOf){state.card=card;state.rows=rows;state.keyOf=keyOf;state.renders.push(rows.map(row=>card(row)));},clear(){},pin(){},markPainted(){},visible:()=>[],mount(uid){state.mounted.push(uid);return true;}},
-    ArtistLookup:{plan(){throw Error('测试中不查询');},lookup:async()=>[],posts:async()=>[],details:async()=>({counts:{total:null,beforeTotal:null}})},
+    ArtistLookup:{plan(){throw Error('测试中不查询');},lookup:async()=>[],posts:async()=>[],details:async()=>({counts:{total:null,beforeTotal:null},previewError:''})},
   };
   for(const file of ['artist-id.js','image-cache.js','image-loader.js','folder-store.js','folder-memory.js','novelai.js','image-gen.js','generate-queue.js','work-picker.js','viewer.js','test-images.js','library-index.js','app.js'])
     vm.runInNewContext(await fs.readFile('app/'+file,'utf8'),ctx);
@@ -326,7 +326,7 @@ test('刷新所有画师数据：核对正式名并刷新数量',async()=>{
   get('batch-artists').onclick();get('batch-names').value='甲\n乙\n丙';get('batch-works').checked=false;
   await get('batch-form').onsubmit({preventDefault(){}});
   assert.equal(state.rows.length,3,'先建出三位没有数量的画师');
-  assert.equal(state.rows.every(artist=>!artist.counts),true,'没勾采集时不写数量');
+  assert.equal(state.rows.every(artist=>artist.counts&&!artist.counts.checkedAt&&artist.counts.total===null),true,'没勾采集时不写数量');
   await get('sync-all').onclick();
   assert.equal(asked.length,3,'三位都要刷');
   assert.equal(state.rows.every(artist=>artist.counts&&artist.counts.total>0),true,'数量写进资料');
@@ -1533,7 +1533,8 @@ test('批量导入：取消勾选时保持旧行为，不采集作品也不写�
   assert.equal(state.rows.length,1);
   assert.equal(queried,0,'未勾选采集时不应发出任何网络请求');
   assert.equal(state.rows[0].works.length,0);
-  assert.equal(state.rows[0].counts,undefined,'不写数量，保持与旧版本一致');
+  assert.equal(state.rows[0].counts.checkedAt,'','不写数量，保持与旧版本一致');
+  assert.equal(state.rows[0].counts.total,null,'没采集就不该有站点数量');
   assert.match(state.rows[0].uid,/^0001-iuui-manual$/);
 });
 test('批量导入：名字匹配不唯一时不写编号，避免写错 Danbooru 编号',async()=>{
@@ -1545,12 +1546,67 @@ test('批量导入：名字匹配不唯一时不写编号，避免写错 Danboor
   assert.equal(state.rows[0].counts.total,7,'作品数量照常写入');
   assert.equal(state.rows[0].works.length,1);
 });
-test('批量导入：数量读取失败时不写数量，留待下次重试',async()=>{
-  const {elements,state,ctx}=await boot();
-  stub(ctx,{lookup:async()=>[],details:async()=>({counts:{total:null},works:[post('5')],countsError:true})});
+test('批量导入：数量读取失败时不写数量，但已经读回来的作品照常保存',async()=>{
+  const {elements,state,ctx,dir}=await connectedApp();
+  stub(ctx,{lookup:async()=>[],details:async()=>({counts:{total:null},works:[post('5')],countsError:true,previewError:''})});
   await runBatch(elements,'iuui');
-  assert.equal(state.rows[0].counts,undefined,'失败不写 counts.checkedAt，重新提交同一名单会重试');
+  const saved=await ctx.FolderStore.read(dir);
+  assert.equal(saved.artists[0].counts.checkedAt,'','失败不写 checkedAt，重新提交同一名单会重试');
+  assert.equal(saved.artists[0].counts.total,null);
+  assert.equal(state.rows[0].works.length,1,'数量失败只影响数量本身，作品列表已经读回来的不能跟着丢');
+  assert.match(String(getEl(elements,'batch-message').textContent),/待补 1 位/,'汇总要点出「待补」');
+  assert.match(String(getEl(elements,'batch-message').textContent),/作品数量读取失败/,'也要说清是哪一项没读到');
+});
+/* 回归：mikazukimo_4780 —— 编号认出来了、数量也回来了，只有作品列表那一路失败。
+   以往这种情况一点声都不出：汇总写着「采集 1 位 · 补编号 1 · 缩略图 0 张」，看着像成功。 */
+test('批量采集：作品列表读取失败时要说出来，不能静默采回 0 张',async()=>{
+  const {elements,state,ctx}=await boot();
+  stub(ctx,{lookup:async()=>[{id:456789,name:'mikazukimo',aliases:[],pageUrl:''}],
+    details:async()=>({counts:{checkedAt:'x',total:4780,beforeTotal:1},works:[],countsError:false,previewError:'读取超时'})});
+  await runBatch(elements,'mikazukimo_4780');
+  const summary=String(getEl(elements,'batch-message').textContent);
+  assert.match(summary,/待补 1 位/,'这一位的作品没采到，汇总不能只写「缩略图 0 张」');
+  assert.match(summary,/作品列表读取失败（读取超时）/,'失败原因要写进汇总，缺的那一项才查得出来');
+  assert.equal(state.rows[0].counts.total,4780,'数量读回来了照样写入');
+  assert.match(state.rows[0].uid,/456789$/,'编号也要照样补上');
   assert.equal(state.rows[0].works.length,0);
+});
+test('批量采集：作品与数量都没读回来时算失败，并写明原因',async()=>{
+  const {elements,state,ctx}=await boot();
+  stub(ctx,{lookup:async()=>[],details:async()=>({counts:{total:null},works:[],countsError:true,previewError:'读取超时'})});
+  await runBatch(elements,'iuui');
+  const summary=String(getEl(elements,'batch-message').textContent);
+  assert.match(summary,/失败 1 位/,'什么都没采到就是失败，不能再算成功');
+  assert.match(summary,/作品列表与数量都读取失败/,'原因要写出来');
+  assert.equal(state.rows[0].counts.checkedAt,'','没采到就不写 checkedAt，下次提交同一名单继续重试');
+  assert.equal(state.rows[0].counts.total,null);
+});
+/* 回归：mikazukimo_4780 —— 输入的是别名/推特号，站点上真正有作品的是正式名。
+   识别画师与右键建卡都用正式名查，只有批量采集曾经先用输入名查完数量与作品、
+   之后才去核对正式名，于是只有批量采集采回 0 张。 */
+test('批量采集：先用输入名认正式名，再拿正式名去查数量与作品',async()=>{
+  const {elements,state,ctx}=await boot();
+  const asked=[];
+  stub(ctx,{lookup:async()=>[{id:456789,name:'mikazukimo',aliases:['mikazukimo_4780'],pageUrl:'https://danbooru.donmai.us/artists/456789'}],
+    details:async name=>{asked.push(name);return {counts:{checkedAt:'x',total:4780,beforeTotal:1},works:name==='mikazukimo'?[post('1'),post('2'),post('3')]:[],countsError:false,previewError:''};}});
+  useRealPlan(ctx);
+  await runBatch(elements,'mikazukimo_4780');
+  assert.deepEqual(asked,['mikazukimo'],'查询要落在正式名上，而不是输入的那串别名：'+asked.join(' | '));
+  assert.equal(state.rows[0].name,'mikazukimo','名字跟着站点正式名走');
+  assert.equal(state.rows[0].works.length,3,'正式名下才有的作品要采回来');
+  assert.match(state.rows[0].uid,/456789$/,'编号照补');
+  const summary=String(getEl(elements,'batch-message').textContent);
+  assert.match(summary,/缩略图 3 张/,'汇总里不该再出现「缩略图 0 张」');
+  assert.equal(/待补|失败/.test(summary),false,'这一位没有任何一项该待补：'+summary);
+});
+test('批量采集：认不出正式名时，仍然用输入的名字去查',async()=>{
+  const {elements,state,ctx}=await boot();
+  const asked=[];
+  stub(ctx,{lookup:async()=>[],details:async name=>{asked.push(name);return {counts:{checkedAt:'x',total:9},works:[post('1')],countsError:false,previewError:''};}});
+  useRealPlan(ctx);
+  await runBatch(elements,'mikazukimo_4780');
+  assert.deepEqual(asked,['mikazukimo_4780'],'认不出人时行为要和以前一样');
+  assert.equal(state.rows[0].works.length,1);
 });
 test('批量采集：每位画师采完就刷新对应卡片，不用等整批结束',async()=>{
   const {elements,state,ctx}=await boot();
