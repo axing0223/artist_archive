@@ -296,7 +296,9 @@ body:has(dialog[open]){overflow:hidden}
 .setting-row>input,.setting-row>select{width:170px;flex-shrink:0;font-size:14px}
 .setting-row select{width:auto;min-width:165px;font-size:14px}
 .switch{display:inline-flex;position:relative;flex-shrink:0;margin-top:2px}
-.switch input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer;z-index:1}
+/* 必须显式关掉原生外观：上面 input[type=checkbox] 那条全局规则给了 18×18 的方框与 accent 勾，
+   不关的话原生的方框勾选marker会直接画在这个自绘开关上面（看起来就是"开关上叠了一个√"）。 */
+.switch input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer;z-index:1;appearance:none;-webkit-appearance:none;background:none;border:0}
 .switch span{display:block;width:42px;height:24px;border-radius:20px;background:var(--line)}
 .switch span::after{content:'';position:absolute;left:3px;top:3px;width:18px;height:18px;border-radius:50%;background:var(--muted);transition:transform .18s,background .18s}
 .switch input:checked+span{background:var(--accent)}
@@ -732,7 +734,7 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
     <p id="test-files-info" class="field-help">还没有选择图片。</p>
     <label>起始画师序号<input id="test-start" type="number" min="1" step="1" placeholder="例如 3"></label>
     <label>测试风格序号<input id="test-seq" type="number" min="1" max="5" step="1" value="1"></label>
-    <p class="field-help">导入的图片都记为这个序号。某位画师已经有该序号时，会自动顺延到下一个空位。卡片只显示 5 格且序号 1 在最右，所以序号请填 1–5；开了设置里的「固定测试风格图」时只有序号 1、2 有固定格，序号 3 排到左边，4 以后不再显示在卡片上。</p>
+    <p class="field-help">导入的图片都记为这个序号。某位画师已经有该序号时，会自动顺延到下一个空位。卡片只显示 5 格且序号 1 在最右，所以序号请填 1–5；开了设置里的「显示测试风格图」时只有序号 1、2 有固定格，序号 3 排到左边，4 以后不再显示在卡片上。</p>
     <div id="test-preview" class="test-preview"></div>
     <p id="test-message" class="field-help" role="status"></p>
     <h3 class="manage-heading">批量删除测试风格图片</h3>
@@ -754,7 +756,7 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
     <div class="setting-row"><div><strong>保存大图</strong><p class="field-help">开启后，预览作品会将在线原图保存到本地，之后可离线查看。关闭时只临时加载；已保存的原图仍然保留。</p></div><label class="switch"><input id="save-large" type="checkbox" aria-label="预览时保存原图"><span></span></label></div>
     <div class="setting-row"><div><strong>舒适视图预览高度</strong><p class="field-help">舒适视图按这个像素高度显示五张预览，完整缩放、始终同排。设置保存在本机。</p></div><div class="size-control"><input id="card-size" type="range" min="140" max="360" step="1" value="190" aria-label="舒适视图预览高度"><span id="card-size-value">190</span></div></div>
     <div class="setting-row"><div><strong>紧凑视图预览高度</strong><p class="field-help">紧凑视图是另一套横排布局，预览高度单独设置，与舒适视图互不影响。默认 95。</p></div><div class="size-control"><input id="card-size-compact" type="range" min="60" max="300" step="1" value="95" aria-label="紧凑视图预览高度"><span id="card-size-compact-value">95</span></div></div>
-    <div class="setting-row"><div><strong>固定测试风格图</strong><p class="field-help">为测试风格 1、2 各保留一格，与三张作品参考对比。空格可直接生成；参数在「测试风格图」菜单中设置。</p></div><label class="switch"><input id="fixed-test" type="checkbox" aria-label="固定测试风格图"><span></span></label></div>
+    <div class="setting-row"><div><strong>显示测试风格图</strong><p class="field-help">开启后，画师卡片最右 2 格固定留给测试风格 1、2（编辑态也一样固定在最右）；关闭时卡片 5 格全归作品图，顶部「测试风格图」菜单也一并收起。生成参数在那个菜单里设置。</p></div><label class="switch"><input id="show-test" type="checkbox" aria-label="显示测试风格图"><span></span></label></div>
     <div class="setting-row"><div><strong>编辑画师时自动展开 danbooru 作品</strong><p class="field-help">编辑时自动联网读取站点作品。关闭时，可在编辑区按需点击「展开读取」。</p></div><label class="switch"><input id="auto-open-works" type="checkbox" aria-label="编辑时自动读取站点作品"><span></span></label></div>
   </div></dialog>
   <dialog id="gen-settings" class="small-dialog wide-dialog" aria-labelledby="gen-title"><div class="viewer-bar"><h2 id="gen-title">生图参数</h2><button id="close-gen-settings" type="button">关闭 ×</button></div><div class="form-body settings-body">
@@ -976,7 +978,9 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
   /* 登记一次 uid 变更（改名、补编号）。下一次 write 会把旧目录里的图片搬到新目录再删旧目录；
      不登记的话新目录是空的，而旧目录照样会被清理，图片就丢了。 */
   function rename(dir,from,to){if(!dir||!from||!to||from===to)return;const map=legacy.get(dir)||new Map();map.set(to,from);legacy.set(dir,map);}
-  const empty=()=>({version:1,cutoffDate:'2026-07-01',saveLargeImages:false,fixedTestSlots:false,tags:['可爱','唯美','暗黑','酷炫','清爽','华丽'],artists:[]});
+  /* 开关叫「显示测试风格图」（showTestSlots）。老库里是 fixedTestSlots，
+     应用侧读的时候两个都认（app.js 的 showsTestSlots），这里只管新库写哪个键。 */
+  const empty=()=>({version:1,cutoffDate:'2026-07-01',saveLargeImages:false,showTestSlots:false,tags:['可爱','唯美','暗黑','酷炫','清爽','华丽'],artists:[]});
   async function json(dir,name){return JSON.parse(await (await (await dir.getFileHandle(name)).getFile()).text());}
   async function put(dir,name,value){const f=await dir.getFileHandle(name,{create:true}),s=await f.createWritable();try{await s.write(value);await s.close();}catch(e){try{await s.abort();}catch{}throw e;}}
   const extensionOf=type=>Object.keys(TYPES).find(k=>TYPES[k]===type)||'';
@@ -2153,7 +2157,10 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
   const el=(tag,cls,text)=>{const node=document.createElement(tag);if(cls)node.className=cls;if(text!==undefined)node.textContent=text;return node;};
   const btn=(text,fn,cls='action')=>{const node=el('button',cls,text);node.type='button';node.onclick=fn;return node;};
   // 页码基于排除已收录作品后的结果；仅当前页绑定图片，选择状态独立于页面。
-  function mount(container,{uid,tag,exclude,onPreview=()=>{},order='id_desc',orderOptions=[],onAdd=null,onRemove=null,onOrderChanged,onAlign=null}={}){
+  /* preset 是「一开始就算已经选中的那些」。编辑已有画师时把作品列表传进来，
+     于是候选区里它们保持勾选状态、带「已加入」标记，取消勾选就是真的移出——
+     不能像以前那样把这些作品整个过滤掉：那样用户看不到、也取消不了自己刚勾的那些。 */
+  function mount(container,{uid,tag,exclude,preset,onPreview=()=>{},order='id_desc',orderOptions=[],onAdd=null,onRemove=null,onOrderChanged,onAlign=null}={}){
     const group='picker:'+uid+':'+(++instance),immediate=typeof onAdd==='function',excluded=new Set([...(exclude||[])].map(String));
     const status=el('div','picker-status'),message=el('small','picker-message','正在读取作品…'),counter=el('small','picker-count');
     message.setAttribute('role','status');message.setAttribute('aria-live','polite');
@@ -2167,7 +2174,8 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
     pages.append(previous,pageLabel,next);
     const retry=btn('重试',()=>go(failedPage,true,failedOrder));retry.hidden=true;
     if(orderOptions.length)status.append(orderBar);status.append(pages,counter,retry,message);container.append(status,grid);
-    const picked=new Map();let query={order,buffer:[],seen:new Set(),sourcePage:1,exhausted:false},works=[],page=1,loading=false,disposed=false,revision=0,controller=null,failedPage=1,failedOrder=order,focusTimer=null;
+    const picked=new Map((preset||[]).filter(work=>work&&work.id!=null).map(work=>[String(work.id),work]));
+    let query={order,buffer:[],seen:new Set(),sourcePage:1,exhausted:false},works=[],page=1,loading=false,disposed=false,revision=0,controller=null,failedPage=1,failedOrder=order,focusTimer=null;
     const update=()=>{
       const total=query.exhausted?Math.max(1,Math.ceil(query.buffer.length/PAGE_SIZE)):null;
       pageLabel.textContent=total?'第 '+page+' / '+total+' 页':'第 '+page+' 页';
@@ -2643,9 +2651,13 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
   const imageValue=v=>typeof v==='string'&&(/^data:image\/(jpeg|png|webp|gif|avif);base64,/.test(v)||/^(?:缩略图|大图)\/(?:[a-f0-9]{24}|[^\u0000-\u001f\\/:*?"<>|][^\u0000-\u001f\\/:*?"<>|]{0,99}\.(?:jpeg|png|webp|gif|avif))$/.test(v))?v:null;
   const httpsValue=v=>typeof v==='string'&&v.startsWith('https://')?v:null;
   const seqOf=a=>ArtistId.parse(a.uid)?.seq??a.order;
-  /* 卡片固定 5 格。开了「固定测试风格图」后最右 2 格归测试风格 1、2，作品图不能占用。 */
+  /* 卡片固定 5 格。开了「显示测试风格图」后最右 2 格归测试风格 1、2，作品图不能占用。
+     这一项同时决定顶部「测试风格图」菜单显不显示——关了就不该还留着入口。
+     读旧键 fixedTestSlots 是为了兼容：这个开关以前叫「固定测试风格图」，
+     直接用新键会让老库里的开启状态悄悄变回关闭。 */
   const PREVIEW_SLOTS=5,RESERVED_SLOTS=2,UPLOAD_TYPES=['image/jpeg','image/png','image/webp','image/gif','image/avif'];
-  const reservedOf=()=>data&&data.fixedTestSlots?RESERVED_SLOTS:0;
+  const showsTestSlots=value=>value?.showTestSlots===true||value?.fixedTestSlots===true;
+  const reservedOf=()=>data&&showsTestSlots(data)?RESERVED_SLOTS:0;
   /* 每组筛选都是「不选 → 正选 → 反选 → 不选」三态循环：xxx 是正选（只看这些），
      notXxx 是反选（排除这些），两边都不在就是不选。第三态以前不存在，所以按钮只会在开/关之间跳。 */
   const state={category:'全部',notCategory:null,tags:new Set(),notTags:new Set(),scores:new Set(),notScores:new Set(),special:new Set(),notSpecial:new Set(),query:'',sort:'order',desc:false};
@@ -2716,7 +2728,7 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
       const c=a.counts||{},number=n=>Number.isSafeInteger(n)&&n>=0?n:null;
       return {uid:id,order:i+1,name,category:a.category||null,score:Number.isSafeInteger(a.score)&&a.score>=1&&a.score<=5?a.score:null,aliases:unique(Array.isArray(a.aliases)?a.aliases:[]).map(x=>x.slice(0,60)),alias:typeof a.alias==='string'&&a.alias.trim()?a.alias.trim().slice(0,60):null,tags:unique(a.tags||[]).map(t=>t.slice(0,40)),danbooruId,counts:{total:number(c.total),checkedAt:text(c.checkedAt,40),beforeDate:text(c.beforeDate,10),beforeTotal:number(c.beforeTotal)},artistUrl:url(a.artistUrl),description:text(a.description),note:text(a.note),basis:text(a.basis,100),status:text(a.status,100),works};
     });
-    return {version:1,categories:categoryList,cutoffDate:/^\d{4}-\d{2}-\d{2}$/.test(raw.cutoffDate)?raw.cutoffDate:'2026-07-01',saveLargeImages:raw.saveLargeImages===true,autoOpenWorks:raw.autoOpenWorks===true,fixedTestSlots:raw.fixedTestSlots===true,workOrder:WORK_ORDERS.includes(raw.workOrder)?raw.workOrder:DEFAULT_WORK_ORDER,date:text(raw.date,40),method:text(raw.method,12000),tags:unique([...(Array.isArray(raw.tags)?raw.tags:defaults),...artists.flatMap(a=>a.tags)]).map(t=>t.slice(0,40)),artists};
+    return {version:1,categories:categoryList,cutoffDate:/^\d{4}-\d{2}-\d{2}$/.test(raw.cutoffDate)?raw.cutoffDate:'2026-07-01',saveLargeImages:raw.saveLargeImages===true,autoOpenWorks:raw.autoOpenWorks===true,showTestSlots:showsTestSlots(raw),workOrder:WORK_ORDERS.includes(raw.workOrder)?raw.workOrder:DEFAULT_WORK_ORDER,date:text(raw.date,40),method:text(raw.method,12000),tags:unique([...(Array.isArray(raw.tags)?raw.tags:defaults),...artists.flatMap(a=>a.tags)]).map(t=>t.slice(0,40)),artists};
   }
   /* 文案真的变了才轻轻淡一下：保存、生图、检测都会写状态栏，一直闪反而吵。 */
   function status(t,error=false){
@@ -3115,8 +3127,7 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
     artistCard(a,node);return true;
   }
   function card(a){return draft&&(a===draft||(editingId&&a.uid===editingId))?editingCard(a):artistCard(a);}
-  /* 这张卡片要不要重画：画师数据、是不是编辑态、生图队列状态、固定测试格数量，全一样就别动它。
-     不重画 = 图片不重新取、不重新淡入。以前只要 render() 一次，屏幕上每张卡片的图都要重新淡入一遍，
+  /* 这张卡片要不要重画：画师数据、是不是编辑态、生图队列状态、固定测试格数量，全一样就别动它。     不重画 = 图片不重新取、不重新淡入。以前只要 render() 一次，屏幕上每张卡片的图都要重新淡入一遍，
      看着就是「整屏闪一下」——保存、生图状态变化、搜索框敲字、加载更多都会踩到。 */
   function cardKey(a){
     const active=genQueue.current,waiting=active&&active.uid===a.uid;
@@ -3214,11 +3225,17 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
     const actions=el('div','artist-actions');const remove=removeButton();remove.classList.add('edit-button');if(!editingId)remove.hidden=true;actions.append(remove,btn('刷新',refreshCurrentArtist,'edit-button'),btn('取消',cancelEdit,'edit-button'),btn('保存',saveDraft,'edit-button primary-action'));editorHead.append(actions);
     const works=el('div','works');
     /* 作品格单独可重画：从 Danbooru 勾一张就补一张，不动整张卡片——
-       重画整张会把下面正在挑作品的候选列表一起冲掉。 */
+       重画整张会把下面正在挑作品的候选列表一起冲掉。
+       前 PREVIEW_SLOTS 格与卡片显示态**用同一套排布**（previewWorks + 最右 RESERVED_SLOTS 格留给
+       测试风格图），所以进编辑态时测试图不会从最右两格跑走。超出的图片照旧排在后面，
+       这样"每一张都能单独移除"这条能力不受影响。 */
     paintEditorWorks=()=>{
       workCount.textContent=countText();
-      const pool=workPool(works),nodes=draft.works.map((w,i)=>takeWork(pool,draft,w,i,true));
-      nodes.push(el('p','sample-note',`共 ${draft.works.length} 张图片 · 可单独移除；保存后才会写入画师目录`));
+      const pool=workPool(works),slots=FolderStore.previewWorks(draft,PREVIEW_SLOTS,RESERVED_SLOTS);
+      const shown=new Set(slots.filter(Boolean));
+      const nodes=slots.map((w,i)=>w?takeWork(pool,draft,w,i,true):btn('添加图片',()=>chooseSlotImage(draft,i),'work work-empty'));
+      nodes.push(...draft.works.filter(w=>!shown.has(w)).map((w,i)=>takeWork(pool,draft,w,PREVIEW_SLOTS+i,true)));
+      nodes.push(el('p','sample-note',`共 ${draft.works.length} 张图片 · 卡片上显示 ${shown.size} 格 · 可单独移除；保存后才会写入画师目录`));
       reconcileWorks(works,nodes);
     };
     paintEditorWorks();
@@ -3230,7 +3247,7 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
     article.append(info,works,expand);return article;
   }
   /* 当前筛选条件下的画师。渲染按它出卡片；「批量生成测试风格图」也按它填默认序号段。 */
-  /* 「例图空缺」按格子总数算：卡片固定 5 格，测试风格图也占一格（开「固定测试风格图」只是换哪两格归测试图）。 */
+  /* 「例图空缺」按格子总数算：卡片固定 5 格，测试风格图也占一格（开「显示测试风格图」只是换哪两格归测试图）。 */
   function currentRows(){return libraryIndex.select(data.artists,{...state,slots:PREVIEW_SLOTS});}
   function paintTasks(){
     const tasks=[batchRunning?'正在采集画师':'',syncingAll?'正在刷新资料':'',generating?'正在生成测试图':'',genQueue.pending?'等待生成 '+genQueue.pending+' 项':''].filter(Boolean).join(' · ');
@@ -3240,6 +3257,10 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
   function render(){
     const restoreFocus=window.ArtistWorkspace?.captureFilterFocus();
     $('history-date').value=data.cutoffDate;$('save-large').checked=data.saveLargeImages===true;$('work-order').value=data.workOrder;
+    /* 关了「显示测试风格图」就把顶部那个菜单整个收起来：留着入口却不显示那两格会让人以为坏了。
+       关掉时顺手把展开状态也收起，免得下次打开时它自己弹着。 */
+    const testMenu=$('test-menu');
+    if(testMenu){testMenu.hidden=!showsTestSlots(data);if(testMenu.hidden)testMenu.open=false;}
     const summary=libraryIndex.summary(data.artists),counts=summary.counts;
     const signature=JSON.stringify([data.categories,data.tags,[...counts],state.category,state.notCategory,[...state.tags],[...state.notTags],[...state.scores],[...state.notScores],[...state.special],[...state.notSpecial]]);
     // 任务进度或搜索变化不重新创建筛选按钮；选择变化时恢复到同一个按钮。
@@ -3359,8 +3380,10 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
     setEditorError('');
     editorHost=el('div','work-picker');expand.append(editorHost);
     if(editorToggle)editorToggle.textContent='收起';
-    const exclude=new Set(draft.works.map(w=>w.id).filter(Boolean));
-    editorPicker=WorkPicker.mount(editorHost,{uid:draft.uid,tag,exclude,order:data.workOrder,orderOptions:WORK_ORDER_OPTIONS,
+    /* 这里**故意不做 exclude 过滤**，改用 preset 把已经在作品列表里的那些预先标成"已选"：
+       过滤掉的话，用户就再也看不到、也取消不了自己刚勾的那些（候选区里没有它）。
+       列出来 + 保持勾选，"取消勾选即移出"在候选区里同样成立。 */
+    editorPicker=WorkPicker.mount(editorHost,{uid:draft.uid,tag,preset:draft.works,order:data.workOrder,orderOptions:WORK_ORDER_OPTIONS,
       onPreview:work=>previewWork(draft.name,work,draft.uid),onAdd:addPickedWork,onRemove:removePickedWork,onAlign:focusEditorWorks});
     /* 手动展开时把作品格顶到视口上沿：作品格与第一行候选同时入画；翻页与换排序则只在看不见时才拉回来。 */
     if(manual){editorFocusVersion++;editorPicker.focus('start');}
@@ -4325,7 +4348,7 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
     $('test-remove-all').onclick=()=>{for(const box of $('test-remove-list').querySelectorAll('input[type=checkbox]'))box.checked=true;};
     $('test-remove-none').onclick=()=>{for(const box of $('test-remove-list').querySelectorAll('input[type=checkbox]'))box.checked=false;};
     $('test-remove-run').onclick=()=>ArtistTestImages.runRemove();
-    $('settings-open').onclick=()=>{$('history-date').value=data.cutoffDate;$('save-large').checked=data.saveLargeImages===true;$('fixed-test').checked=data.fixedTestSlots===true;$('auto-open-works').checked=data.autoOpenWorks===true;$('work-order').value=data.workOrder;$('card-size').value=String(prefs.cardSize);$('card-size-value').textContent=prefs.cardSize;$('card-size-compact').value=String(prefs.cardSizeCompact);$('card-size-compact-value').textContent=prefs.cardSizeCompact;$('settings').showModal();};$('close-settings').onclick=()=>$('settings').close();
+    $('settings-open').onclick=()=>{$('history-date').value=data.cutoffDate;$('save-large').checked=data.saveLargeImages===true;$('show-test').checked=showsTestSlots(data);$('auto-open-works').checked=data.autoOpenWorks===true;$('work-order').value=data.workOrder;$('card-size').value=String(prefs.cardSize);$('card-size-value').textContent=prefs.cardSize;$('card-size-compact').value=String(prefs.cardSizeCompact);$('card-size-compact-value').textContent=prefs.cardSizeCompact;$('settings').showModal();};$('close-settings').onclick=()=>$('settings').close();
     $('gen-settings-open').onclick=()=>{fillGenSettings();showAccount();updateGenStatus();$('gen-settings').showModal();if(ArtistImageGen.loadToken()&&!ArtistImageGen.cachedAccount())refreshAccount(false);};$('close-gen-settings').onclick=()=>$('gen-settings').close();
     $('opus-status').onclick=()=>refreshAccount(true);
     $('gen-queue').onclick=()=>{const dropped=genQueue.clear();status(dropped?`已取消排队的 ${dropped} 条生成需求；正在跑的那条会跑完。`:'队列里没有等待中的需求。');};paintQueue();
@@ -4337,7 +4360,7 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
     $('card-size').oninput=()=>{const value=Number($('card-size').value);$('card-size-value').textContent=value;prefs.setCardSize(value);};
     $('card-size-compact').oninput=()=>{const value=Number($('card-size-compact').value);$('card-size-compact-value').textContent=value;prefs.setCardSizeCompact(value);};
     $('save-large').onchange=async()=>{const next=clone(data);next.saveLargeImages=$('save-large').checked;await save(next,next.saveLargeImages?'已开启「保存大图」：预览作品时会保存原图':'已关闭「保存大图」：预览作品时不再保存原图');};
-    $('fixed-test').onchange=async()=>{const next=clone(data);next.fixedTestSlots=$('fixed-test').checked;await save(next,next.fixedTestSlots?'已开启「固定测试风格图」：每张卡片右侧 2 格留给测试风格 1、2':'已关闭「固定测试风格图」：测试风格图不再占固定格子');};
+    $('show-test').onchange=async()=>{const on=$('show-test').checked,next=clone(data);next.showTestSlots=on;delete next.fixedTestSlots;await save(next,on?'已开启「显示测试风格图」：卡片最右 2 格固定留给测试风格 1、2，顶部也会出现「测试风格图」菜单':'已关闭「显示测试风格图」：卡片 5 格全归作品图，顶部「测试风格图」菜单一并收起（已生成的测试图仍留在数据里）');};
     $('auto-open-works').onchange=async()=>{const next=clone(data),on=$('auto-open-works').checked;next.autoOpenWorks=on;await save(next,on?'已开启「编辑画师时自动展开 danbooru 作品」：进入编辑态就会按名字读取站点作品':'已关闭「编辑画师时自动展开 danbooru 作品」：需要时自己点「展开读取」');};
     $('gen-check').onclick=()=>checkExtension();
     $('history-date').onchange=async()=>{const date=$('history-date').value;if(!/^\d{4}-\d{2}-\d{2}$/.test(date)){ $('history-date').value=data.cutoffDate;return;}const next=clone(data);next.cutoffDate=date;await save(next,'已保存截至日期；下次保存画师时会按新日期更新该画师的数量。');};

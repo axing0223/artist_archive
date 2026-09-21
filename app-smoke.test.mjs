@@ -931,7 +931,7 @@ test('固定测试风格图：右侧 2 格固定给测试风格 1、2，作品�
   const {elements,state}=await boot();
   const card=()=>state.card(bareArtist({works:thumbWorks(4)}));
   assert.equal(findAllByClass(card(),'work-generate').length,0,'默认关闭时不留固定格');
-  const toggle=getEl(elements,'fixed-test');toggle.checked=true;await toggle.onchange();
+  const toggle=getEl(elements,'show-test');toggle.checked=true;await toggle.onchange();
   let children=findByClass(card(),'works').children;
   assert.equal(children.length,5,'固定 5 格');
   assert.equal(children.slice(0,3).filter(node=>String(node.className).includes('work-generate')).length,0,'左边 3 格照旧放作品');
@@ -940,9 +940,34 @@ test('固定测试风格图：右侧 2 格固定给测试风格 1、2，作品�
   assert.deepEqual(children.slice(3).map(node=>findByClass(node,'generate-seq').textContent),['测试风格 2','测试风格 1'],'序号 1 在最右');
   assert.equal(children.filter(node=>node.children.some(child=>String(child.className).includes('thumb'))).length,3,'第 4 张作品被固定格挡住，不再显示');
 });
+test('显示测试风格图：关掉时顶部「测试风格图」菜单一并收起，开启才出现',async()=>{
+  const {elements,state}=await boot();
+  const menu=getEl(elements,'test-menu');
+  assert.equal(menu.hidden,true,'默认关闭时菜单不该露在外面');
+  const toggle=getEl(elements,'show-test');toggle.checked=true;await toggle.onchange();
+  assert.equal(menu.hidden,false,'开启后菜单出现');
+  toggle.checked=false;await toggle.onchange();
+  assert.equal(menu.hidden,true,'再关掉又收起');
+  assert.equal(menu.open,false,'收起时顺手把展开状态也清掉，免得下次打开自己弹着');
+});
+test('显示测试风格图：兼容旧键 fixedTestSlots，老库的开启状态不会悄悄变回关闭',async()=>{
+  const store=await import('./app/folder-store.js');
+  assert.equal(store.default.empty().fixedTestSlots,undefined,'新库不再写旧键');
+  assert.equal(store.default.empty().showTestSlots,false,'新库写的是 showTestSlots');
+  /* 造一份只有旧键的库，再按真实流程把它读进来：开关要显示为开，卡片也要留出固定格。 */
+  const {elements,state,ctx,dir}=await connectedApp();
+  const legacy=ctx.FolderStore.empty();
+  legacy.fixedTestSlots=true;delete legacy.showTestSlots;
+  await ctx.FolderStore.write(dir,legacy);
+  await elements.get('choose-folder').onclick();
+  elements.get('settings-open').onclick();
+  assert.equal(getEl(elements,'show-test').checked,true,'旧键为真时开关要显示为开');
+  assert.equal(getEl(elements,'test-menu').hidden,false,'菜单也要跟着出现');
+  assert.equal(state.keyOf(bareArtist({works:thumbWorks(4)})).includes('/2/'),true,'卡片仍按「显示测试图」留 2 个固定格');
+});
 test('固定测试风格图：已有的测试图回自己的固定格，只剩另一格给「生成」',async()=>{
   const {elements,state}=await boot();
-  const toggle=getEl(elements,'fixed-test');toggle.checked=true;await toggle.onchange();
+  const toggle=getEl(elements,'show-test');toggle.checked=true;await toggle.onchange();
   const children=findByClass(state.card(bareArtist({works:[...thumbWorks(3),{id:'',kind:'test',testSeq:1,thumb:null}]})),'works').children;
   assert.equal(children[3].className,'work work-generate','序号 2 还没生成，留一个生成入口');
   assert.equal(findByClass(children[3],'generate-seq').textContent,'测试风格 2');
@@ -1132,7 +1157,7 @@ test('固定格的生成按钮：排队/正在生成时，重建卡片也要显�
   const {elements,state,ctx}=await boot();
   await getEl(elements,'choose-folder').onclick();
   await createArtist(state,elements,'tester');
-  const toggle=getEl(elements,'fixed-test');toggle.checked=true;await toggle.onchange();
+  const toggle=getEl(elements,'show-test');toggle.checked=true;await toggle.onchange();
   const artist=state.rows[0];
   /* 生图这块换成「挂着不返回」，好让队列停在正在生成的状态 */
   let release=null;
@@ -1180,7 +1205,7 @@ test('生图抖动等待期间，格子上显示的是「正在生成」而不�
   const {elements,state,ctx}=await boot();
   await getEl(elements,'choose-folder').onclick();
   await createArtist(state,elements,'tester');
-  const toggle=getEl(elements,'fixed-test');toggle.checked=true;await toggle.onchange();
+  const toggle=getEl(elements,'show-test');toggle.checked=true;await toggle.onchange();
   const artist=state.rows[0];
   ctx.ArtistImageGen.genGapDelay=()=>5000;   // 拉长抖动，好在等待期间观察
   let release=null;
@@ -1393,6 +1418,35 @@ test('快捷识别：勾选候选作品后点「添加此画师」，只有勾�
   assert.deepEqual([...state.rows[0].works].map(work=>String(work.id)),['11'],'只有勾上的那一张被保存');
   assert.equal(String(getEl(elements,'quick-status').textContent).includes('已添加 iuui'),true,'走完整个成功路径');
 });
+test('编辑态的作品选择器不再过滤已选作品：勾着的照旧列出来，取消勾选就能移出',async()=>{
+  const {elements,state,ctx}=await boot();
+  stub(ctx,{lookup:async()=>[],details:async()=>({counts:{}}),posts:async()=>[post('11'),post('12'),post('13')]});
+  elements.get('add-artist').onclick();
+  const card=()=>lastRender(state)[0];
+  const input=findByPlaceholder(card(),'画师名字（必填）');
+  input.value='tester';input.oninput();
+  findText(card(),'展开读取').onclick();
+  await wait(30);
+  const grid=()=>findByClass(card(),'candidate-previews');
+  /* 先勾两张进作品列表。 */
+  for(const index of [0,1]){const box=grid().children[index].children[0];box.checked=true;await box.onchange();}
+  assert.equal(String(findByClass(card(),'work-count').textContent).startsWith('本库图片 2'),true,'两张都进了作品列表');
+  /* 关键：收起再展开之后，这两张必须仍在候选里（以前会被 exclude 整个过滤掉，
+     于是用户看不到、也取消不了自己刚勾的那些）。 */
+  findText(card(),'收起').onclick();
+  await wait(30);
+  findText(card(),'展开读取').onclick();
+  await wait(30);
+  const picks=findAllByClass(grid(),'pick');
+  assert.equal(picks.length,3,'已经勾上的两张仍要列出来，不能被过滤掉');
+  const selected=picks.filter(node=>node.children[0].checked);
+  assert.equal(selected.length,2,'它们的勾选状态要保持');
+  assert.equal(selected.every(node=>String(node.className).includes('is-added')),true,'已加入的要有标记');
+  /* 在候选区直接取消勾选就移出作品列表。 */
+  const box=selected[0].children[0];box.checked=false;await box.onchange();
+  assert.equal(String(findByClass(card(),'work-count').textContent).startsWith('本库图片 1'),true,'取消勾选即移出');
+  assert.equal(findAllByClass(grid(),'pick').filter(node=>node.children[0].checked).length,1,'只剩另一张还勾着');
+});
 test('页面是刚被右键菜单打开的那种：等数据文件夹就绪再建卡，然后回传结果',async()=>{
   const app=await fs.readFile('app/app.js','utf8');
   assert.match(app,/bindExtensionMessages\(\);/,'init 里要主动领取一次');
@@ -1428,8 +1482,8 @@ test('生图参数为独立对话框，入口归入测试风格工具菜单',asy
   const settingsBlock=html.slice(html.indexOf('id="settings"'),html.indexOf('id="gen-settings"'));
   for(const id of ['gen-token','gen-model','gen-size','gen-steps','gen-negative','gen-prompt1','gen-prompt2','gen-cfg-rescale','gen-transparent','gen-anlas','gen-account'])
     assert.equal(settingsBlock.includes('id="'+id+'"'),false,id+' 不该再留在「设置」里');
-  assert.equal(html.slice(html.indexOf('id="gen-settings"')).includes('id="fixed-test"'),false,'固定测试风格图是显示开关，留在「设置」里');
-  assert.match(html,/id="fixed-test"/);
+  assert.equal(html.slice(html.indexOf('id="gen-settings"')).includes('id="show-test"'),false,'固定测试风格图是显示开关，留在「设置」里');
+  assert.match(html,/id="show-test"/);
 });
 test('生图参数：顶部按钮打开新对话框并回填，改了就存回本机',async()=>{
   const {elements,ctx}=await boot();
@@ -1467,7 +1521,7 @@ test('顶部的额度按钮：没配 token 时不去打接口，说明去哪儿�
 });
 test('固定格的【生成】按钮：第一次只是点亮，第二次才真的发；没选文件夹时说明原因',async()=>{
   const {elements,state,ctx}=await boot();
-  const toggle=getEl(elements,'fixed-test');toggle.checked=true;await toggle.onchange();
+  const toggle=getEl(elements,'show-test');toggle.checked=true;await toggle.onchange();
   let asked=0;
   const realGenerate=ctx.ArtistImageGen.generate;
   ctx.ArtistImageGen.generate=async()=>{asked++;throw Error('不该走到这里');};
@@ -2001,13 +2055,16 @@ test('候选作品勾上就直接进作品列表，不用再点按钮，候选�
   const grid=findByClass(card(),'candidate-previews');
   assert.equal(findAllByClass(grid,'pick').length,2,'两位候选都列出来了');
   const label=grid.children[0],box=label.children[0];
+  /* 编辑态的作品格现在与卡片显示态同一套排布：固定 5 格，最右 2 格留给测试风格图。
+     所以「作品格」始终是 5 个节点（左边 3 格放作品、右边 2 格是测试格）。 */
+  const workNodes=()=>findAllByClass(card(),'work');
   box.checked=true;await box.onchange();
   assert.equal(String(label.className).includes('is-added'),true,'勾上就算加入');
-  assert.equal(findAllByClass(card(),'work').length,1,'作品格里立刻补上这一张，不再需要别的按钮');
+  assert.equal(workNodes().length,5,'作品格固定 5 格：左边 3 格作品位 + 最右 2 格测试位');
   assert.equal(String(findByClass(card(),'work-count').textContent),'本库图片 1 · 站点作品 未读取','顶部的数量也要跟着变：括号外是本库张数，括号里是作者作品数');
   assert.ok(findByClass(card(),'candidate-previews'),'候选列表不能被冲掉，否则连勾第二张都做不到');
   box.checked=false;await box.onchange();
-  assert.equal(findAllByClass(card(),'work').length,0,'取消勾选就把它移出');
+  assert.equal(workNodes().length,5,'取消勾选后格子数不变，只是那一格空了');
   assert.equal(String(findByClass(card(),'work-count').textContent),'本库图片 0 · 站点作品 未读取');
   box.checked=true;await box.onchange();
   await findText(card(),'保存').onclick();

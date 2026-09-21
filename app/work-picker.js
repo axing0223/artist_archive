@@ -5,7 +5,10 @@
   const el=(tag,cls,text)=>{const node=document.createElement(tag);if(cls)node.className=cls;if(text!==undefined)node.textContent=text;return node;};
   const btn=(text,fn,cls='action')=>{const node=el('button',cls,text);node.type='button';node.onclick=fn;return node;};
   // 页码基于排除已收录作品后的结果；仅当前页绑定图片，选择状态独立于页面。
-  function mount(container,{uid,tag,exclude,onPreview=()=>{},order='id_desc',orderOptions=[],onAdd=null,onRemove=null,onOrderChanged,onAlign=null}={}){
+  /* preset 是「一开始就算已经选中的那些」。编辑已有画师时把作品列表传进来，
+     于是候选区里它们保持勾选状态、带「已加入」标记，取消勾选就是真的移出——
+     不能像以前那样把这些作品整个过滤掉：那样用户看不到、也取消不了自己刚勾的那些。 */
+  function mount(container,{uid,tag,exclude,preset,onPreview=()=>{},order='id_desc',orderOptions=[],onAdd=null,onRemove=null,onOrderChanged,onAlign=null}={}){
     const group='picker:'+uid+':'+(++instance),immediate=typeof onAdd==='function',excluded=new Set([...(exclude||[])].map(String));
     const status=el('div','picker-status'),message=el('small','picker-message','正在读取作品…'),counter=el('small','picker-count');
     message.setAttribute('role','status');message.setAttribute('aria-live','polite');
@@ -19,7 +22,8 @@
     pages.append(previous,pageLabel,next);
     const retry=btn('重试',()=>go(failedPage,true,failedOrder));retry.hidden=true;
     if(orderOptions.length)status.append(orderBar);status.append(pages,counter,retry,message);container.append(status,grid);
-    const picked=new Map();let query={order,buffer:[],seen:new Set(),sourcePage:1,exhausted:false},works=[],page=1,loading=false,disposed=false,revision=0,controller=null,failedPage=1,failedOrder=order,focusTimer=null;
+    const picked=new Map((preset||[]).filter(work=>work&&work.id!=null).map(work=>[String(work.id),work]));
+    let query={order,buffer:[],seen:new Set(),sourcePage:1,exhausted:false},works=[],page=1,loading=false,disposed=false,revision=0,controller=null,failedPage=1,failedOrder=order,focusTimer=null;
     const update=()=>{
       const total=query.exhausted?Math.max(1,Math.ceil(query.buffer.length/PAGE_SIZE)):null;
       pageLabel.textContent=total?'第 '+page+' / '+total+' 页':'第 '+page+' 页';

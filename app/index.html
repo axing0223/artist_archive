@@ -37,7 +37,7 @@
     <p id="test-files-info" class="field-help">还没有选择图片。</p>
     <label>起始画师序号<input id="test-start" type="number" min="1" step="1" placeholder="例如 3"></label>
     <label>测试风格序号<input id="test-seq" type="number" min="1" max="5" step="1" value="1"></label>
-    <p class="field-help">导入的图片都记为这个序号。某位画师已经有该序号时，会自动顺延到下一个空位。卡片只显示 5 格且序号 1 在最右，所以序号请填 1–5；开了设置里的「固定测试风格图」时只有序号 1、2 有固定格，序号 3 排到左边，4 以后不再显示在卡片上。</p>
+    <p class="field-help">导入的图片都记为这个序号。某位画师已经有该序号时，会自动顺延到下一个空位。卡片只显示 5 格且序号 1 在最右，所以序号请填 1–5；开了设置里的「显示测试风格图」时只有序号 1、2 有固定格，序号 3 排到左边，4 以后不再显示在卡片上。</p>
     <div id="test-preview" class="test-preview"></div>
     <p id="test-message" class="field-help" role="status"></p>
     <h3 class="manage-heading">批量删除测试风格图片</h3>
@@ -59,7 +59,7 @@
     <div class="setting-row"><div><strong>保存大图</strong><p class="field-help">开启后，预览作品会将在线原图保存到本地，之后可离线查看。关闭时只临时加载；已保存的原图仍然保留。</p></div><label class="switch"><input id="save-large" type="checkbox" aria-label="预览时保存原图"><span></span></label></div>
     <div class="setting-row"><div><strong>舒适视图预览高度</strong><p class="field-help">舒适视图按这个像素高度显示五张预览，完整缩放、始终同排。设置保存在本机。</p></div><div class="size-control"><input id="card-size" type="range" min="140" max="360" step="1" value="190" aria-label="舒适视图预览高度"><span id="card-size-value">190</span></div></div>
     <div class="setting-row"><div><strong>紧凑视图预览高度</strong><p class="field-help">紧凑视图是另一套横排布局，预览高度单独设置，与舒适视图互不影响。默认 95。</p></div><div class="size-control"><input id="card-size-compact" type="range" min="60" max="300" step="1" value="95" aria-label="紧凑视图预览高度"><span id="card-size-compact-value">95</span></div></div>
-    <div class="setting-row"><div><strong>固定测试风格图</strong><p class="field-help">为测试风格 1、2 各保留一格，与三张作品参考对比。空格可直接生成；参数在「测试风格图」菜单中设置。</p></div><label class="switch"><input id="fixed-test" type="checkbox" aria-label="固定测试风格图"><span></span></label></div>
+    <div class="setting-row"><div><strong>显示测试风格图</strong><p class="field-help">开启后，画师卡片最右 2 格固定留给测试风格 1、2（编辑态也一样固定在最右）；关闭时卡片 5 格全归作品图，顶部「测试风格图」菜单也一并收起。生成参数在那个菜单里设置。</p></div><label class="switch"><input id="show-test" type="checkbox" aria-label="显示测试风格图"><span></span></label></div>
     <div class="setting-row"><div><strong>编辑画师时自动展开 danbooru 作品</strong><p class="field-help">编辑时自动联网读取站点作品。关闭时，可在编辑区按需点击「展开读取」。</p></div><label class="switch"><input id="auto-open-works" type="checkbox" aria-label="编辑时自动读取站点作品"><span></span></label></div>
   </div></dialog>
   <dialog id="gen-settings" class="small-dialog wide-dialog" aria-labelledby="gen-title"><div class="viewer-bar"><h2 id="gen-title">生图参数</h2><button id="close-gen-settings" type="button">关闭 ×</button></div><div class="form-body settings-body">
