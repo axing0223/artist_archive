@@ -19,13 +19,18 @@ export function pickPromptTag(text,offset){
 
 /* 规整成能拿去搜的形式：
    - 去掉两头的空白与残留分隔符；内部连续空白（含全角空格）收成一个下划线；
-   - 权重写法 (tag:1.2) / [tag] / {tag} 只取标签本身——搜索要的是标签，不是权重。 */
+   - 权重写法一律剥掉，只留标签本身——搜索要的是标签，不是权重：
+     takoma 的 0.6::t1kosewad:: 、WebUI 的 (tag:1.2) 、以及 [tag] / {tag} 三种写法都认。 */
 export function normalizePromptTag(value){
   return String(value??'')
     .trim()
     .replace(/^[([{]+/,'')
     .replace(/[)\]}]+$/,'')
     .replace(/:\s*[\d.]+$/,'')
+    /* N::tag:: —— takoma 的权重写法：数字（可带正负号）和 :: 都是外壳，中间才是标签。
+       先剥前壳再剥后壳，标签里的冒号才不会被误伤。 */
+    .replace(/^[+-]?[\d.]+\s*::/,'')
+    .replace(/::\s*$/,'')
     .trim()
     .replace(/[\s\u3000]+/g,'_')
     .replace(/^[_,;，；|]+|[_,;，；|]+$/g,'');

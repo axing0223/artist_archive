@@ -29,6 +29,16 @@ test('权重写法只取标签本身：搜索要的是标签，不是权重',()=
   assert.equal(normalizePromptTag('{long hair}'),'long_hair');
   assert.equal(normalizePromptTag('long hair:1.2'),'long_hair');
 });
+test('takoma 的 N::tag:: 权重写法也要剥掉，只搜标签',()=>{
+  assert.equal(normalizePromptTag('0.6::t1kosewad::'),'t1kosewad');
+  assert.equal(normalizePromptTag('0.6::long hair::'),'long_hair');
+  assert.equal(normalizePromptTag('-1.2::lowres::'),'lowres');
+  assert.equal(normalizePromptTag('1::solo::'),'solo');
+  /* 整段提示词里按落点切片时，权重和标签在同一个逗号段里，一起进一起剥。 */
+  assert.equal(promptTagAt('1girl, 0.6::t1kosewad::, solo',10),'t1kosewad');
+  /* 没有权重壳的裸标签不能被误伤。 */
+  assert.equal(normalizePromptTag('t1kosewad'),'t1kosewad');
+});
 test('已经是下划线写法的原样通过',()=>{
   assert.equal(promptTagAt('1girl, long_hair, solo',7),'long_hair');
 });

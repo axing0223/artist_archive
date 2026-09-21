@@ -1349,18 +1349,24 @@
   }
   if(typeof document!=='undefined'&&document.addEventListener)document.addEventListener('visibilitychange',()=>{if(!document.hidden)applyFocus();});
   /* takoma 提示词助手的只读查询：按一个提示词标签找画师，回卡片上那点信息 + 最多 5 张预览缩略图。
-     只读——不改库、不改界面、不写盘，查的是当前这份内存快照，和站内搜索用同一个索引。
-     两处写法差异要抹平：库里存的是 "long hair"，takoma 给的是 "long_hair"（选中时的空格会被换成下划线），
-     所以先原样搜一遍，搜不到再把下划线归一成空格搜一遍；精确命中优先，否则退回第一条。 */
+     只读——不改库、不改界面、不写盘，查的是当前这份内存快照。
+     匹配规则**只认名字/笔名/别名**，不用站内搜索那一套：站内搜索还会搜标签、画风描述、备注
+     甚至序号，于是搜 dishwasher1910 会被某个人的备注里出现过的词捞出来、回一张不相干的卡
+     （用户实际遇到的就是「搜 dishwasher1910 却查到 asanagi」）。名字对不上就该去 Danbooru 找图，
+     而不是硬塞一张别人的卡。
+     但要允许「局部」命中：页面上双击只能选中 himura 或 kiseki，库里存的是 himura kiseki，
+     所以先找完全相等，再找包含关系（两边都归一成小写、下划线与空格等价）。 */
   const normalizeForLookup=value=>String(value||'').trim().replace(/_/g,' ').replace(/\s+/g,' ').toLowerCase();
+  const namesForLookup=artist=>[artist.name,artist.alias,...(artist.aliases||[])].filter(Boolean).map(normalizeForLookup);
   async function lookupForPrompt(tag){
     const value=String(tag||'').trim();
     if(!value)return {ok:false,reason:'empty'};
     const wanted=normalizeForLookup(value);
-    let found=libraryIndex.select(data.artists,{query:value});
-    if(!found.length&&wanted!==value.toLowerCase())found=libraryIndex.select(data.artists,{query:wanted});
-    const exact=found.find(a=>[a.name,a.alias,...(a.aliases||[])].filter(Boolean).some(name=>normalizeForLookup(name)===wanted));
-    const artist=exact||found[0];
+    if(!wanted)return {ok:false,reason:'empty'};
+    const exact=data.artists.find(artist=>namesForLookup(artist).includes(wanted));
+    /* 局部命中要求至少 4 个字符：否则 'ai' 这种短名字会把什么都捞进来。 */
+    const partial=exact||wanted.length<4?exact:data.artists.find(artist=>namesForLookup(artist).some(name=>name.includes(wanted)||(name.length>=4&&wanted.includes(name))));
+    const artist=exact||partial;
     if(!artist)return {ok:false,reason:'not-found',value};
     const thumbs=[];
     for(const work of FolderStore.previewWorks(artist,PREVIEW_SLOTS,reservedOf()).filter(Boolean).slice(0,5)){

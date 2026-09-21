@@ -38,8 +38,12 @@
     host.id = HOST_ID;
     Object.assign(host.style, { position: 'fixed', right: '24px', bottom: '24px', zIndex: '2147483647' });
     const root = host.attachShadow?.({ mode: 'open' }) || host;
+    /* 宽度跟着画布走（takoma 的画布是 .tkCanvasPane），量不到就 480 兜底，再夹进视口。
+       图放大到 150px 高、4 列——浮窗本来就是用来看图的，不是看字的。 */
+    const paneWidth = Math.round(document.querySelector('.tkCanvasPane')?.getBoundingClientRect?.().width || 0);
+    const width = Math.max(360, Math.min(paneWidth || 480, Math.round(innerWidth * 0.9)));
     const box = document.createElement('div');
-    Object.assign(box.style, { width: '320px', maxHeight: '60vh', overflow: 'auto', background: '#1b2224', color: '#e9efee', border: '1px solid #364346', borderRadius: '12px', boxShadow: '0 16px 50px #0008', font: '13px/1.6 "Segoe UI","Microsoft YaHei",sans-serif', padding: '12px' });
+    Object.assign(box.style, { width: width + 'px', maxHeight: '70vh', overflow: 'auto', background: '#1b2224', color: '#e9efee', border: '1px solid #364346', borderRadius: '12px', boxShadow: '0 16px 50px #0008', font: '13px/1.6 "Segoe UI","Microsoft YaHei",sans-serif', padding: '12px' });
     box.textContent = `正在查「${tag}」…`;
     box.addEventListener('dblclick', event => event.stopPropagation());
     root.append(box);
