@@ -20,9 +20,12 @@ export async function build(){
   return html.replace('</body>',()=>inline+'</body>');
 }
 /* 镜像进扩展目录：文件内容与 app/ 逐字节一致（只统一行尾），扩展页照原样引用相对路径。 */
+/* 图标是二进制文件：text() 按 UTF-8 读会把非 UTF-8 字节换成替换字符，镜像里那份图就坏了
+   （表现是扩展页页头图标显示不出来）。所以二进制按 Buffer 原样搬运，只有文本才走行尾归一化。 */
+const binary=['icon.png'];
 export async function mirrorApp(){
   const files={};
-  for(const name of mirror)files[name]=await text('app/'+name);
+  for(const name of mirror)files[name]=binary.includes(name)?await fs.readFile(new URL('app/'+name,root)):await text('app/'+name);
   return files;
 }
 async function writeMirror(files){

@@ -171,7 +171,7 @@
   /* 每个浮层各挂一份样式表到自己的 shadow root：站点的 CSS 进不来，我们的也漏不出去。
      左上角那块标记用扩展的应用图标——它在 web_accessible_resources 里放行过，内容脚本才取得到；
      取不到（扩展刚被重载、上下文失效）就退回样式表里的渐变色块。 */
-  const logoUrl = (() => { try { return chrome.runtime.getURL('icons/icon32.png'); } catch { return ''; } })();
+  const logoUrl = (() => { try { return chrome.runtime.getURL('icons/icon128.png'); } catch { return ''; } })();
   const shell = host => {
     const root = host.attachShadow?.({ mode: 'open' }) || host;
     const style = document.createElement('style');
@@ -305,12 +305,31 @@
       }
     };
 
+    /* 打开画师库：用户主动点了按钮，这时候开页面/切前台是应该的（和点漂浮提示同一套逻辑）。 */
+    const openLibrary = async button => {
+      button.disabled = true;
+      button.textContent = '正在打开…';
+      const note = box.querySelector('[data-open-note]');
+      const answer = await ask('takoma.open-library', tag);
+      if (document.getElementById(HOST_ID) !== host) return; /* 面板已经关了，别去改它 */
+      if (answer?.ok) {
+        button.textContent = '已打开';
+        if (note) note.textContent = '等它加载完，再双击一次这个提示词就能查到';
+      } else {
+        button.disabled = false;
+        button.textContent = '再试一次';
+        if (note) note.textContent = answer?.reason || '没能打开画师库';
+      }
+    };
+
     /* 点缩略图 → 二级界面。库内的图带 uid/index，点开时才去要原图（懒加载，
        查询时把 5 张原图 base64 一起塞进消息太重）；站点那侧的图直接用它给的 file_url。 */
     box.addEventListener('click', async event => {
       if (event.target?.closest?.('[data-close]')) { close(); return; }
       const addButton = event.target?.closest?.('[data-add]');
       if (addButton) { addArtist(addButton); return; }
+      const openButton = event.target?.closest?.('[data-open-library]');
+      if (openButton) { openLibrary(openButton); return; }
       const image = event.target?.closest?.('img[src]');
       if (!image) return;
       /* 先开界面、再加载原图，和站点那边的图保持一致：站点的 data-large 本来就是原图地址，
@@ -330,6 +349,10 @@
     if (remote?.ok && Number(remote.page) > 0) page = Number(remote.page);
 
     const countText = artist => artist.total == null ? '未读取' : artist.total + (artist.beforeTotal == null ? '' : `（${artist.beforeTotal}）`);
+    /* 画师库页面没开着时后台回的是 reason:'no-library'——这时「库内未命中」和「添加至画师库」
+       都是错的：库根本没查过，而且建卡必须由那个页面完成。改成给一个「打开画师库」的按钮，
+       点了让后台把页面开出来（用户主动点，开页面是应该的）。 */
+    const noLibrary = hit?.reason === 'no-library';
     const library = hit?.ok
       ? `<div class="tk-card"><div class="tk-card-main">`
         + `<div class="tk-name">${esc(hit.artist.name)}</div>`
@@ -339,11 +362,15 @@
         + (hit.artist.url ? `<a class="tk-link" href="${esc(hit.artist.url)}" target="_blank" rel="noopener">在库中打开</a>` : '')
         + `</div>`
         + (hit.thumbs?.length ? row(hit.thumbs.map((src, index) => ({ thumb: src, uid: hit.artist.uid, index }))) : `<div class="tk-empty" style="margin-top:10px">这位画师库里还没有缩略图</div>`)
-      /* 没命中：句子末尾直接跟一个「添加至画师库」，点了就把这个标签收进库里。 */
-      : `<div class="tk-empty"><span>本机画师库里没有「${esc(tag)}」——下面看看 Danbooru 的搜索结果</span>`
-        + `<button class="tk-add" data-add>添加至画师库</button>`
-        + `<span class="tk-add-note" data-add-note></span></div>`;
-    box.innerHTML = head(tag, hit?.ok ? 'hit' : 'miss', hit?.ok ? '库内命中' : '库内未命中')
+      : noLibrary
+        ? `<div class="tk-empty"><span>画师库页面没有打开，本机库里有没有这位画师暂时查不到。</span>`
+          + `<button class="tk-add" data-open-library>打开画师库</button>`
+          + `<span class="tk-add-note" data-open-note></span></div>`
+        /* 真的查过、库里没有：句子末尾直接跟一个「添加至画师库」，点了就把这个标签收进库里。 */
+        : `<div class="tk-empty"><span>本机画师库里没有「${esc(tag)}」——下面看看 Danbooru 的搜索结果</span>`
+          + `<button class="tk-add" data-add>添加至画师库</button>`
+          + `<span class="tk-add-note" data-add-note></span></div>`;
+    box.innerHTML = head(tag, hit?.ok ? 'hit' : (noLibrary ? '' : 'miss'), hit?.ok ? '库内命中' : (noLibrary ? '画师库未打开' : '库内未命中'))
       + `<div class="tk-body">`
       + `<div class="tk-sec"><h3>本机画师库</h3>${library}</div>`
       + `<div class="tk-sec" data-remote style="margin-bottom:0"></div>`

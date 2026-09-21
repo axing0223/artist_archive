@@ -7,7 +7,7 @@
   "permissions": ["contextMenus", "storage", "scripting", "activeTab"],
   "background": {"service_worker": "background.js", "type": "module"},
   "content_scripts": [{"matches": ["file:///*"], "js": ["content.js"], "run_at": "document_idle", "all_frames": false}, {"matches": ["https://staging.takoma.app/*"], "js": ["takoma.js"], "run_at": "document_idle", "all_frames": false}],
-  "web_accessible_resources": [{"resources": ["prompt-tag.mjs", "icons/icon32.png"], "matches": ["https://staging.takoma.app/*"]}],
+  "web_accessible_resources": [{"resources": ["prompt-tag.mjs", "icons/icon128.png"], "matches": ["https://staging.takoma.app/*"]}],
   "icons": {"16": "icons/icon16.png", "32": "icons/icon32.png", "48": "icons/icon48.png", "128": "icons/icon128.png"},
   "action": {"default_title": "打开画师库（详细：右键 → 选项）", "default_icon": {"16": "icons/icon16.png", "32": "icons/icon32.png", "48": "icons/icon48.png", "128": "icons/icon128.png"}},
   "options_page": "test.html",

@@ -186,6 +186,17 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
   })();
   return true;
 });
+/* takoma 提示词助手：面板上的「打开画师库」。查库只用已经开着的页面（findLibraryTab 不建标签页），
+   所以库没开着时面板会显示这个按钮——用户主动点它，这时候把页面开出来/切前台是应该的。 */
+chrome.runtime.onMessage.addListener((message,sender,respond)=>{
+  if(message?.type!=='takoma.open-library')return;
+  if(sender?.id!==chrome.runtime.id)return;
+  (async()=>{
+    try{const found=await showLibrary();respond({ok:true,tabId:found?.tabId??null,existed:found?.existed===true});}
+    catch(error){respond({ok:false,reason:'没能打开画师库：'+(error?.message||error)});}
+  })();
+  return true;
+});
 /* 点漂浮提示：打开（或切到）画师库，让它定位到新卡片。
    只有「已添加」「已收下」这类真的建好卡的提示才带 uid，才谈得上定位；
    排队/失败那两朵提示没有 uid，它们的意思只是「把页面打开」——建卡由页面领 create 待办自己完成。

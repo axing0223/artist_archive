@@ -14,10 +14,14 @@ test('画师库.html 与 app/ 源码保持同步',async()=>{
 test('扩展里的画师库镜像与 app/ 源码逐字节一致',async()=>{
   const files=await mirrorApp();
   for(const [name,content] of Object.entries(files)){
-    const onDisk=await fs.readFile(new URL(MIRROR_DIR+name,import.meta.url),'utf8').catch(()=>null);
+    /* 必须按字节比。以前两边都按 utf8 读再比字符串，于是「一起坏」也会「一起相等」——
+       镜像里的 PNG 被替换字符撑大过（32975 → 60515 字节），页头图标因此显示不出来，测试却是绿的。 */
+    const onDisk=await fs.readFile(new URL(MIRROR_DIR+name,import.meta.url)).catch(()=>null);
     assert.notEqual(onDisk,null,'扩展里缺少 '+MIRROR_DIR+name+'：跑一次 npm run build');
-    assert.equal(onDisk,content,MIRROR_DIR+name+' 与 app/'+name+' 不一致：跑一次 npm run build');
+    const expected=Buffer.isBuffer(content)?content:Buffer.from(content,'utf8');
+    assert.ok(onDisk.equals(expected),MIRROR_DIR+name+' 与 app/'+name+' 不一致：跑一次 npm run build');
   }
+  assert.ok(Buffer.isBuffer(files['icon.png'])&&files['icon.png'].length>1000,'图标是二进制，必须按 Buffer 搬运，不能走 utf8 文本处理');
   assert.ok(files['host-direct.js'].includes('ArtistHostDirect'),'直连实现必须在镜像里');
   assert.match(files['index.html'],/<script src="host-direct\.js" defer><\/script>\s*<script src="extension-bridge\.js" defer>/,'直连实现要排在桥前面');
   assert.equal(files['index.html'].includes('<script>'),false,'扩展页禁止内联脚本，镜像必须是外链脚本那一份');
