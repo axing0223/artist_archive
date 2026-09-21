@@ -165,16 +165,20 @@ async function tagRenameCheck({folder:rawFolder,originalWrite,originalRead,until
  window.showDirectoryPicker=async()=>wrapCounters(rawFolder);
  /* 计量必须从应用真正握着的那份目录句柄上取。应用是拿自己 showDirectoryPicker 的句柄干活的，
     我们传进去的代理它不会用，所以「把代理交给应用」这条计数路线是死的——只能包住 FolderStore.write，
-    在它被调用的前后各读一次计数器。 */
+    在它被调用的前后各读一次计数器。
+    顺便记下 store 的起止时刻：改名那一次 save 的三段账（点下去→写盘 / 写盘 / 写盘→解锁）
+    就靠这几个时间戳算出来。三段里只有中间那段跟磁盘有关，两头只跟「库有多大」有关。 */
  const originalStoreWrite=FolderStore.write;
  let meta=null,writeMs=0;
+ const at={};
  FolderStore.write=async(...args)=>{
   const start=performance.now(),before=snapshot();
+  at.storeStart=start;
   try{return await originalStoreWrite(...args);}
   finally{
    const after=snapshot();
    meta={dir:after.dir-before.dir,file:after.file-before.file,list:after.list-before.list,write:counters.write,remove:counters.remove,mode:String(args[2])};
-   writeMs=performance.now()-start;
+   writeMs=performance.now()-start;at.storeEnd=performance.now();
   }
  };
  const started=performance.now();
@@ -206,14 +210,20 @@ async function tagRenameCheck({folder:rawFolder,originalWrite,originalRead,until
    if(open){
     open.click();
     const input=row.querySelector('input'),keep=input&&[...row.querySelectorAll('button')].find(node=>node.textContent==='保存');
-    if(input&&keep){input.value=newName;keep.click();renamed=true;break;}
+    if(input&&keep){input.value=newName;at.clicked=performance.now();keep.click();renamed=true;break;}
    }
   }
   await delay(20);
  }
  check(renamed,'标签管理里必须能找到「'+oldName+'」并就地改名');
+ const settleStart=performance.now();
  await until(()=>!document.getElementById('gallery').inert);
+ const afterMs=performance.now()-settleStart;
  check(meta,'这次改名必须真的走到落盘');
+ /* 三段账：点下去→开始写盘（应用侧整库 clone 与改字段）、写盘（store）、写盘完→界面解锁
+    （返回之后再 normalize 一遍、渲染、解锁控件）。量它的目的是看清「哪一段跟磁盘有关」：
+    只有中间那段能靠优化磁盘省，两头这两段只跟库有多大有关。 */
+ const beforeMs=Math.max(0,at.storeStart-at.clicked);
  const afterTimes=await infoTimes();
  const delta={...meta};
  const touched=[...afterTimes].filter(([uid,time])=>beforeTimes.get(uid)!==time);
@@ -233,6 +243,7 @@ async function tagRenameCheck({folder:rawFolder,originalWrite,originalRead,until
  const writePerArtist=writeMs/tagged;
  const tagResult={action:'重命名标签',artistCount:tagCount,tagged,rewritten:touched.length,
   startupMs:Math.round(startupMs),writeMs:Math.round(writeMs),perArtistMs:+writePerArtist.toFixed(2),
+  plan:{beforeMs:Math.round(beforeMs),storeMs:Math.round(writeMs),afterMs:Math.round(afterMs),totalMs:Math.round(beforeMs+writeMs+afterMs)},
   counts:{dir:delta.dir,file:delta.file,list:delta.list,write:delta.write,remove:delta.remove},
   perArtist:{dir:+(delta.dir/tagged).toFixed(2),file:+(delta.file/tagged).toFixed(2),list:+(delta.list/tagged).toFixed(2)}};
  /* 再量一次「只改设置」：它只动索引里一个开关，画师文件一位都不该碰、图片一格都不该动。
