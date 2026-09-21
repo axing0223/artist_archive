@@ -161,6 +161,10 @@ button:not(:disabled):active{transform:scale(.97)}
 .thumb{display:block;width:100%;height:var(--card-size);padding:0;background:var(--input);border:1px solid var(--line-soft);border-radius:6px;overflow:hidden;cursor:zoom-in}
 .thumb img{display:block;width:100%;height:100%;object-fit:contain;transition:opacity .18s}
 .thumb:hover{border-color:var(--accent)}
+/* 图片还没到位时，格子里走一条微光（骨架屏）。img:not([src]) 本来就是「还没绑定图片」的信号，
+   图片一挂上就不再匹配，微光自然消失。本地图很快，远端缩略图能明显少一段空白。 */
+.thumb:has(img:not([src])){background:linear-gradient(100deg,var(--input) 32%,var(--raised) 50%,var(--input) 68%);background-size:220% 100%;animation:thumb-shimmer 1.5s linear infinite}
+@keyframes thumb-shimmer{from{background-position:130% 0}to{background-position:-130% 0}}
 img:not([src]){opacity:0}
 .thumb img.image-failed{opacity:1;color:var(--danger);font-size:13px}
 .work figcaption{display:flex;align-items:center;justify-content:space-between;gap:3px;margin-top:3px;min-height:20px;color:var(--faint);font:12px ui-monospace,"Microsoft YaHei",monospace;min-width:0}
@@ -568,6 +572,13 @@ to{opacity:1;transform:none}
 .action-menu[open]::details-content{opacity:1}
 /* 菜单从触发它的那个角长出来（转场库的 origin-aware dropdown），而不是原地淡入。 */
 .action-menu .menu-panel{transform:translateY(-6px) scale(.96);transform-origin:top left;transition:transform var(--motion-base) var(--ease-spring),opacity var(--motion-fast)}
+/* 展开时条目依次落位（转场库的 panel reveal），而不是整块一起冒出来；backwards 让等待期间不可见。 */
+.action-menu[open] .menu-panel>*{animation:menu-item var(--motion-base) var(--ease-out) backwards}
+.action-menu[open] .menu-panel>*:nth-child(2){animation-delay:35ms}
+.action-menu[open] .menu-panel>*:nth-child(3){animation-delay:70ms}
+.action-menu[open] .menu-panel>*:nth-child(4){animation-delay:105ms}
+.action-menu[open] .menu-panel>*:nth-child(n+5){animation-delay:140ms}
+@keyframes menu-item{from{opacity:0;transform:translateY(-4px)}}
 .action-menu[open] .menu-panel{transform:none}
 .artist,.library-controls,.app-header,.status-bar{transition:background-color .18s,border-color .18s,color .18s}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after,*::backdrop,*::details-content{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
