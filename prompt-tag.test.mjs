@@ -39,6 +39,13 @@ test('前后换行只是边界，不该混进标签里',()=>{
   /* 一行一个标签时，落点在哪一行就取哪一行，不会把上下行带进来。 */
   assert.equal(promptTagAt('1girl\nlong hair\nsolo',8),'long_hair');
 });
+test('标签自带的括号不能被当成权重剥掉',()=>{
+  /* 用户实际遇到的是 yuuka (blue archive) 被截成 yuuka (blue archive —— 见括号就剥的写法，
+     把标签尾巴上那个 ) 也吃掉了。只有成对包住整串的括号才是权重外壳。 */
+  assert.equal(normalizePromptTag('yuuka (blue archive)'),'yuuka_(blue_archive)');
+  assert.equal(normalizePromptTag('(long hair:1.2)'),'long_hair');
+  assert.equal(normalizePromptTag('(blue archive)'),'blue_archive');
+});
 test('takoma 的 N::tag:: 权重写法也要剥掉，只搜标签',()=>{
   assert.equal(normalizePromptTag('0.6::t1kosewad::'),'t1kosewad');
   assert.equal(normalizePromptTag('0.6::long hair::'),'long_hair');

@@ -24,8 +24,12 @@ export function pickPromptTag(text,offset){
 export function normalizePromptTag(value){
   return String(value??'')
     .trim()
-    .replace(/^[([{]+/,'')
-    .replace(/[)\]}]+$/,'')
+    /* 只剥**成对包住整串**的括号：'(long hair:1.2)' → 'long hair'。
+       不能见括号就剥——'yuuka (blue archive)' 尾巴上那个 ) 是标签自己的一部分，
+       剥掉就变成 'yuuka (blue archive'（用户实际遇到的就是这个被截断的现象）。 */
+    .replace(/^\(([^()]*)\)$/,'$1')
+    .replace(/^\[([^\[\]]*)\]$/,'$1')
+    .replace(/^\{([^{}]*)\}$/,'$1')
     .replace(/:\s*[\d.]+$/,'')
     /* N::tag:: —— takoma 的权重写法：数字（可带正负号）和 :: 都是外壳，中间才是标签。
        先剥前壳再剥后壳，标签里的冒号才不会被误伤。 */

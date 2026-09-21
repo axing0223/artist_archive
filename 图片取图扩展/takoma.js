@@ -104,14 +104,14 @@
         + `<div style="color:#abbcb9">作品数量 ${countText(hit.artist)}</div></div>`
         + (hit.thumbs?.length ? row(hit.thumbs.map(src => ({ thumb: src, large: src }))) : '')
       : `<div style="color:#abbcb9;margin-top:4px">本机画师库里没有「${tag}」</div>`;
-    box.innerHTML = `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">`
-      + `<b style="font-size:15px">${tag}</b>`
-      + `<label style="margin-left:auto;display:flex;align-items:center;gap:6px;color:#8d9e9c;font-size:11px">缩略图 <input type="range" min="120" max="420" step="10" value="${cellHeight}" title="调整缩略图大小" style="width:110px"><span data-size>${cellHeight}px</span></label>`
-      + `</div>`
+    box.innerHTML = `<div style="font-size:15px;font-weight:600">${tag}</div>`
       + library
       + `<div style="color:#8d9e9c;font-size:11px;margin-top:10px">Danbooru${posts.length ? ` 前 ${posts.length} 张` : ''}</div>`
       + (posts.length ? row(posts) : '<div style="color:#8d9e9c">站点没有返回图片</div>')
-      + `<a href="${LARGE_URL}${encodeURIComponent(tag)}" target="_blank" rel="noopener" style="color:#a5dfcc;display:inline-block;margin-top:10px">在 Danbooru 打开「${tag}」 →</a>`
+      + `<div style="display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap">`
+      + `<a href="${LARGE_URL}${encodeURIComponent(tag)}" target="_blank" rel="noopener" style="color:#a5dfcc">在 Danbooru 打开「${tag}」 →</a>`
+      + `<label style="margin-left:auto;display:flex;align-items:center;gap:6px;color:#8d9e9c;font-size:11px">缩略图 <input type="range" min="120" max="420" step="10" value="${cellHeight}" title="调整缩略图大小" style="width:120px"><span data-size>${cellHeight}px</span></label>`
+      + `</div>`
       + `<div style="color:#8d9e9c;font-size:11px;margin-top:6px">双击别处或按 Esc 关闭</div>`;
     wireSlider();
   };

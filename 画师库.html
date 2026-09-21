@@ -3852,16 +3852,20 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
      Danbooru 找图，而不是硬塞一张别人的卡。
      标签要留在集合里：基础 tag（1girl 这类）本来就不是画师名，用户明确要求支持搜它们。 */
   const normalizeForLookup=value=>String(value||'').trim().replace(/_/g,' ').replace(/\s+/g,' ').toLowerCase();
-  const namesForLookup=artist=>[artist.name,artist.alias,...(artist.aliases||[]),...(artist.tags||[])].filter(Boolean).map(normalizeForLookup);
+  const namesForLookup=artist=>[artist.name,artist.alias,...(artist.aliases||[])].filter(Boolean).map(normalizeForLookup);
+  const tagsForLookup=artist=>(artist.tags||[]).map(normalizeForLookup);
   async function lookupForPrompt(tag){
     const value=String(tag||'').trim();
     if(!value)return {ok:false,reason:'empty'};
     const wanted=normalizeForLookup(value);
     if(!wanted)return {ok:false,reason:'empty'};
-    const exact=data.artists.find(artist=>namesForLookup(artist).includes(wanted));
-    /* 只做「命中项包含查询」这一个方向：页面上双击只能选中 himura，库里存 himura kiseki，
-       所以 himura 要能带上 kiseki。反方向（查询包含命中项）不要——标签里有 'd' 这种单字符，
-       那个方向会把什么都捞进来。 */
+    /* 三档，优先级从高到低：
+       ① 名字/笔名/别名/标签**完全相等**——基础 tag（1girl 这类）按这一档命中；
+       ② 名字/笔名/别名**包含**查询——页面上双击只能选中 himura，库里存 himura kiseki，
+          靠这一档带上 kiseki；
+       ③ 标签只认全等，**绝不做子串**：否则搜 girl 会命中某位带 1girl 标签的画师，
+          回一张不相干的卡（用户实际遇到的就是「搜 girl 却指向 asanagi」）。 */
+    const exact=data.artists.find(artist=>namesForLookup(artist).includes(wanted)||tagsForLookup(artist).includes(wanted));
     const partial=exact||data.artists.find(artist=>namesForLookup(artist).some(name=>name.includes(wanted)));
     const artist=exact||partial;
     if(!artist)return {ok:false,reason:'not-found',value};
