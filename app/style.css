@@ -359,6 +359,9 @@ html[data-density] .artist-info{transition:gap .28s ease,margin-bottom .28s ease
 html[data-density] .works{transition:gap .28s ease}
 html[data-density] .artist-footer{transition:margin-top .28s ease,padding-top .28s ease}
 html[data-density] .artist h2{transition:font-size .28s ease}
+/* 密度切换由同一段布局动画接管尺寸，终态测量不能混入 CSS 的中间值。 */
+html[data-density] .is-changing-density :is(.artist,.artist-info,.works,.artist-footer,h2),
+.is-changing-density .artist-notes::details-content{transition:none}
 html[data-density=comfortable] #gallery{gap:16px}
 html[data-density=comfortable] .artist{padding:15px 14px 10px}
 html[data-density=comfortable] .artist-info{gap:11px;margin-bottom:8px}
