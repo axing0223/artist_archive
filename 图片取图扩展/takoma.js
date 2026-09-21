@@ -49,9 +49,11 @@
   const close = () => document.getElementById(HOST_ID)?.remove();
   const ask = (type, tag) => chrome.runtime.sendMessage({ type, tag }).catch(error => ({ ok: false, reason: '扩展没有回应：' + (error?.message || error) }));
 
-  /* 5 列铺满一行；不足 5 张用空占位补齐，行高才不会被撑得忽大忽小。 */
+  /* 缩略图高度：默认 250px，右上角滑杆可调。5 列铺满一行，不足 5 张用空占位补齐，
+     行高才不会被撑得忽大忽小。 */
+  let cellHeight = 250;
   const row = items => `<div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;margin-top:6px">`
-    + items.map(item => `<img src="${item.thumb}" alt="" data-large="${item.large || item.thumb}" title="点击看大图" style="width:100%;height:112px;object-fit:contain;background:#141b1d;border:1px solid #2a3538;border-radius:6px;cursor:zoom-in">`).join('')
+    + items.map(item => `<img src="${item.thumb}" alt="" data-large="${item.large || item.thumb}" title="点击看大图" style="width:100%;height:${cellHeight}px;object-fit:contain;background:#141b1d;border:1px solid #2a3538;border-radius:6px;cursor:zoom-in">`).join('')
     + Array.from({ length: Math.max(0, 5 - items.length) }, () => '<span></span>').join('')
     + `</div>`;
 
@@ -69,14 +71,25 @@
     Object.assign(box.style, { width: width + 'px', maxHeight: '80vh', overflow: 'auto', background: '#1b2224', color: '#e9efee', border: '1px solid #364346', borderRadius: '12px', boxShadow: '0 16px 50px #0008', font: '13px/1.6 "Segoe UI","Microsoft YaHei",sans-serif', padding: '12px' });
     box.textContent = `正在查「${tag}」…`;
     box.addEventListener('dblclick', event => event.stopPropagation());
-    /* 点图看大图：就地换内容，再点一下回到列表（记下原内容再还原，省一套覆盖层）。 */
+    /* 点图看大图：就地换内容，再点一下回到列表。还原时要把滑杆重新接上——
+       还原的是 innerHTML，监听器不会跟着回来，不重接滑杆就废了。 */
+    const wireSlider = () => {
+      const slider = box.querySelector('input[type="range"]');
+      if (!slider) return;
+      slider.addEventListener('input', () => {
+        cellHeight = Number(slider.value) || 250;
+        const label = box.querySelector('[data-size]');
+        if (label) label.textContent = cellHeight + 'px';
+        box.querySelectorAll('img[data-large]').forEach(image => { image.style.height = cellHeight + 'px'; });
+      });
+    };
     box.addEventListener('click', event => {
       const image = event.target?.closest?.('img[data-large]');
       if (!image) return;
       const list = box.innerHTML;
       box.innerHTML = `<img src="${image.dataset.large}" alt="" style="width:100%;max-height:70vh;object-fit:contain;background:#141b1d;border:1px solid #2a3538;border-radius:8px;cursor:zoom-out">`
         + `<div style="color:#8d9e9c;font-size:11px;margin-top:8px">点图片返回</div>`;
-      box.querySelector('img')?.addEventListener('click', () => { box.innerHTML = list; }, { once: true });
+      box.querySelector('img')?.addEventListener('click', () => { box.innerHTML = list; wireSlider(); }, { once: true });
     });
     root.append(box);
     document.documentElement.append(host);
@@ -91,12 +104,16 @@
         + `<div style="color:#abbcb9">作品数量 ${countText(hit.artist)}</div></div>`
         + (hit.thumbs?.length ? row(hit.thumbs.map(src => ({ thumb: src, large: src }))) : '')
       : `<div style="color:#abbcb9;margin-top:4px">本机画师库里没有「${tag}」</div>`;
-    box.innerHTML = `<div style="font-size:15px;font-weight:600">${tag}</div>`
+    box.innerHTML = `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">`
+      + `<b style="font-size:15px">${tag}</b>`
+      + `<label style="margin-left:auto;display:flex;align-items:center;gap:6px;color:#8d9e9c;font-size:11px">缩略图 <input type="range" min="120" max="420" step="10" value="${cellHeight}" title="调整缩略图大小" style="width:110px"><span data-size>${cellHeight}px</span></label>`
+      + `</div>`
       + library
       + `<div style="color:#8d9e9c;font-size:11px;margin-top:10px">Danbooru${posts.length ? ` 前 ${posts.length} 张` : ''}</div>`
       + (posts.length ? row(posts) : '<div style="color:#8d9e9c">站点没有返回图片</div>')
       + `<a href="${LARGE_URL}${encodeURIComponent(tag)}" target="_blank" rel="noopener" style="color:#a5dfcc;display:inline-block;margin-top:10px">在 Danbooru 打开「${tag}」 →</a>`
       + `<div style="color:#8d9e9c;font-size:11px;margin-top:6px">双击别处或按 Esc 关闭</div>`;
+    wireSlider();
   };
 
   document.addEventListener('dblclick', async event => {

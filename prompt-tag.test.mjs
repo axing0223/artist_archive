@@ -29,6 +29,16 @@ test('权重写法只取标签本身：搜索要的是标签，不是权重',()=
   assert.equal(normalizePromptTag('{long hair}'),'long_hair');
   assert.equal(normalizePromptTag('long hair:1.2'),'long_hair');
 });
+test('前后换行只是边界，不该混进标签里',()=>{
+  /* takoma 里提示词是按行排的，回车（主动换行）是标签之间的边界；
+     而文本框/可编辑区的视觉折行不会在文本里留下 \n，所以「换行 = 边界」这条不会误伤长标签。 */
+  assert.equal(promptTagAt('\nlong hair\n',1),'long_hair');
+  assert.equal(promptTagAt('solo\nlong hair\n1girl',9),'long_hair');
+  assert.equal(promptTagAt('  \n  long hair  \n  ',6),'long_hair');
+  assert.equal(normalizePromptTag('\n\tlong hair\r\n'),'long_hair');
+  /* 一行一个标签时，落点在哪一行就取哪一行，不会把上下行带进来。 */
+  assert.equal(promptTagAt('1girl\nlong hair\nsolo',8),'long_hair');
+});
 test('takoma 的 N::tag:: 权重写法也要剥掉，只搜标签',()=>{
   assert.equal(normalizePromptTag('0.6::t1kosewad::'),'t1kosewad');
   assert.equal(normalizePromptTag('0.6::long hair::'),'long_hair');

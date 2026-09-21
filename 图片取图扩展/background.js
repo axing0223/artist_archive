@@ -126,8 +126,10 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
 });
 /* takoma 提示词助手：库里没有这个标签时，拿 Danbooru 结果回去画缩略图。
    跨站请求只能在这里发（内容脚本受页面同源限制），所以这一跳也由 background 代劳。
-   取 12 条再挑出前 10 条有效的：浮窗是固定 5 列，两行正好 10 张，多要两条是为了剔掉没预览图的。
-   同时带上大图地址，点图看大图那一步不用再跑一趟。 */
+   坑（这就是「站点没有返回图片」的原因）：probe.mjs 的 fetchApi 返回的是 {status,json} 包装对象，
+   不是解析好的 JSON——直接 Array.isArray(结果) 永远为假，列表恒空。这里必须解构出 json。
+   取 12 条再挑出前 10 条有效的：浮窗固定 5 列，两行正好 10 张，多要两条是为了剔掉没预览图的。
+   large 优先 file_url（原图），点图放大才是真的放大，而不是把缩略图拉大。 */
 chrome.runtime.onMessage.addListener((message,sender,respond)=>{
   if(message?.type!=='takoma.danbooru')return;
   if(sender?.id!==chrome.runtime.id)return;
@@ -135,11 +137,11 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
     try{
       const tag=String(message.tag||'').trim();
       if(!tag){respond({ok:false,reason:'空标签'});return;}
-      const posts=await fetchApi('https://danbooru.donmai.us/posts.json?limit=12&tags='+encodeURIComponent(tag));
-      const list=(Array.isArray(posts)?posts:[])
+      const {json}=await fetchApi('https://danbooru.donmai.us/posts.json?limit=12&tags='+encodeURIComponent(tag));
+      const list=(Array.isArray(json)?json:[])
         .filter(post=>post&&Number.isSafeInteger(post.id)&&(post.preview_file_url||post.large_file_url))
         .slice(0,10)
-        .map(post=>({id:post.id,thumb:post.preview_file_url||post.large_file_url,large:post.large_file_url||post.file_url||post.preview_file_url}));
+        .map(post=>({id:post.id,thumb:post.preview_file_url||post.large_file_url,large:post.file_url||post.large_file_url||post.preview_file_url}));
       respond({ok:true,posts:list});
     }catch(error){respond({ok:false,reason:'站点没有回应：'+(error?.message||error)});}
   })();
