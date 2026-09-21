@@ -3433,9 +3433,12 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
     if(busy||uploading||!uid)return;
     await save(next=>{next.artists=next.artists.filter(a=>a.uid!==uid);next.artists.forEach((a,i)=>a.order=i+1);return next;},'已删除画师',()=>{if(uid===editingId)closeEditor();render();});
   }
-  function confirmButton(label,armedLabel,onConfirm,cls='danger'){
-    let armed=false,timer=null;
-    const button=btn(label,async()=>{
+  /* 危险操作的统一交互：第一次点击只是「上膛」（换文案 + 变红，4 秒不动自动复原），
+     再点一次才真的执行。node 用来接管界面上已经存在的按钮——导入备份那个按钮写在
+     index.html 里、id 还被快捷操作列表引用，不能换成新节点，但交互要和删除画师完全一致。 */
+  function confirmButton(label,armedLabel,onConfirm,cls='danger',node){
+    let armed=false,timer=null,button=node;
+    const fire=async()=>{
       if(busy||uploading)return;
       if(!armed){
         armed=true;button.textContent=armedLabel;button.classList.add('is-armed');
@@ -3444,7 +3447,9 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
       }
       clearTimeout(timer);armed=false;
       await onConfirm();
-    },cls);
+    };
+    if(button){button.textContent=label;button.addEventListener('click',fire);return button;}
+    button=btn(label,fire,cls);
     return button;
   }
   const removeButton=()=>confirmButton('删除画师','再次点击确认删除',()=>removeArtist(editingId));
@@ -3552,7 +3557,7 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
   }
   async function importData(e){
     const f=e.target.files[0];e.target.value='';if(!f||busy)return;
-    try{if(f.size>100*1024*1024)throw Error('超过 100 MB 的备份请使用完整「数据」文件夹恢复，避免一次解析全部图片占满内存。');const next=normalize(JSON.parse(await f.text()),true);if(next.artists.some(a=>a.works.some(w=>FolderStore.imageOf(w,'thumb')?.kind==='local')))throw Error('这份 JSON 里的图片指向本地文件路径，单独导入恢复不了图片；请直接选对应的「数据」文件夹。');if(!confirm(`用备份中的 ${next.artists.length} 位画师替换当前 ${data.artists.length} 位？建议先导出当前备份。`))return;reset();await save(next,'已导入备份');ArtistImages.clear();}catch(error){alert('导入失败。\n'+error.message);}
+    try{if(f.size>100*1024*1024)throw Error('超过 100 MB 的备份请使用完整「数据」文件夹恢复，避免一次解析全部图片占满内存。');const next=normalize(JSON.parse(await f.text()),true);if(next.artists.some(a=>a.works.some(w=>FolderStore.imageOf(w,'thumb')?.kind==='local')))throw Error('这份 JSON 里的图片指向本地文件路径，单独导入恢复不了图片；请直接选对应的「数据」文件夹。');reset();await save(next,'已导入备份');ArtistImages.clear();}catch(error){alert('导入失败。\n'+error.message);}
   }
   const BATCH_WORKS=3;
   let batchStop=false,batchRunning=false;const batchFailed=[];
@@ -4164,7 +4169,13 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
     $('tag-search').oninput=e=>{manageFilter.tag=e.target.value.trim().toLowerCase();listTags();};
     $('category-form').onsubmit=async e=>{e.preventDefault();if(busy)return;const name=$('new-category').value.trim();if(!name)return;if(data.categories.includes(name)){alert('这个分类已存在。');return;}const next=clone(data);next.categories.push(name);await save(next);$('new-category').value='';listCategories();};$('tag-form').onsubmit=async e=>{e.preventDefault();if(busy)return;const t=$('new-tag').value.trim();if(!t)return;if(data.tags.includes(t)){alert('这个标签已存在。');return;}const next=clone(data);next.tags.push(t);await save(next);$('new-tag').value='';listTags();};
     $('batch-artists').onclick=()=>{if(busy&&!batchRunning)return;/* 采集还在跑时只是把对话框收起来，别把进度和名单抹掉 */if(!batchRunning){$('batch-names').value='';$('batch-message').textContent='';$('batch-order').value=data.workOrder;disarmBatch();}$('batch-dialog').showModal();};$('close-batch').onclick=()=>$('batch-dialog').close();/* 收起 ≠ 取消：采集继续跑，要停请点「停止采集」 */$('batch-dialog').addEventListener('close',()=>disarmBatch());$('batch-stop').onclick=$('batch-stop-dialog').onclick=()=>{if(!batchRunning)return;batchStop=true;status('正在停止采集：当前这一位采集完就停，已经采集到的会保留。');};$('batch-form').onsubmit=batch;$('names-file').onchange=async e=>{try{const f=e.target.files[0];if(f){if(f.size>5*1024*1024)throw Error('TXT 名单不能超过 5 MB。');$('batch-names').value=await f.text();}}catch(error){$('batch-message').textContent=error.message;}finally{e.target.value='';}};
-    $('export-data').onclick=exportData;$('import-data').onclick=()=>{if(!busy)$('import-file').click();};$('import-file').onchange=importData;
+    $('export-data').onclick=exportData;
+    /* 「从备份恢复资料」会清空当前全部画师，所以走和删除画师一样的「点两次」：
+       第一次只是上膛（文案变成「导入会清空当前数据」、变红），第二次才打开文件选择框。
+       以前用的是原生 confirm()，文案里没提会清空，也不符合其他危险操作的交互。 */
+    const importButton=confirmButton('从备份恢复资料','导入会清空当前数据',()=>$('import-file').click(),'',$('import-data'));
+    importButton.title='会用备份里的资料替换当前全部画师，且会删掉不在备份里的画师目录；建议先导出当前备份';
+    $('import-file').onchange=importData;
     let searchTimer;
     const searchChanged=e=>{if(e.isComposing)return;state.query=e.target.value.trim().toLowerCase();clearTimeout(searchTimer);searchTimer=setTimeout(render,120);};
     $('search').oninput=searchChanged;$('search').addEventListener('compositionend',searchChanged);
