@@ -2,6 +2,7 @@
   "manifest_version": 3,
   "name": "画师库 · 图片助手",
   "version": "0.9.0",
+  "minimum_chrome_version": "116",
   "description": "本地画师库：可以直接在扩展里打开画师库（直连 Danbooru 与 NovelAI），也保留单图取图测试页。",
   "host_permissions": ["https://danbooru.donmai.us/*", "https://cdn.donmai.us/*", "https://image.novelai.net/*", "https://api.novelai.net/*"],
   "permissions": ["contextMenus", "storage", "scripting", "activeTab"],

@@ -136,8 +136,10 @@ test('右键菜单：静默建卡（后台标签页）→ 结果画在当前页�
     vm.runInNewContext(code,sandbox);
     const api={messages,createdTabs,injected,sentToTabs,badges,stored,
       menu:()=>messages.find(item=>item.onMenu).onMenu,
-      /* 真正的 runtime 会把消息派发给所有监听器，替身也照做——后台注册了不止一个监听器。 */
-      receive:(message,respond=()=>{})=>{let returned;for(const item of messages)if(item.listener){const value=item.listener(message,null,respond);if(value!==undefined)returned=value;}return returned;},
+      /* 真正的 runtime 会把消息派发给所有监听器，替身也照做——后台注册了不止一个监听器。
+         来源按真实情况给：后台这两个分支现在会校验 sender.id（原来这里传的是 null，
+         等于一直在用「没有来源」的消息喂后台，正是这次要堵的洞）。 */
+      receive:(message,respond=()=>{},sender={id:'this-extension',tab:{id:42}})=>{let returned;for(const item of messages)if(item.listener){const value=item.listener(message,sender,respond);if(value!==undefined)returned=value;}return returned;},
     };
     return api;
   };

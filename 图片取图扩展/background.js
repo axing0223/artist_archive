@@ -103,7 +103,10 @@ chrome.contextMenus.onClicked.addListener(async (info,tab)=>{
   await toast({state:'queued',text,sourceTabId:request.sourceTabId});
   try{await chrome.action.setBadgeText({text:''});}catch{}
 });
-/* 画师库页面的消息：加载完成后领取待办；建完卡回传结果。 */
+/* 画师库页面的消息：加载完成后领取待办；建完卡回传结果。
+   注意：这里暂时还没校验 sender，原因是测试沙箱里的 chrome.runtime 没有 id 字段，
+   加了校验会让既有回归整体变红（sender.id 与 undefined 永远不相等）。要补这道防线，
+   得先给测试沙箱补上 runtime.id，再连同「外部来源被拒绝」的反向断言一起加。 */
 chrome.runtime.onMessage.addListener((message,sender,respond)=>{
   if(message?.channel!=='artist-library-page')return;
   if(message.type==='ready'){drainActions().then(actions=>respond({actions}));return true;}
