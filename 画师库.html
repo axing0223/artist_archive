@@ -3846,6 +3846,27 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
     status(`已定位到「${name}」`);
   }
   if(typeof document!=='undefined'&&document.addEventListener)document.addEventListener('visibilitychange',()=>{if(!document.hidden)applyFocus();});
+  /* takoma 提示词助手的只读查询：按一个提示词标签找画师，回卡片上那点信息 + 最多 5 张预览缩略图。
+     只读——不改库、不改界面、不写盘，查的是当前这份内存快照，和站内搜索用同一个索引。
+     两处写法差异要抹平：库里存的是 "long hair"，takoma 给的是 "long_hair"（选中时的空格会被换成下划线），
+     所以先原样搜一遍，搜不到再把下划线归一成空格搜一遍；精确命中优先，否则退回第一条。 */
+  const normalizeForLookup=value=>String(value||'').trim().replace(/_/g,' ').replace(/\s+/g,' ').toLowerCase();
+  async function lookupForPrompt(tag){
+    const value=String(tag||'').trim();
+    if(!value)return {ok:false,reason:'empty'};
+    const wanted=normalizeForLookup(value);
+    let found=libraryIndex.select(data.artists,{query:value});
+    if(!found.length&&wanted!==value.toLowerCase())found=libraryIndex.select(data.artists,{query:wanted});
+    const exact=found.find(a=>[a.name,a.alias,...(a.aliases||[])].filter(Boolean).some(name=>normalizeForLookup(name)===wanted));
+    const artist=exact||found[0];
+    if(!artist)return {ok:false,reason:'not-found',value};
+    const thumbs=[];
+    for(const work of FolderStore.previewWorks(artist,PREVIEW_SLOTS,reservedOf()).filter(Boolean).slice(0,5)){
+      try{thumbs.push(await ArtistImages.dataUrl(artist.uid,work,'thumb'));}catch{}
+    }
+    return {ok:true,value,artist:{uid:artist.uid,name:artist.name,alias:artist.alias||'',category:artist.category||'',score:Number.isSafeInteger(artist.score)?artist.score:null,total:artist.counts?.total??null,beforeTotal:artist.counts?.beforeTotal??null,url:artist.artistUrl||''},thumbs};
+  }
+  window.ArtistPromptLookup={lookupForPrompt};
   /* 页面自己来找后台要一次待办（右键时页面还没打开的那种），并把建卡结果回传。
      结果同时走两条路：直接回复这次请求，另外再发一条 created 消息——
      万一后台在这期间被回收重启，那条消息能把它叫醒，提示不至于永远停在「正在尝试」。 */
@@ -3864,6 +3885,8 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
         return true;
       }
       if(message?.type==='artist-library.focus'){focusArtist(message.uid);return;}
+      /* takoma 提示词助手：按标签查库。只读、不改界面，直接把结果回给后台。 */
+      if(message?.type==='artist-library.lookup'){lookupForPrompt(message.tag).then(respond,error=>respond({ok:false,reason:'内部错误：'+(error?.message||error)}));return true;}
     });
     try{
       runtime.sendMessage({channel:'artist-library-page',type:'ready'}).then(answer=>{

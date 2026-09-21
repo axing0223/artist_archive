@@ -210,6 +210,22 @@ test('删除画师改为按钮二次确认，不再调用系统对话框',async(
 const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const findByPlaceholder=(node,placeholder)=>{if(node.placeholder===placeholder)return node;for(const child of node.children||[]){const hit=findByPlaceholder(child,placeholder);if(hit)return hit;}return null;};
 const findText=(node,label)=>{if(node._text===label)return node;for(const child of node.children||[]){const hit=findText(child,label);if(hit)return hit;}return null;};
+test('takoma 助手：按标签查库，下划线写法也能命中空格写法',async()=>{
+  const {elements,state,ctx}=await boot();
+  await createArtist(state,elements,'long hair');
+  const hit=await ctx.window.ArtistPromptLookup.lookupForPrompt('long_hair');
+  assert.equal(hit.ok,true,'库里存「long hair」、takoma 给「long_hair」，要能对上：'+JSON.stringify(hit));
+  assert.equal(hit.artist.name,'long hair');
+  assert.equal(hit.artist.uid,state.rows[0].uid);
+  assert.equal(hit.artist.total,null,'没读过数量的画师，这里给 null 而不是 0');
+  /* 比长度而不是 deepEqual([])：thumbs 是在 vm 上下文里 new 出来的数组，
+     原型和测试这边不是同一个，deepStrictEqual 会因为原型不同判不等（这个坑本会话踩过一次）。 */
+  assert.equal(hit.thumbs.length,0,'这位画师还没有作品，就没有缩略图');
+  const miss=await ctx.window.ArtistPromptLookup.lookupForPrompt('完全不存在的标签');
+  assert.equal(miss.ok,false);
+  assert.equal(miss.reason,'not-found');
+  assert.equal((await ctx.window.ArtistPromptLookup.lookupForPrompt('   ')).reason,'empty','空标签不该去搜');
+});
 async function createArtist(state,elements,name){
   elements.get('add-artist').onclick();
   const input=findByPlaceholder(lastRender(state)[0],'画师名字（必填）');
