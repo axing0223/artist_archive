@@ -22,22 +22,28 @@
   /* 卡片固定 5 格。开了「固定测试风格图」后最右 2 格归测试风格 1、2，作品图不能占用。 */
   const PREVIEW_SLOTS=5,RESERVED_SLOTS=2,UPLOAD_TYPES=['image/jpeg','image/png','image/webp','image/gif','image/avif'];
   const reservedOf=()=>data&&data.fixedTestSlots?RESERVED_SLOTS:0;
-  const state={category:'全部',tags:new Set(),scores:new Set(),query:'',sort:'order',desc:false};
+  const state={category:'全部',tags:new Set(),scores:new Set(),special:new Set(),query:'',sort:'order',desc:false};
+  /* 特殊筛选：按「缺什么」找画师。键名会进筛选键与 aria，保持英文短横线。 */
+  const SPECIAL_FILTERS=[['low-works','作品少于 50'],['no-test','没有测试风格图']];
   /* 排序方向按钮：升序 ↑ / 降序 ↓，当前方向写在按钮自己身上。 */
   const paintSortDirection=()=>{const b=$('sort-direction');if(!b)return;b.textContent=state.desc?'↓':'↑';b.setAttribute('aria-pressed',String(state.desc));b.title=state.desc?'当前：降序（点击改为升序）':'当前：升序（点击改为降序）';};
   const libraryIndex=window.ArtistLibraryIndex.create();
   let filterSignature='',editorRevision=0;
   const reducedMotion=()=>typeof matchMedia==='function'&&matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const PREF_KEY='artist-library.thumb-height',PREF_CARD='artist-library.card-size';
+  const PREF_KEY='artist-library.thumb-height',PREF_CARD='artist-library.card-size',PREF_CARD_COMPACT='artist-library.card-size-compact';
   const savePref=(key,value)=>{try{localStorage.setItem(key,String(value));}catch{}};
-  const applyCardSize=value=>document.documentElement.style.setProperty('--card-size',(value||prefs.cardSize)+'px');
-  const prefs={thumbHeight:120,cardSize:190,listeners:new Set(),
+  /* 两套视图各配各的预览高度：舒适视图读 --card-size，紧凑视图读 --card-size-compact。 */
+  const applyCardSize=()=>{const style=document.documentElement.style;style.setProperty('--card-size',prefs.cardSize+'px');style.setProperty('--card-size-compact',prefs.cardSizeCompact+'px');};
+  const prefs={thumbHeight:120,cardSize:190,cardSizeCompact:95,listeners:new Set(),
     setThumbHeight(value){this.thumbHeight=value;savePref(PREF_KEY,value);for(const fn of this.listeners)fn(value);},
-    setCardSize(value){this.cardSize=value;savePref(PREF_CARD,value);applyCardSize(value);window.ArtistGallery?.remeasure?.();},
+    setCardSize(value){this.cardSize=value;savePref(PREF_CARD,value);applyCardSize();window.ArtistGallery?.remeasure?.();},
+    /* 紧凑视图那条滑杆是独立的：改它不影响舒适视图，反之亦然。 */
+    setCardSizeCompact(value){this.cardSizeCompact=value;savePref(PREF_CARD_COMPACT,value);applyCardSize();window.ArtistGallery?.remeasure?.();},
     subscribe(fn){this.listeners.add(fn);},unsubscribe(fn){this.listeners.delete(fn);}};
   try{
     const stored=Number(localStorage.getItem(PREF_KEY));if(Number.isFinite(stored)&&stored>=70&&stored<=220)prefs.thumbHeight=stored;
     const card=Number(localStorage.getItem(PREF_CARD));if(Number.isFinite(card)&&card>=140&&card<=360)prefs.cardSize=card;
+    const compact=Number(localStorage.getItem(PREF_CARD_COMPACT));if(Number.isFinite(compact)&&compact>=60&&compact<=300)prefs.cardSizeCompact=compact;
   }catch{}
   let data,folder,draft,editingId,busy=false,uploading=false,volatile=false,generating=false,queueCount=null;
   /* 生图排队：一次只跑一条，两条之间隔 5±3 秒，避免一口气打过去被站点限流。
@@ -209,7 +215,7 @@
     });
     saveTail=operation.catch(()=>{});return operation;
   }
-  function reset(){state.category='全部';state.tags.clear();state.scores.clear();state.query='';$('search').value='';}
+  function reset(){state.category='全部';state.tags.clear();state.scores.clear();state.special.clear();state.query='';$('search').value='';}
   /* 只有拿到正式标识的画师才谈得上「保存原图」：草稿态放行会在数据目录里写下一个
      没人认领的 draft- 目录（不在索引里，扫描与清理都够不到）。 */
   function showImage(a,w){const items=a.works?FolderStore.previewWorks(a,PREVIEW_SLOTS,reservedOf()).filter(Boolean):(draft?.uid===a.uid?draft.works:null);ArtistViewer.open({title:a.name,uid:a.uid,work:w,caption:w.caption,persist:ArtistId.parse(a.uid)!==null,items});}
@@ -425,7 +431,10 @@
     row.append(el('span','serial',String(seqOf(a)).padStart(4,'0')),heading);
     if(collectingUid===a.uid)row.append(el('span','artist-collecting','采集中'));
     if(a.alias)row.append(el('span','alias',a.alias));
-    const count=el('span','artist-site-count','站点作品 '+(a.counts?.total??'未读取'));count.title='本库收录 '+a.works.length+' 张；截至日期：'+(a.counts?.beforeDate||data.cutoffDate);row.append(count);
+    /* 站点作品少于 50 的整项标红：这一档基本等于刚起步或快清号了，值得一眼从一屏卡片里挑出来。
+       注意「没读到」在数据里是 null 而不是缺字段——Number(null)===0，写成数字判断会把没读到的当成 0。 */
+    const siteTotal=a.counts?.total,lowWorks=siteTotal!==null&&siteTotal!==undefined&&siteTotal!==''&&Number(siteTotal)<50;
+    const count=el('span','artist-site-count'+(lowWorks?' is-low':''),'站点作品 '+(siteTotal??'未读取'));count.title='本库收录 '+a.works.length+' 张；截至日期：'+(a.counts?.beforeDate||data.cutoffDate);row.append(count);
     /* 站点作品是「现在有多少」，这一项是「截至日期之前有多少」：两者并排才看得出涨了多少。 */
     const beforeCount=el('span','artist-before-count','数据截至日前作品 '+(a.counts?.beforeTotal??'未读取'));beforeCount.title='截至日期：'+(a.counts?.beforeDate||data.cutoffDate);row.append(beforeCount);
     const meta=el('div','artist-meta');meta.append(el('span',a.category?'primary':'pending-badge',a.category||'待判断'));
@@ -580,7 +589,7 @@
     const restoreFocus=window.ArtistWorkspace?.captureFilterFocus();
     $('history-date').value=data.cutoffDate;$('save-large').checked=data.saveLargeImages===true;$('work-order').value=data.workOrder;
     const summary=libraryIndex.summary(data.artists),counts=summary.counts;
-    const signature=JSON.stringify([data.categories,data.tags,[...counts],state.category,[...state.tags],[...state.scores]]);
+    const signature=JSON.stringify([data.categories,data.tags,[...counts],state.category,[...state.tags],[...state.scores],[...state.special]]);
     // 任务进度或搜索变化不重新创建筛选按钮；选择变化时恢复到同一个按钮。
     if(signature!==filterSignature){
       filterSignature=signature;
@@ -590,12 +599,15 @@
       $('tags').replaceChildren(...data.tags.map(t=>{const b=btn(t,()=>{state.tags.has(t)?state.tags.delete(t):state.tags.add(t);render();},state.tags.has(t)?'active':'');b.dataset.filterKey='tag:'+t;b.setAttribute('aria-pressed',String(state.tags.has(t)));return b;}));
       const toggleScore=value=>{state.scores.has(value)?state.scores.delete(value):state.scores.add(value);render();};
       $('scores').replaceChildren(...[1,2,3,4,5,0].map(n=>{const on=state.scores.has(n),label=n?n+' 分':'未评分',b=btn(n?String(n):label,()=>toggleScore(n),(n?'score-pick score-'+n:'score-any')+(on?' active':''));b.dataset.filterKey='score:'+n;b.setAttribute('aria-pressed',String(on));b.setAttribute('aria-label',label);b.title=label;return b;}));
+      const toggleSpecial=key=>{state.special.has(key)?state.special.delete(key):state.special.add(key);render();};
+      $('special').replaceChildren(...SPECIAL_FILTERS.map(([key,label])=>{const on=state.special.has(key),b=btn(label,()=>toggleSpecial(key),'special-pick'+(on?' active':''));b.dataset.filterKey='special:'+key;b.setAttribute('aria-pressed',String(on));return b;}));
     }
     const chips=[];
     const chip=(key,label,remove)=>{const b=btn(label+' ×',()=>{remove();render();},'filter-chip');b.dataset.filterKey=key;b.setAttribute('aria-label','移除筛选：'+label);chips.push(b);};
     if(state.category!=='全部')chip('category',state.category,()=>state.category='全部');
     for(const tag of state.tags)chip('tag:'+tag,tag,()=>state.tags.delete(tag));
     for(const score of state.scores)chip('score:'+score,score?score+' 分':'未评分',()=>state.scores.delete(score));
+    for(const [key,label] of SPECIAL_FILTERS)if(state.special.has(key))chip('special:'+key,label,()=>state.special.delete(key));
     if(state.query)chip('query','搜索：'+state.query,()=>{state.query='';$('search').value='';});
     $('active-filters').replaceChildren(...chips);$('active-filters').hidden=!chips.length;
     const rows=currentRows();
@@ -614,25 +626,48 @@
     if(pendingSaves)lockSaveControls();
   }
   let editorPicker=null,editorHost=null,editorError=null,editorToggle=null,editorExpand=null,paintEditorWorks=null,editorFocusVersion=0;
+  /* 固定栏压住视口顶部的厚度：分类栏 + 页头，再加一点呼吸。
+     它随时会变（筛选面板展开、已选条件多一行），所以每次滚之前重新算。 */
+  function stickyOffset(){return ($('categories')?.closest?.('.library-controls')?.offsetHeight||120)+(document.querySelector('.app-header')?.offsetHeight||66)+14;}
+  /* 把一个元素按到该在的位置：默认固定栏正下方，align='center' 则居中。
+     滚动本身还是 scrollIntoView，但「滚完到底对不对」不再靠猜时间——旧写法是滚完等 420ms
+     再量一次、偏了就瞬时补齐，而那个校验点常常正好落在平滑滚动还没跑完的时候：它按当时的
+     文档高度瞬间对齐，之后列表继续挂载/释放、位置又跑了，可它已经是最后一道修正。
+     于是同一个分类点两次会落到不同的地方，文档越长越明显（实测 20 次触发里 3 次偏离目标、
+     最深 14px，还有 13 次伴随 +15~+292px 的「校验之后卡片仍在动」）。
+     现在等位置真的停下来（连续两帧不动）再量；确实偏了、且不是「页面已经滚到底」才补一次，
+     最多补两次，补的时候瞬时对齐，不叠第二层动画。 */
+  let revealToken=0;
+  function revealElement(element,{align='start',attempt=0}={}){
+    if(!element?.scrollIntoView)return;
+    const token=++revealToken;
+    const want=()=>align==='center'?Math.max(0,((window.innerHeight||0)-element.getBoundingClientRect().height)/2):stickyOffset();
+    const go=behavior=>{
+      if(align!=='center'&&element.style?.setProperty)element.style.setProperty('scroll-margin-top',want()+'px');
+      element.scrollIntoView({block:align==='center'?'center':'start',behavior});
+    };
+    go(attempt||reducedMotion()?'auto':'smooth');
+    let last=-1,still=0;
+    const settle=()=>{
+      if(token!==revealToken)return;
+      const y=Math.round(window.scrollY||0);
+      if(y!==last){last=y;still=0;requestAnimationFrame(settle);return;}
+      if(++still<2){requestAnimationFrame(settle);return;}
+      /* 已经对齐，或者页面就这么点内容（短列表永远够不到固定栏下方）——都不再动它。 */
+      const max=Math.max(0,(Number(document.documentElement?.scrollHeight)||0)-(window.innerHeight||0));
+      if(Math.abs(element.getBoundingClientRect().top-want())<=2||Math.abs(y-max)<1||attempt>=2)return;
+      revealElement(element,{align,attempt:attempt+1});
+    };
+    requestAnimationFrame(settle);
+  }
   function focusFirstArtist(){
     const version=++editorFocusVersion;
     requestAnimationFrame(()=>{
       if(version!==editorFocusVersion)return;
       const first=$('gallery').firstElementChild;if(!first){$('empty').tabIndex=-1;$('empty').focus?.({preventScroll:true});return;}
       ArtistGallery.mount(first.dataset.uid);const card=first.querySelector('.artist');if(!card)return;
-      const margin=()=>(($('categories').closest?.('.library-controls')?.offsetHeight||120)+(document.querySelector('.app-header')?.offsetHeight||66)+14)+'px';
-      card.tabIndex=-1;card.style.setProperty('scroll-margin-top',margin());
-      card.focus({preventScroll:true});card.scrollIntoView({block:'start',behavior:reducedMotion()?'auto':'smooth'});
-      /* 与 focusEditingCard 同一个坑：平滑滚动期间卡片会陆续挂载、文档高度一直在变，
-         目标位置会漂（实测会多滚约一个卡片的高度，第一张就被固定栏整个盖住，看着像落在第二张）。
-         滚完校验一次：已经对齐就不动它，偏了才瞬时补齐，不叠第二层动画。 */
-      setTimeout(()=>{
-        if(version!==editorFocusVersion)return;
-        const now=$('gallery').firstElementChild,box=now?.querySelector('.artist');if(!box)return;
-        box.style.setProperty('scroll-margin-top',margin());
-        const want=parseFloat(getComputedStyle(box).scrollMarginTop)||0;
-        if(Math.abs(box.getBoundingClientRect().top-want)>2)box.scrollIntoView({block:'start',behavior:'auto'});
-      },reducedMotion()?0:420);
+      card.tabIndex=-1;card.focus({preventScroll:true});
+      revealElement(card);
     });
   }
   function setEditorError(message){if(editorError)editorError.textContent=message;}
@@ -680,14 +715,9 @@
     requestAnimationFrame(()=>{
       if(focusVersion!==editorFocusVersion)return;ArtistGallery.mount(uid);
       const slot=find();if(!slot)return;
-      slot.scrollIntoView({block:'start',behavior:reducedMotion()?'auto':'smooth'});
-      /* 平滑滚动期间上下方的卡片会按需挂载与释放，文档高度一直在变，目标位置会跟着漂。
-         等滚动结束再校验一次：已经对齐就不动它，偏了才瞬时补齐，不叠第二层动画。 */
-      setTimeout(()=>{
-        if(focusVersion!==editorFocusVersion)return;const now=find();if(!now)return;
-        const rect=now.getBoundingClientRect(),drift=rect.top-200;
-        if(Math.abs(drift)>8)now.scrollIntoView({block:'start',behavior:'auto'});
-      },420);
+      /* 收起作品选择器之后卡片会变矮，同样要把这张卡重新对准固定栏；偏移量由 revealElement 现算，
+         不再像以前那样在校验里写死 200px。 */
+      revealElement(slot);
     });
   }
   function startEdit(a){
@@ -1272,9 +1302,8 @@
     const selector='.artist-slot[data-uid="'+((typeof CSS!=='undefined'&&CSS.escape)?CSS.escape(uid):uid)+'"]';
     const slot=document.querySelector(selector);
     ArtistGallery.mount(uid);
-    if(slot?.scrollIntoView)slot.scrollIntoView({block:'center'});
-    /* 挂载后卡片高度从估算值变成真实值，位置会动，下一帧再对准一次。 */
-    if(typeof requestAnimationFrame==='function')requestAnimationFrame(()=>{if(slot?.scrollIntoView)slot.scrollIntoView({block:'center'});});
+    /* 从漂浮提示点回来是「看一眼这位画师」，所以居中而不是顶到固定栏下方。 */
+    revealElement(slot,{align:'center'});
     const card=slot?.firstElementChild||slot?.children?.[0];
     if(card?.classList){card.classList.add('is-focus-flash');setTimeout(()=>card.classList.remove('is-focus-flash'),3200);}
     setTimeout(()=>ArtistGallery.pin(uid,false),6000);
@@ -1511,7 +1540,7 @@
     $('test-remove-all').onclick=()=>{for(const box of $('test-remove-list').querySelectorAll('input[type=checkbox]'))box.checked=true;};
     $('test-remove-none').onclick=()=>{for(const box of $('test-remove-list').querySelectorAll('input[type=checkbox]'))box.checked=false;};
     $('test-remove-run').onclick=()=>ArtistTestImages.runRemove();
-    $('settings-open').onclick=()=>{$('history-date').value=data.cutoffDate;$('save-large').checked=data.saveLargeImages===true;$('fixed-test').checked=data.fixedTestSlots===true;$('auto-open-works').checked=data.autoOpenWorks===true;$('work-order').value=data.workOrder;$('card-size').value=String(prefs.cardSize);$('card-size-value').textContent=prefs.cardSize;$('settings').showModal();};$('close-settings').onclick=()=>$('settings').close();
+    $('settings-open').onclick=()=>{$('history-date').value=data.cutoffDate;$('save-large').checked=data.saveLargeImages===true;$('fixed-test').checked=data.fixedTestSlots===true;$('auto-open-works').checked=data.autoOpenWorks===true;$('work-order').value=data.workOrder;$('card-size').value=String(prefs.cardSize);$('card-size-value').textContent=prefs.cardSize;$('card-size-compact').value=String(prefs.cardSizeCompact);$('card-size-compact-value').textContent=prefs.cardSizeCompact;$('settings').showModal();};$('close-settings').onclick=()=>$('settings').close();
     $('gen-settings-open').onclick=()=>{fillGenSettings();showAccount();updateGenStatus();$('gen-settings').showModal();if(ArtistImageGen.loadToken()&&!ArtistImageGen.cachedAccount())refreshAccount(false);};$('close-gen-settings').onclick=()=>$('gen-settings').close();
     $('opus-status').onclick=()=>refreshAccount(true);
     $('gen-queue').onclick=()=>{const dropped=genQueue.clear();status(dropped?`已取消排队的 ${dropped} 条生成需求；正在跑的那条会跑完。`:'队列里没有等待中的需求。');};paintQueue();
@@ -1521,6 +1550,7 @@
     $('gen-batch-skip').onchange=paintGenBatch;
     $('gen-account-refresh').onclick=()=>refreshAccount(true);
     $('card-size').oninput=()=>{const value=Number($('card-size').value);$('card-size-value').textContent=value;prefs.setCardSize(value);};
+    $('card-size-compact').oninput=()=>{const value=Number($('card-size-compact').value);$('card-size-compact-value').textContent=value;prefs.setCardSizeCompact(value);};
     $('save-large').onchange=async()=>{const next=clone(data);next.saveLargeImages=$('save-large').checked;await save(next,next.saveLargeImages?'已开启「保存大图」：预览作品时会保存原图':'已关闭「保存大图」：预览作品时不再保存原图');};
     $('fixed-test').onchange=async()=>{const next=clone(data);next.fixedTestSlots=$('fixed-test').checked;await save(next,next.fixedTestSlots?'已开启「固定测试风格图」：每张卡片右侧 2 格留给测试风格 1、2':'已关闭「固定测试风格图」：测试风格图不再占固定格子');};
     $('auto-open-works').onchange=async()=>{const next=clone(data),on=$('auto-open-works').checked;next.autoOpenWorks=on;await save(next,on?'已开启「编辑画师时自动展开 danbooru 作品」：进入编辑态就会按名字读取站点作品':'已关闭「编辑画师时自动展开 danbooru 作品」：需要时自己点「展开读取」');};

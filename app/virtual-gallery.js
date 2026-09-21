@@ -135,7 +135,10 @@
       if(entry.isIntersecting){near.add(id);mountSlot(slot);}else{near.delete(id);releaseSlot(slot);}
     }},{rootMargin:'650px'});
     const width=window.innerWidth;
-    const requested=typeof getComputedStyle==='function'?parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--card-size'))||190:190;
+    /* 离屏占位的高度按「当前这套视图」的滑杆估：紧凑视图有自己的 --card-size-compact，
+       拿舒适视图的 --card-size 去估会让文档高度虚高一倍，滚动条与跳转目标都会跟着错。 */
+    const heightVar=document.documentElement?.dataset?.density==='compact'?'--card-size-compact':'--card-size';
+    const requested=typeof getComputedStyle==='function'?parseFloat(getComputedStyle(document.documentElement).getPropertyValue(heightVar))||190:190;
     const estimate=Math.round(requested+(width<=460?130:112));
     const list=next.map((uid,i)=>{const kept=slots.get(uid);
       /* 还在的画师接着用原来那块占位：卡片不用卸了再挂，图片也不用重取一遍。

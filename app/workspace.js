@@ -23,7 +23,7 @@
  function openCommands(){closeMenus();$('command-search').value='';paintCommands();$('command-dialog').showModal();$('command-search').focus();}
  function captureFilterFocus(){
   const active=document.activeElement,key=active?.dataset?.filterKey,parent=active?.parentElement?.id;
-  if(!key||!['categories','tags','scores','active-filters'].includes(parent))return ()=>{};
+  if(!key||!['categories','tags','scores','special','active-filters'].includes(parent))return ()=>{};
   return ()=>{const next=[...$(parent).querySelectorAll('button')].find(node=>node.dataset.filterKey===key);(next||$('search')).focus({preventScroll:true});};
  }
  function update({connected:hasFolder,total:count,rows,category,editing,tasks,filterCount=0}){

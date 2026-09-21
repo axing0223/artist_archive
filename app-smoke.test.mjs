@@ -1178,6 +1178,23 @@ test('点漂浮提示回到页面：清掉筛选、滚到新卡片并让它闪�
   assert.deepEqual(blankOpened,[],'没有 uid 的定位请求不该弹出识别画师');
   assert.equal(blank.state.rows.length,0,'没有 uid 的定位请求不该建卡');
 });
+test('站点作品少于 50 的整项标红，数量没读到的不标',async()=>{
+  const {elements,state,ctx}=await boot();
+  await getEl(elements,'choose-folder').onclick();
+  stub(ctx,{lookup:async plan=>[{id:1,name:plan.query,aliases:[],pageUrl:''}],details:async()=>({counts:{total:12}}),posts:async()=>[post('1')]});
+  state.pageListeners[0]({type:'artist-library.create',text:'few',requestId:'r1',sourceTabId:42},null,()=>{});
+  await wait(40);
+  const low=findByClass(lastRender(state)[0],'artist-site-count');
+  assert.equal(String(low.className),'artist-site-count is-low','少于 50 要整项标红');
+  assert.match(String(low.textContent),/站点作品 12/,'数字照常显示');
+  /* 数量没读到 = 不知道，不等于少：不许标红。 */
+  stub(ctx,{lookup:async plan=>[{id:2,name:plan.query,aliases:[],pageUrl:''}],details:async()=>({}),posts:async()=>[post('2')]});
+  state.pageListeners[0]({type:'artist-library.create',text:'unknown',requestId:'r2',sourceTabId:42},null,()=>{});
+  await wait(40);
+  const unknown=findByClass(lastRender(state)[1],'artist-site-count');
+  assert.equal(String(unknown.className),'artist-site-count','未读取数量不该标红：'+JSON.stringify({class:String(unknown.className),text:String(unknown.textContent),rows:state.rows.map(a=>[a.name,a.counts]),cards:lastRender(state).map(c=>[c.dataset?.artist,findByClass(c,'artist-site-count')?.className])}));
+  assert.match(String(unknown.textContent),/未读取/);
+});
 test('快捷识别：勾选候选作品后点「添加此画师」，只有勾上的才保存',async()=>{
   const {elements,state,ctx}=await boot();
   stub(ctx,{lookup:async()=>[{id:196870,name:'iuui',aliases:[],pageUrl:'https://danbooru.donmai.us/artists/196870'}],

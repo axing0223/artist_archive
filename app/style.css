@@ -1,5 +1,5 @@
 /* Portrait workspace — neutral surfaces, full-width five-image comparisons. */
-:root{font-family:"Segoe UI","Microsoft YaHei",sans-serif;font-synthesis:none;color-scheme:dark;--bg:#14161d;--panel:#1d2029;--raised:#252935;--input:#191c24;--line:#333744;--line-soft:#292e39;--text:#e8eaf2;--muted:#a0a7b8;--faint:#757f93;--accent:#c4ccff;--accent-text:#202741;--accent-soft:#303951;--warm:#e5b787;--warm-bg:#393027;--danger:#efaaa5;--danger-bg:#422a30;--shadow:0 16px 50px #0005;--header:66px;--card-size:190px;background:var(--bg);color:var(--text)}
+:root{font-family:"Segoe UI","Microsoft YaHei",sans-serif;font-synthesis:none;color-scheme:dark;--bg:#14161d;--panel:#1d2029;--raised:#252935;--input:#191c24;--line:#333744;--line-soft:#292e39;--text:#e8eaf2;--muted:#a0a7b8;--faint:#757f93;--accent:#c4ccff;--accent-text:#202741;--accent-soft:#303951;--warm:#e5b787;--warm-bg:#393027;--danger:#efaaa5;--danger-bg:#422a30;--shadow:0 16px 50px #0005;--header:66px;--card-size:190px;--card-size-compact:95px;background:var(--bg);color:var(--text)}
 :root[data-theme=light]{color-scheme:light;--bg:#f4f5f8;--panel:#fff;--raised:#eceef4;--input:#fafbfe;--line:#d7dce7;--line-soft:#e8ebf2;--text:#252c3e;--muted:#657087;--faint:#788399;--accent:#4e63cb;--accent-text:#fff;--accent-soft:#e8ecff;--warm:#8d5c25;--warm-bg:#fff1df;--danger:#ad3e45;--danger-bg:#ffecef;--shadow:0 16px 50px #20305915}
 *{box-sizing:border-box}
 html{scrollbar-gutter:stable;scroll-padding-top:0}
@@ -82,7 +82,7 @@ main{max-width:1440px;margin:0 auto;padding:30px 28px 12px;min-width:0;overflow-
 .categories button.active{color:var(--accent);border-bottom-color:var(--accent)}
 .categories .n{font:12px ui-monospace,monospace;padding:1px 5px;background:var(--raised);color:var(--faint);border-radius:4px}
 .categories button.active .n{background:var(--accent-soft);color:var(--accent)}
-.filter-panel{display:grid;grid-template-columns:1fr 210px;gap:24px;padding:20px 0;border-top:1px solid var(--line-soft);opacity:1;transform:none;transition:opacity .18s,transform .18s,display .18s allow-discrete}
+.filter-panel{display:grid;grid-template-columns:1fr 210px;gap:24px;padding:20px 0;border-top:1px solid var(--line-soft);opacity:1;transform:none;height:auto;overflow:clip;interpolate-size:allow-keywords;transition:opacity .18s,transform .18s,height .26s ease,padding-block .26s ease,border-top-width .26s ease,display .18s allow-discrete}
 .filter-panel h2{font-size:14px;margin:0 0 12px;font-weight:550}
 .filter-panel h2 small{font-size:12px;color:var(--faint);font-weight:400;margin-left:9px}
 .filter-panel>.reset{grid-column:1/-1;justify-self:end;margin-top:-8px}
@@ -374,8 +374,8 @@ html[data-density=compact] .artist:not(.is-editing) .artist-meta{border-inline-s
 html[data-density=compact] .artist:not(.is-editing) .secondary{display:none}
 html[data-density=compact] .artist:not(.is-editing) .artist-actions{justify-content:flex-start;gap:5px}
 html[data-density=compact] .artist:not(.is-editing) .works{grid-area:works;gap:6px}
-/* 预览是舒适视图基准的一半：滑杆仍然全程有效，只是这套视图按比例缩。 */
-html[data-density=compact] .artist:not(.is-editing) :is(.thumb,.work-empty,.work-generate){height:calc(var(--card-size) / 2)}
+/* 紧凑视图的高度由它自己那条滑杆决定：设置里两条滑杆互不影响。 */
+html[data-density=compact] .artist:not(.is-editing) :is(.thumb,.work-empty,.work-generate){height:var(--card-size-compact)}
 html[data-density=compact] .artist:not(.is-editing) .work figcaption{margin-top:2px;min-height:15px;font-size:11px}
 html[data-density=compact] .artist:not(.is-editing) .work.is-test::before{top:4px;left:4px;font-size:10px;padding:1px 4px}
 html[data-density=compact] .artist:not(.is-editing) .artist-footer{grid-area:footer;margin-top:4px;padding-top:4px}
@@ -523,8 +523,8 @@ to{opacity:1;transform:none}
 }
 
 
-.filter-panel[hidden]{opacity:0;transform:translateY(-6px)}
-@starting-style{.filter-panel:not([hidden]){opacity:0;transform:translateY(-6px)}}
+.filter-panel[hidden]{opacity:0;transform:translateY(-6px);height:0;padding-block:0;border-top-width:0}
+@starting-style{.filter-panel:not([hidden]){opacity:0;transform:translateY(-6px);height:0;padding-block:0;border-top-width:0}}
 .artist-notes{interpolate-size:allow-keywords}
 .artist-notes::details-content{height:0;opacity:0;overflow:clip;transition:height .2s ease,opacity .18s ease,content-visibility .2s allow-discrete}
 .artist-notes[open]::details-content{height:auto;opacity:1}
@@ -538,6 +538,8 @@ to{opacity:1;transform:none}
 
 /* 分页选择器与卡片元信息 */
 .artist-site-count,.artist-before-count{font-size:12px;color:var(--muted);border-inline-start:1px solid var(--faint);padding-inline-start:10px;white-space:nowrap}
+/* 站点作品少于 50：整项标红，一屏卡片里一眼能挑出来。 */
+.artist-site-count.is-low{color:var(--danger);background:var(--danger-bg);border-inline-start-color:var(--danger);border-radius:4px;padding-inline-end:6px;font-weight:600}
 .artist-footer:empty{display:none}
 .artist-footer{justify-content:flex-start}
 .is-armed:is(.danger,.slot-delete,.primary-action,.danger-link),.artist-actions>.danger.is-armed{color:#fff}

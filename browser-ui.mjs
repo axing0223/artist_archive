@@ -106,6 +106,17 @@ try{
  const firstCard=await evaluate(`(()=>{const slot=document.querySelector('#gallery .artist-slot'),card=slot&&slot.querySelector('.artist'),bar=document.querySelector('.library-controls');if(!card)return {ok:false,reason:'这一分类下没有卡片'};const r=card.getBoundingClientRect();return {cardTop:Math.round(r.top),cardBottom:Math.round(r.bottom),barBottom:Math.round(bar.getBoundingClientRect().bottom),focused:document.activeElement===card||card.contains(document.activeElement),name:card.querySelector('.artist-name')?.textContent};})()`);
  assert.ok(firstCard.cardTop>=firstCard.barBottom-2,'切分类后第一张卡要落在固定栏下方，不能被盖住：'+JSON.stringify(firstCard));
  assert.ok(firstCard.focused,'焦点要落在第一张卡上：'+JSON.stringify(firstCard));
+ /* 反复切分类，落点必须每次都准。旧实现是「滚完等 420ms 再量一次、偏了就瞬时补齐」，
+    而那个校验点常常落在平滑滚动还没跑完的时候：它按当时的文档高度瞬间对齐，之后列表继续
+    挂载/释放、位置又跑了，可它已经是最后一道修正——同一个分类点两次会落到不同的地方
+    （实测 20 次触发里 3 次偏离目标、最深 14px，还有 13 次「校验之后卡片仍在动」）。
+    列表短到够不着固定栏下方时允许「已经滚到底」，但必须真的到底。
+    这里把 scroll-margin-top 读回来当目标，并先断言它真的被设过——否则比对会退化成 NaN 比较，
+    落点再偏也算通过。 */
+ const landings=await evaluate(`(async()=>{const sleep=ms=>new Promise(r=>setTimeout(r,ms));const keys=['category:全部','category:场景 / 环境','category:二次元','category:概念 / 设定'];const out=[];for(let i=0;i<10;i++){const max=Math.max(0,document.documentElement.scrollHeight-innerHeight);window.scrollTo(0,Math.round(max*((i%4)/3)));await sleep(280);[...document.querySelectorAll('#categories button')].find(b=>b.dataset.filterKey===keys[i%keys.length])?.click();await sleep(1300);const card=document.querySelector('#gallery .artist-slot .artist');const want=parseFloat(getComputedStyle(card).scrollMarginTop)||0;const maxScroll=Math.max(0,document.documentElement.scrollHeight-innerHeight);out.push({i:i+1,key:keys[i%keys.length],top:Math.round(card.getBoundingClientRect().top),want:Math.round(want),scrollY:Math.round(scrollY),maxScroll:Math.round(maxScroll)});}return out;})()`);
+ assert.ok(landings.every(item=>item.want>0),'每次切分类都要真的设过 scroll-margin-top：'+JSON.stringify(landings));
+ const offTarget=landings.filter(item=>Math.abs(item.top-item.want)>2&&item.scrollY<item.maxScroll-1);
+ assert.deepEqual(offTarget,[],'每次切分类都要落到固定栏下方（或确实已经滚到底）：'+JSON.stringify(landings));
  /* 排序方向：点一下第一位应该换人。 */
  const flipped=await evaluate(`(()=>{const nameOf=()=>document.querySelector('#gallery .artist-slot .artist-name')?.textContent;const before=nameOf();document.getElementById('sort-direction').click();return {before,after:nameOf(),label:document.getElementById('sort-direction').textContent};})()`);
  assert.notEqual(flipped.before,flipped.after,'切换排序方向后第一位应该换人：'+JSON.stringify(flipped));
@@ -232,18 +243,17 @@ async function browserChecks(){
  $('quick-open').click();check($('quick-dialog').open&&document.activeElement===$('quick-input'),'识别添加直接聚焦输入');$('quick-dialog').querySelector('[data-close-dialog]').click();
  document.querySelector('.thumb').click();await until(()=>$('viewer').open);check($('viewer-position').textContent==='1 / 5','预览显示完整图片序号');$('viewer-next').click();check($('viewer-position').textContent==='2 / 5','可切到下一张');$('viewer').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true}));check($('viewer-position').textContent==='1 / 5','方向键可切回上一张');$('viewer').close();
 
- // 高度滑块是「舒适视图的基准高度」：舒适视图严格按像素渲染，紧凑视图按它的一半缩放、但仍跟着滑杆走。
+ // 两套视图各有一条高度滑杆，互不影响：舒适视图按自己那条像素渲染，紧凑视图也按自己那条。
  $('settings-open').click();await delay(350);
  check(document.documentElement.dataset.density==='comfortable','高度滑块以舒适视图为基准');
  for(const height of [160,300,360]){input('card-size',String(height));await delay(30);check(Math.abs(document.querySelector('.thumb').getBoundingClientRect().height-height)<1,'舒适视图预览高度应等于 '+height+'，实际 '+document.querySelector('.thumb').getBoundingClientRect().height+' / '+getComputedStyle(document.querySelector('.thumb')).height+' / '+document.documentElement.style.getPropertyValue('--card-size'));}
+ input('card-size-compact','210');await delay(30);check(Math.abs(document.querySelector('.thumb').getBoundingClientRect().height-360)<1,'改紧凑视图那条不能影响舒适视图：'+document.querySelector('.thumb').getBoundingClientRect().height);
  $('density-toggle').click();await delay(380);
- input('card-size','200');await delay(30);const compactSmall=document.querySelector('.thumb').getBoundingClientRect().height;
- input('card-size','300');await delay(30);const compactLarge=document.querySelector('.thumb').getBoundingClientRect().height;
- check(compactLarge<300,'紧凑视图的预览要小于滑杆设定值：'+compactLarge);
- check(compactLarge-compactSmall>30&&compactLarge-compactSmall<90,'紧凑视图的预览仍按比例跟随滑杆：'+compactSmall+' → '+compactLarge);
- input('card-size','251');await delay(30);check(Math.abs(document.querySelector('.thumb').getBoundingClientRect().height-125.5)<2,'紧凑视图按舒适视图基准的一半缩放：'+document.querySelector('.thumb').getBoundingClientRect().height);
+ check(Math.abs(document.querySelector('.thumb').getBoundingClientRect().height-210)<1,'紧凑视图按自己那条滑杆渲染：'+document.querySelector('.thumb').getBoundingClientRect().height);
+ input('card-size-compact','120');await delay(30);check(Math.abs(document.querySelector('.thumb').getBoundingClientRect().height-120)<1,'紧凑视图跟随自己那条滑杆：'+document.querySelector('.thumb').getBoundingClientRect().height);
+ input('card-size','251');await delay(30);check(Math.abs(document.querySelector('.thumb').getBoundingClientRect().height-120)<1,'改舒适视图那条不能影响紧凑视图：'+document.querySelector('.thumb').getBoundingClientRect().height);
  $('density-toggle').click();
- $('settings').close();$('settings-open').click();check($('card-size').value==='251','再次打开设置保留高度');check(localStorage.getItem('artist-library.card-size')==='251','预览高度需持久化');input('card-size','190');$('settings').close();
+ $('settings').close();$('settings-open').click();check($('card-size').value==='251','再次打开设置保留高度');check(localStorage.getItem('artist-library.card-size')==='251','预览高度需持久化');check($('card-size-compact').value==='120','紧凑视图高度也要保留');check(localStorage.getItem('artist-library.card-size-compact')==='120','紧凑视图高度需持久化');input('card-size','190');input('card-size-compact','95');$('settings').close();
  document.querySelector('.thumb').click();await until(()=>$('large-image').naturalWidth>0);await delay(300);
  for(const [key,position] of [['d','2 / 5'],['a','1 / 5'],['ArrowRight','2 / 5'],['ArrowLeft','1 / 5'],['D','2 / 5']]){$('viewer').dispatchEvent(new KeyboardEvent('keydown',{key,bubbles:true}));check($('viewer-position').textContent===position,key+' 切图');}
  $('viewer').dispatchEvent(new KeyboardEvent('keydown',{key:'a',ctrlKey:true,bubbles:true}));check($('viewer-position').textContent==='2 / 5','Ctrl+A 不应切图');
@@ -257,6 +267,31 @@ async function browserChecks(){
  $('status-toggle').click();check($('activity-list').children.length>0,'活动记录应包含连接和保存状态');$('activity-dialog').close();
 
  $('filter-toggle').click();await delay(220);$('filter-toggle').click();await delay(35);check(getComputedStyle($('filter-panel')).display!=='none','筛选面板收起保留退场');await delay(200);
+ /* 展开/收起不只是淡入淡出：面板占的高度要平滑让出来，下面的卡片跟着一起移动，而不是瞬间跳一下。 */
+ $('filter-toggle').click();await delay(70);
+ const growing=Number.parseFloat(getComputedStyle($('filter-panel')).height);
+ await delay(420);const fullHeight=Number.parseFloat(getComputedStyle($('filter-panel')).height);
+ check(growing>0&&growing<fullHeight-1,'展开时高度是渐变的：'+growing+' → '+fullHeight);
+ check(Number.parseFloat(getComputedStyle($('filter-panel')).paddingTop)>0,'展开完成后内边距恢复');
+ $('filter-toggle').click();await delay(70);
+ const shrinking=Number.parseFloat(getComputedStyle($('filter-panel')).height);
+ check(shrinking>0&&shrinking<fullHeight-1,'收起时高度也是渐变的：'+shrinking+' → '+fullHeight);
+ await delay(360);
+ check(getComputedStyle($('filter-panel')).display==='none','收起走完才真正隐藏');
+ /* 特殊筛选：按「缺什么」找。演示库里站点作品都远超 50，所以点亮它应当筛空，并且能再点回来。 */
+ $('filter-toggle').click();await delay(320);
+ const specialButtons=()=>[...$('special').querySelectorAll('button')];
+ check(specialButtons().length===2,'特殊筛选要有两个选项');
+ check(specialButtons().map(node=>node.textContent).join('/')==='作品少于 50/没有测试风格图','特殊筛选的选项文案：'+specialButtons().map(node=>node.textContent).join('/'));
+ const beforeSpecial=$('gallery').children.length;
+ specialButtons()[0].click();await delay(140);
+ check($('gallery').children.length===0,'演示库里没有站点作品少于 50 的画师，应当筛空，实际 '+$('gallery').children.length);
+ check(!$('empty').hidden,'筛空后要显示空状态');
+ check(specialButtons()[0].getAttribute('aria-pressed')==='true','选项要记住选中态');
+ check($('active-filters').textContent.includes('作品少于 50'),'已选条件里要出现它');
+ specialButtons()[0].click();await delay(140);
+ check($('gallery').children.length===beforeSpecial,'取消特殊筛选后恢复完整列表，实际 '+$('gallery').children.length);
+ $('filter-toggle').click();await delay(320);
  const notes=document.querySelector('.artist-notes');notes.open=true;await delay(240);notes.open=false;await delay(35);const noteOpacity=Number(getComputedStyle(notes,'::details-content').opacity);check(noteOpacity>0&&noteOpacity<1,'备注收起时内容逐渐淡出');await delay(220);check(parseFloat(getComputedStyle(notes,'::details-content').height)===0,'备注收起完成后不占额外高度');
  const actionMenu=$('test-menu');actionMenu.open=true;await delay(220);actionMenu.open=false;await delay(35);const menuOpacity=Number(getComputedStyle(actionMenu,'::details-content').opacity);check(menuOpacity>0&&menuOpacity<1,'操作菜单收起时逐渐淡出');await delay(200);
  // 对话框实际渲染、所有表单标签、DOM 唯一标识。

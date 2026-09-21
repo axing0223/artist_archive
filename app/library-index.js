@@ -18,7 +18,7 @@
   }
   return {
    summary(artists){prepare(artists);return stats;},
-   select(artists,{category='全部',tags=new Set(),scores=new Set(),query='',sort='order',desc=false}={}){
+   select(artists,{category='全部',tags=new Set(),scores=new Set(),special=new Set(),query='',sort='order',desc=false}={}){
     prepare(artists);const mode=['name','score','works'].includes(sort)?sort:'order';
     /* 方向进缓存键：升序与降序各排一份，来回切换不用反复排。 */
     const key=mode+(desc?'~desc':'');
@@ -33,7 +33,15 @@
      sorted.set(key,list);
     }
     const words=query.trim().toLocaleLowerCase('zh-CN').split(/\s+/).filter(Boolean),activeTags=[...tags];
-    return sorted.get(key).filter(({artist:a,search})=>(category==='全部'||(category==='待判断'?!a.category:a.category===category))&&activeTags.every(t=>a.tags.includes(t))&&(!scores.size||scores.has(a.score||0))&&words.every(word=>search.includes(word))).map(entry=>entry.artist);
+    /* 特殊筛选：按「缺什么」找，而不是按有什么找。
+       站点作品少于 50——「没读到」在数据里是 null 而不是缺字段，Number(null)===0，
+       写成数字判断会把没读到的当成 0 张；不知道不等于少。
+       没有测试风格图——一个 kind==='test' 的格子都没有（空占位、待生成都不算有）。 */
+    const fewWorks=special.has('low-works'),noTest=special.has('no-test');
+    const knownCount=value=>value!==null&&value!==undefined&&value!=='';
+    const hasFewWorks=a=>knownCount(a.counts?.total)&&Number(a.counts.total)<50;
+    const noTestWork=a=>!(a.works||[]).some(w=>w.kind==='test');
+    return sorted.get(key).filter(({artist:a,search})=>(category==='全部'||(category==='待判断'?!a.category:a.category===category))&&activeTags.every(t=>a.tags.includes(t))&&(!scores.size||scores.has(a.score||0))&&(!fewWorks||hasFewWorks(a))&&(!noTest||noTestWork(a))&&words.every(word=>search.includes(word))).map(entry=>entry.artist);
    },
    clear(){source=null;length=0;entries=[];stats=null;sorted.clear();}
   };
