@@ -4009,8 +4009,19 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
       }
     });
     try{
+      /* 待办领走后要回一条 ack，后台才会把它从队列里删掉。
+         以前后台在交出来的那一刻就删了：页面随后被关掉/崩掉，这批建卡动作就永久消失，
+         而用户已经看到「已记下这次添加」。现在没 ack 的下次打开画师库还会再来一遍
+         （重复的建卡会被「已经在库里」挡住，所以重放是安全的）。 */
+      const ack=ids=>{
+        const requestIds=(ids||[]).filter(id=>typeof id==='string'&&id);
+        if(!requestIds.length)return;
+        try{runtime.sendMessage({channel:'artist-library-page',type:'ack',requestIds}).catch(()=>{});}catch{}
+      };
       runtime.sendMessage({channel:'artist-library-page',type:'ready'}).then(answer=>{
-        for(const action of answer?.actions||[])handleAction(action,send);
+        const actions=answer?.actions||[];
+        for(const action of actions)handleAction(action,send);
+        ack(actions.map(action=>action?.requestId));
       }).catch(()=>{});
     }catch{}
   }

@@ -137,9 +137,10 @@ test('右键菜单：静默建卡（后台标签页）→ 结果画在当前页�
     const api={messages,createdTabs,injected,sentToTabs,badges,stored,
       menu:()=>messages.find(item=>item.onMenu).onMenu,
       /* 真正的 runtime 会把消息派发给所有监听器，替身也照做——后台注册了不止一个监听器。
-         来源按真实情况给：后台这两个分支现在会校验 sender.id（原来这里传的是 null，
-         等于一直在用「没有来源」的消息喂后台，正是这次要堵的洞）。 */
-      receive:(message,respond=()=>{},sender={id:'this-extension',tab:{id:42}})=>{let returned;for(const item of messages)if(item.listener){const value=item.listener(message,sender,respond);if(value!==undefined)returned=value;}return returned;},
+         来源按真实情况给：后台这些分支都会校验 sender.id，所以这里的 id 必须与替身的
+         chrome.runtime.id（上面那个 'self'）一致，否则等于一直在用「外人」喂后台。
+         `receive` 的默认 sender 就是「自己人」，要模拟外人请显式传 sender。 */
+      receive:(message,respond=()=>{},sender={id:'self',tab:{id:42}})=>{let returned;for(const item of messages)if(item.listener){const value=item.listener(message,sender,respond);if(value!==undefined)returned=value;}return returned;},
     };
     return api;
   };
@@ -159,13 +160,15 @@ test('右键菜单：静默建卡（后台标签页）→ 结果画在当前页�
   assert.equal(cold.sentToTabs[1][1].payload.state,'queued');
   assert.equal(cold.sentToTabs[1][1].payload.text,'modare');
   assert.equal(cold.sentToTabs[0][0],42,'提示要画在你右键的那一页');
-  /* 页面来领待办：领完就清空，避免下次刷新又跑一遍 */
+  /* 页面来领待办：领走时**先不删**（见下面那条专门的测试），页面 ack 之后才删。 */
   const replies=[];
   cold.receive({channel:'artist-library-page',type:'ready'},value=>replies.push(value));
   await until(()=>replies.length,'页面领取待办后的回复');
   assert.equal(replies[0].actions.length,1);
   assert.equal(replies[0].actions[0].text,'modare');
-  assert.equal(cold.stored.has('pendingArtistActions'),false);
+  assert.equal(cold.stored.get('pendingArtistActions')?.length,1,'领走不等于完成，此时队列里还要留着');
+  cold.receive({channel:'artist-library-page',type:'ack',requestIds:[queued[0].requestId]});
+  await until(()=>cold.stored.get('pendingArtistActions')?.length===0,'页面确认接手之后才清空');
   /* 页面建完卡回传：在来源标签页里注入漂浮提示 */
   cold.receive({channel:'artist-library-page',type:'created',result:{ok:true,uid:'0001-modare-105704',name:'modare',danbooruId:105704,works:3,sourceTabId:42,requestId:queued[0].requestId}});
   await until(()=>cold.sentToTabs.length>=3,'结果提示');
@@ -226,6 +229,34 @@ test('右键菜单：静默建卡（后台标签页）→ 结果画在当前页�
   assert.equal(queued2.length>=1,true,'定位待办要排上');
   assert.equal(queued2[queued2.length-1].kind,'focus');
   assert.equal(queued2[queued2.length-1].uid,'0001-modare-105704');
+  /* 来源校验的反面：不是自己人，就不该享受任何一条这些通道。
+     这几条断言就是「不校验 sender」那个洞的回归测试——去掉后台里的判断，它们会立刻变红。 */
+  const stranger=await run({pageOpen:false});
+  /* 别的扩展 / 未知来源来领待办：一条都不给，也不许顺手把待办删掉。 */
+  stranger.stored.set('pendingArtistActions',[{kind:'create',text:'应该还在',requestId:'r1',sourceTabId:42}]);
+  const stolen=[];
+  stranger.receive({channel:'artist-library-page',type:'ready'},value=>stolen.push(value),{id:'other-extension'});
+  await until(()=>stranger.messages.length>=0,'等一拍再检查');
+  assert.deepEqual(stolen,[],'不是自己人就别把待办交出去');
+  assert.equal(stranger.stored.get('pendingArtistActions')?.length,1,'被拒绝的领取不能顺手把待办删掉');
+  /* 没有 id 的来源（例如某些非扩展环境）同样拒绝。 */
+  const anonymous=[];
+  stranger.receive({channel:'artist-library-page',type:'ready'},value=>anonymous.push(value),{});
+  await until(()=>stranger.messages.length>=0,'等一拍再检查');
+  assert.deepEqual(anonymous,[],'没有来源标识的也一律拒绝');
+  /* 伪造「已添加」：不该动角标、也不该画提示。 */
+  stranger.receive({channel:'artist-library-page',type:'created',result:{ok:true,name:'伪造',sourceTabId:42,requestId:'fake'}},()=>{},{id:'other-extension'});
+  await until(()=>stranger.messages.length>=0,'等一拍再检查');
+  assert.deepEqual(stranger.badges,[],'外部来源伪造的成功结果不该改角标');
+  assert.deepEqual(stranger.sentToTabs,[],'外部来源伪造的成功结果不该画漂浮提示');
+  /* 点提示：外部来源不许开标签页、不许排定位待办。 */
+  stranger.receive({type:'artist-library.toast-click',uid:'0001-modare-105704',text:'modare',ok:true},()=>{},{id:'other-extension'});
+  await until(()=>stranger.messages.length>=0,'等一拍再检查');
+  assert.deepEqual(stranger.createdTabs,[],'外部来源点提示不该开标签页');
+  /* 页面没开着时，这一条本来会排进会话存储；页面开着时会推一条 focus 消息。
+     两种都不该发生，所以两边都查——比只查存储更严。 */
+  assert.equal(stranger.stored.get('pendingArtistActions')?.length,1,'外部来源不该排进定位待办（还是原来那一条）');
+  assert.deepEqual(stranger.sentToTabs.filter(item=>item[1]?.type==='artist-library.focus'),[],'外部来源不该推定位消息');
   const warmClick=await run({pageOpen:true});
   warmClick.receive({type:'artist-library.toast-click',uid:'0001-modare-105704',text:'modare',ok:true});
   await until(()=>warmClick.messages.some(message=>message.type==='artist-library.focus'),'页面开着时直接推定位消息');
@@ -241,6 +272,66 @@ test('右键菜单：静默建卡（后台标签页）→ 结果画在当前页�
   for(let i=0;i<5;i++)await new Promise(resolve=>setTimeout(resolve,0));
   assert.equal(queuedClick.stored.has('pendingArtistActions'),false,'没有 uid 的提示点击不该排定位待办');
   assert.deepEqual(queuedClick.messages.filter(item=>item.type==='artist-library.focus'),[],'没有 uid 就不该推定位消息');
+});
+test('待办只在页面 ack 之后才删：页面领走却崩掉时，动作还在队列里',async()=>{
+  const manifest=JSON.parse(await fs.readFile('图片取图扩展/manifest.json','utf8'));
+  assert.equal(manifest.permissions.includes('storage'),true,'待办交接要用会话存储');
+  const code=(await fs.readFile('图片取图扩展/background.js','utf8')).replace(/^import .*$/gm,'');
+  const stored=new Map(),messages=[],createdTabs=[];
+  const chrome={
+    runtime:{
+      id:'self',
+      getURL:path=>'chrome-extension://self/'+path,
+      getContexts:async()=>[],
+      sendMessage:async()=>{throw Error('没有接收方');},
+      onMessage:{addListener:fn=>messages.push({listener:fn})},
+      onInstalled:{addListener:()=>{}},onStartup:{addListener:()=>{}},
+    },
+    tabs:{create:async options=>{createdTabs.push(options);return {id:9,windowId:4};},update:async()=>{},sendMessage:async()=>{}},
+    windows:{update:async()=>{}},
+    action:{onClicked:{addListener:()=>{}},setBadgeText:async()=>{},setBadgeBackgroundColor:async()=>{},setTitle:async()=>{}},
+    scripting:{executeScript:async()=>{}},
+    contextMenus:{removeAll:cb=>cb&&cb(),create:()=>{},onClicked:{addListener:()=>{}}},
+    storage:{session:{
+      get:async key=>{const value=stored.get(key);return value===undefined?{}:{[key]:value};},
+      set:async obj=>{for(const [key,value] of Object.entries(obj))stored.set(key,value);},
+      remove:async key=>{stored.delete(key);},
+    }},
+  };
+  const sandbox={chrome,setTimeout,clearTimeout,console,URL,fetch:async()=>{throw Error('测试里不该联网');},AbortSignal,Blob,Response,TextDecoder,btoa,allowedSender:()=>false};
+  sandbox.globalThis=sandbox;
+  vm.runInNewContext(code,sandbox);
+  /* 本测试自己用的等待：有上限，条件永远不成立时报错而不是把测试挂死。 */
+  const until=async(condition,label)=>{for(let i=0;i<400;i++){if(condition())return;await new Promise(resolve=>setTimeout(resolve,0));}throw Error('等待超时：'+label);};
+  /* sender 默认是「自己人」；传第三个参数可以模拟外部来源。 */
+  const receive=(message,respond=()=>{},sender={id:'self',tab:{id:42}})=>messages.find(item=>item.listener).listener(message,sender,respond);
+  /* 真实场景：页面没开着，右键两次 → 两条建卡待办排进会话存储。 */
+  stored.set('pendingArtistActions',[
+    {kind:'create',text:'甲',requestId:'r1',sourceTabId:42},
+    {kind:'create',text:'乙',requestId:'r2',sourceTabId:42},
+  ]);
+  const replies=[];
+  receive({channel:'artist-library-page',type:'ready'},value=>replies.push(value));
+  await until(()=>replies.length,'页面领取待办要有回复');
+  assert.equal(replies[0].actions.length,2,'两条待办都要交出去');
+  /* 关键：交出去之后**不能**立刻删。页面可能在这一刻被关掉。 */
+  assert.equal(stored.get('pendingArtistActions').length,2,'领走不等于完成，此时不该从队列里删');
+  /* 第二条还没处理完时页面被关掉：只 ack 了第一条，队列里必须留着第二条。 */
+  receive({channel:'artist-library-page',type:'ack',requestIds:['r1']});
+  await until(()=>stored.get('pendingArtistActions').length===1,'ack 之后才删掉那条');
+  assert.equal(stored.get('pendingArtistActions')[0].requestId,'r2','只删点名的那一条，没确认的留着');
+  /* 重新打开画师库：剩下的那条会再来一遍（重复建卡由「已经在库里」挡住，所以重放是安全的）。 */
+  const again=[];
+  receive({channel:'artist-library-page',type:'ready'},value=>again.push(value));
+  await until(()=>again.length,'重新打开还能领到剩下的那条');
+  assert.deepEqual(again[0].actions.map(action=>action.requestId),['r2'],'没完成的动作下次打开要能接着做');
+  receive({channel:'artist-library-page',type:'ack',requestIds:['r2']});
+  await until(()=>stored.get('pendingArtistActions').length===0,'全部确认后队列清空');
+  /* 外部来源的 ack 不该动队列。 */
+  stored.set('pendingArtistActions',[{kind:'create',text:'丙',requestId:'r3',sourceTabId:42}]);
+  receive({channel:'artist-library-page',type:'ack',requestIds:['r3']},()=>{},{id:'other-extension'});
+  for(let i=0;i<5;i++)await new Promise(resolve=>setTimeout(resolve,0));
+  assert.equal(stored.get('pendingArtistActions').length,1,'外部来源的 ack 不许清空别人的待办');
 });
 test('漂浮提示：画在右上角、点一下把结果交回后台',async()=>{
   const code=await fs.readFile('图片取图扩展/toast.js','utf8');

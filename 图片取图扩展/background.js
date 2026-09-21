@@ -28,8 +28,19 @@ async function showLibrary(){
 async function queueAction(action){
   try{const store=await chrome.storage.session.get(PENDING_KEY);const list=Array.isArray(store?.[PENDING_KEY])?store[PENDING_KEY]:[];list.push(action);await chrome.storage.session.set({[PENDING_KEY]:list});}catch{}
 }
-async function drainActions(){
-  try{const store=await chrome.storage.session.get(PENDING_KEY);const list=Array.isArray(store?.[PENDING_KEY])?store[PENDING_KEY]:[];if(list.length)await chrome.storage.session.remove(PENDING_KEY);return list;}catch{return [];}
+async function readActions(){
+  try{const store=await chrome.storage.session.get(PENDING_KEY);return Array.isArray(store?.[PENDING_KEY])?store[PENDING_KEY]:[];}catch{return [];}
+}
+/* 领待办**不删除**。页面从「领走」到「真正建完卡」之间可能被关掉、崩掉、或你中途切走：
+   以前在这一步就 remove，那批建卡动作会永久消失，而用户已经看到「已记下这次添加」。
+   现在改成页面回一条 ack、只删它点名的那几条；没 ack 的下次开画师库还会再来一遍
+   （重复的建卡会被「已经在库里」挡住，所以重放是安全的）。 */
+async function drainActions(){return readActions();}
+async function ackActions(ids){
+  try{
+    const acked=new Set(ids),list=(await readActions()).filter(action=>!acked.has(action?.requestId));
+    await chrome.storage.session.set({[PENDING_KEY]:list});
+  }catch{}
 }
 /* 点扩展图标打开画师库；已经开着就切过去，别开一堆标签页。 */
 chrome.action.onClicked.addListener(()=>{showLibrary();});
@@ -104,12 +115,17 @@ chrome.contextMenus.onClicked.addListener(async (info,tab)=>{
   try{await chrome.action.setBadgeText({text:''});}catch{}
 });
 /* 画师库页面的消息：加载完成后领取待办；建完卡回传结果。
-   注意：这里暂时还没校验 sender，原因是测试沙箱里的 chrome.runtime 没有 id 字段，
-   加了校验会让既有回归整体变红（sender.id 与 undefined 永远不相等）。要补这道防线，
-   得先给测试沙箱补上 runtime.id，再连同「外部来源被拒绝」的反向断言一起加。 */
+   必须校验 sender：`ready` 会把整批待办交出去、`created` 会改角标与漂浮提示——
+   不校验就等于任何网页/其它扩展都能来领走你的待办，或伪造一条「已添加」。 */
 chrome.runtime.onMessage.addListener((message,sender,respond)=>{
   if(message?.channel!=='artist-library-page')return;
+  if(sender?.id!==chrome.runtime.id)return;
   if(message.type==='ready'){drainActions().then(actions=>respond({actions}));return true;}
+  /* 页面确认已经把这几条接手了，这时才把它们从队列里删掉（见 drainActions 上面那段注释）。 */
+  if(message.type==='ack'){
+    if(Array.isArray(message.requestIds))ackActions(message.requestIds.map(id=>String(id)));
+    return;
+  }
   if(message.type==='created'){finish(message.result);}
 });
 /* takoma 提示词助手：内容脚本问「这个标签对应库里的哪位画师」。
@@ -206,6 +222,8 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
    这种情况要是再排一条 uid 为空的定位待办，那段文字就会落进页面里「识别画师」的旧流程。 */
 chrome.runtime.onMessage.addListener((message,sender,respond)=>{
   if(message?.type!=='artist-library.toast-click')return;
+  /* 点一下提示会打开/切换标签页、还会清角标——同样只认自己人。 */
+  if(sender?.id!==chrome.runtime.id)return;
   (async()=>{
     try{await chrome.action.setBadgeText({text:''});}catch{}
     /* 点提示是用户主动要看页面，这时候开页面/切前台都是应该的。 */
