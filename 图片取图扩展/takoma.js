@@ -62,7 +62,9 @@
 .tk *,.tk *::before,.tk *::after{box-sizing:border-box}
 .tk-head{flex:none;display:flex;align-items:center;gap:10px;padding:13px 14px 11px;border-bottom:1px solid var(--line);
   background:linear-gradient(180deg,rgba(15,20,25,.96),rgba(13,18,22,.72))}
-.tk-mark{flex:none;width:22px;height:22px;border-radius:7px;background:linear-gradient(140deg,var(--accent),#38bdf8);box-shadow:0 0 20px -6px var(--accent)}
+.tk-mark{flex:none;width:22px;height:22px;border-radius:7px;background:linear-gradient(140deg,var(--accent),#38bdf8) center/cover no-repeat;box-shadow:0 0 20px -6px var(--accent)}
+/* 有应用图标就用它（URL 由 shell() 注入；取不到时保持上面的渐变色块）。 */
+.tk-mark[data-logo]{background-image:url(__TK_LOGO__);box-shadow:none}
 .tk-id{flex:1;min-width:0}
 .tk-tag{font-size:14.5px;font-weight:600;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tk-sub{font-size:10.5px;color:var(--muted);letter-spacing:.02em}
@@ -166,11 +168,14 @@
 @media (prefers-reduced-motion:reduce){.tk,.tk *,:host(.tk-viewer),:host(.tk-viewer) *{animation:none!important;transition:none!important}}
 `;
 
-  /* 每个浮层各挂一份样式表到自己的 shadow root：站点的 CSS 进不来，我们的也漏不出去。 */
+  /* 每个浮层各挂一份样式表到自己的 shadow root：站点的 CSS 进不来，我们的也漏不出去。
+     左上角那块标记用扩展的应用图标——它在 web_accessible_resources 里放行过，内容脚本才取得到；
+     取不到（扩展刚被重载、上下文失效）就退回样式表里的渐变色块。 */
+  const logoUrl = (() => { try { return chrome.runtime.getURL('icons/icon32.png'); } catch { return ''; } })();
   const shell = host => {
     const root = host.attachShadow?.({ mode: 'open' }) || host;
     const style = document.createElement('style');
-    style.textContent = CSS;
+    style.textContent = CSS.replace(/__TK_LOGO__/g, logoUrl || 'none');
     root.append(style);
     return root;
   };
@@ -230,7 +235,7 @@
   };
 
   const head = (tag, state, badge) => `<div class="tk-head">`
-    + `<div class="tk-mark"></div>`
+    + `<div class="tk-mark" data-logo></div>`
     + `<div class="tk-id"><div class="tk-tag" title="${esc(tag)}">${esc(tag)}</div><div class="tk-sub">双击提示词，查本机画师库</div></div>`
     + `<span class="tk-badge" data-state="${state}">${badge}</span>`
     + `<button class="tk-close" data-close title="关闭（Esc）">✕</button>`

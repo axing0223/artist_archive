@@ -51,7 +51,9 @@ h3{font-size:16px}
 /* 全宽竖屏骨架：所有横向空间交给作品，不保留侧栏。 */
 .app-header{height:var(--header);position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:24px;padding:0 28px;background:var(--panel);border-bottom:1px solid var(--line-soft)}
 .brand{display:flex;align-items:center;gap:10px;font-size:19px;font-weight:650;letter-spacing:.04em;flex-shrink:0}
-.brand-symbol{display:grid;place-items:center;background:var(--accent-soft);color:var(--accent);border:1px solid var(--line);border-radius:10px;width:34px;height:34px;font-size:22px}
+/* 页头左上角用应用图标本身：图标自带圆角与底色，所以这里只负责尺寸、圆角和裁切，
+   底色留着当图片加载前的占位。 */
+.brand-symbol{display:block;object-fit:cover;background:var(--accent-soft);border:1px solid var(--line);border-radius:10px;width:34px;height:34px}
 .brand small{display:block;font:10px ui-monospace,monospace;letter-spacing:.16em;color:var(--faint);margin-top:3px}
 .connection{display:flex;align-items:center;gap:7px;min-width:0;flex:1;color:var(--muted);font-size:13px}
 #connection-dot,.status-indicator{width:5px;height:5px;border-radius:50%;background:var(--faint);flex-shrink:0}

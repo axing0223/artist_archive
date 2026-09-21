@@ -6,14 +6,16 @@ const text=async path=>(await fs.readFile(new URL(path,root),'utf8')).replace(/\
 const scripts=['artist-id.js','artist-lookup.js','folder-store.js','extension-bridge.js','host-direct.js','folder-memory.js','novelai.js','image-gen.js','generate-queue.js','image-cache.js','image-loader.js','virtual-gallery.js','work-picker.js','viewer.js','test-images.js','library-index.js','workspace.js','app.js'];
 /* 扩展页要跑画师库：MV3 的扩展页禁止内联脚本，所以扩展里放的必须是多文件那一份（app/ 原样镜像），
    单文件的 画师库.html 只给 file:// 双击用。镜像由构建生成，不再手工维护第二份源码。 */
-const mirror=['index.html','style.css','favicon.svg',...scripts];
+const mirror=['index.html','style.css','icon.png',...scripts];
 export const MIRROR_DIR='图片取图扩展/app/';
 export async function build(){
-  const css=await text('app/style.css'),favicon=(await fs.readFile(new URL('app/favicon.svg',root))).toString('base64');
+  const css=await text('app/style.css'),icon=(await fs.readFile(new URL('app/icon.png',root))).toString('base64');
   let html=(await text('app/index.html'))
     .replace(/<script src="[^"]+" defer><\/script>/g,'')
     .replace('<link rel="stylesheet" href="style.css">',()=>'<style>'+css+'</style>')
-    .replace('href="favicon.svg"','href="data:image/svg+xml;base64,'+favicon+'"');
+    /* 图标出现两次：标签图标与页头品牌位。单文件产物要能离线双击打开，所以两处都内联成 data URL。 */
+    .replace('href="icon.png"','href="data:image/png;base64,'+icon+'"')
+    .replace('src="icon.png"','src="data:image/png;base64,'+icon+'"');
   let inline='';for(const file of scripts)inline+='<script>'+await text('app/'+file)+'</script>';
   return html.replace('</body>',()=>inline+'</body>');
 }
