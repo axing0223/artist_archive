@@ -150,9 +150,10 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
     try{
       const tag=String(message.tag||'').trim();
       if(!tag){respond({ok:false,reason:'空标签'});return;}
-      /* 翻页：内容脚本把页码带过来，回包也带上实际页码，浮窗才知道自己在第几页。 */
+      /* 每页要凑满 10 张：先多要一些再筛掉没有预览图的，否则会出现一页 10 张、下一页只有 6 张。
+         Danbooru 单次上限 200，20 足够覆盖常见的缺图情况。 */
       const page=Math.max(1,Math.floor(Number(message.page)||1));
-      const {json}=await fetchApi('https://danbooru.donmai.us/posts.json?limit=12&page='+page+'&tags='+encodeURIComponent(tag));
+      const {json}=await fetchApi('https://danbooru.donmai.us/posts.json?limit=20&page='+page+'&tags='+encodeURIComponent(tag));
       const list=(Array.isArray(json)?json:[])
         .filter(post=>post&&Number.isSafeInteger(post.id)&&(post.preview_file_url||post.large_file_url))
         .slice(0,10)
