@@ -1398,6 +1398,15 @@
       if(message?.type==='artist-library.focus'){focusArtist(message.uid);return;}
       /* takoma 提示词助手：按标签查库。只读、不改界面，直接把结果回给后台。 */
       if(message?.type==='artist-library.lookup'){lookupForPrompt(message.tag).then(respond,error=>respond({ok:false,reason:'内部错误：'+(error?.message||error)}));return true;}
+      /* takoma 提示词助手：点库内缩略图时才来要这一张的原图。
+         懒加载是有意的——查询时把 5 张原图 base64 一起塞进消息太重。 */
+      if(message?.type==='artist-library.lookup-large'){
+        const target=data.artists.find(item=>item.uid===message.uid);
+        const work=target?FolderStore.previewWorks(target,PREVIEW_SLOTS,reservedOf()).filter(Boolean)[Number(message.index)||0]:null;
+        if(!work){respond({ok:false,reason:'这一格没有图片'});return true;}
+        ArtistImages.dataUrl(message.uid,work,'large').then(url=>respond({ok:true,url}),error=>respond({ok:false,reason:'读取失败：'+(error?.message||error)}));
+        return true;
+      }
     });
     try{
       runtime.sendMessage({channel:'artist-library-page',type:'ready'}).then(answer=>{

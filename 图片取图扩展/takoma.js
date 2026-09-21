@@ -38,7 +38,7 @@
      行高才不会被撑得忽大忽小。 */
   let cellHeight = 250;
   const row = items => `<div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;margin-top:6px">`
-    + items.map(item => `<img src="${item.thumb}" alt="" data-large="${item.large || item.thumb}" title="点击看大图" style="width:100%;height:${cellHeight}px;object-fit:contain;background:#141b1d;border:1px solid #2a3538;border-radius:6px;cursor:zoom-in">`).join('')
+    + items.map(item => `<img src="${item.thumb}" alt=""${item.uid != null ? ` data-uid="${item.uid}" data-index="${item.index}"` : ` data-large="${item.large || item.thumb}"`} title="点击看大图" style="width:100%;height:${cellHeight}px;object-fit:contain;background:#141b1d;border:1px solid #2a3538;border-radius:6px;cursor:zoom-in">`).join('')
     + Array.from({ length: Math.max(0, 5 - items.length) }, () => '<span></span>').join('')
     + `</div>`;
 
@@ -68,11 +68,21 @@
         box.querySelectorAll('img[data-large]').forEach(image => { image.style.height = cellHeight + 'px'; });
       });
     };
-    box.addEventListener('click', event => {
-      const image = event.target?.closest?.('img[data-large]');
+    box.addEventListener('click', async event => {
+      const image = event.target?.closest?.('img[src]');
       if (!image) return;
       const list = box.innerHTML;
-      box.innerHTML = `<img src="${image.dataset.large}" alt="" style="width:100%;max-height:70vh;object-fit:contain;background:#141b1d;border:1px solid #2a3538;border-radius:8px;cursor:zoom-out">`
+      let src = image.dataset.large || image.src;
+      /* 库内的图带 uid/index：点开时才去要原图（懒加载）——查询时把 5 张原图 base64
+         一起塞进消息太重。站点那边的图直接用它自己给的 file_url。 */
+      if (image.dataset.uid != null) {
+        try {
+          const big = await chrome.runtime.sendMessage({ type: 'takoma.lookup-large', uid: image.dataset.uid, index: Number(image.dataset.index) || 0 });
+          if (big?.ok && big.url) src = big.url;
+        } catch {}
+        if (document.getElementById(HOST_ID) !== host) return; /* 期间又双击了别的标签，别往旧浮窗里塞图 */
+      }
+      box.innerHTML = `<img src="${src}" alt="" style="width:100%;max-height:70vh;object-fit:contain;background:#141b1d;border:1px solid #2a3538;border-radius:8px;cursor:zoom-out">`
         + `<div style="color:#8d9e9c;font-size:11px;margin-top:8px">点图片返回</div>`;
       box.querySelector('img')?.addEventListener('click', () => { box.innerHTML = list; wireSlider(); }, { once: true });
     });
@@ -87,7 +97,7 @@
       ? `<div style="margin-top:4px"><b style="font-size:14px">${hit.artist.name}</b>`
         + `<span style="color:#abbcb9"> ${[hit.artist.alias, hit.artist.category].filter(Boolean).join(' · ')}</span>`
         + `<div style="color:#abbcb9">作品数量 ${countText(hit.artist)}</div></div>`
-        + (hit.thumbs?.length ? row(hit.thumbs.map(src => ({ thumb: src, large: src }))) : '')
+        + (hit.thumbs?.length ? row(hit.thumbs.map((src, index) => ({ thumb: src, uid: hit.artist.uid, index }))) : '')
       : `<div style="color:#abbcb9;margin-top:4px">本机画师库里没有「${tag}」</div>`;
     box.innerHTML = `<div style="font-size:15px;font-weight:600">${tag}</div>`
       + library

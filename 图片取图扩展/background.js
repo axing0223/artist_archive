@@ -124,6 +124,19 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
   })();
   return true;
 });
+/* takoma 提示词助手：点库内缩略图时取那一张的原图。和 lookup 同一条链路——
+   图在用户的文件夹里，只有画师库页面读得到，所以外面这层也必须经 background 转。 */
+chrome.runtime.onMessage.addListener((message,sender,respond)=>{
+  if(message?.type!=='takoma.lookup-large')return;
+  if(sender?.id!==chrome.runtime.id)return;
+  (async()=>{
+    const found=await findLibraryTab();
+    if(!found){respond({ok:false,reason:'no-library'});return;}
+    try{respond(await chrome.tabs.sendMessage(found.tabId,{type:'artist-library.lookup-large',uid:String(message.uid||''),index:Number(message.index)||0}));}
+    catch(error){respond({ok:false,reason:'画师库没有回应：'+(error?.message||error)});}
+  })();
+  return true;
+});
 /* takoma 提示词助手：库里没有这个标签时，拿 Danbooru 结果回去画缩略图。
    跨站请求只能在这里发（内容脚本受页面同源限制），所以这一跳也由 background 代劳。
    坑（这就是「站点没有返回图片」的原因）：probe.mjs 的 fetchApi 返回的是 {status,json} 包装对象，
