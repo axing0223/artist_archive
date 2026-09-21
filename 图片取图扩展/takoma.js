@@ -59,10 +59,15 @@
     } else if (result?.reason === 'no-library') {
       box.innerHTML = `<div>「${tag}」需要画师库来查</div><div style="color:#abbcb9;margin-top:6px">先把画师库页面打开（数据在你的文件夹里，只有那个页面读得到），再回来双击。</div>`;
     } else {
-      /* 库里没有 → 交给 Danbooru。缩略图那一段走 background 取图通道，还没接；
-         先给一条能点的链接，别让这次双击落空。 */
+      /* 库里没有 → 交给 Danbooru：先拿前 8 条渲染缩略图，拿不到就退回一条能点的搜索链接，
+         别让这次双击落空。图片地址直接用站点的 preview_file_url（跨站请求由 background 代发）。 */
       const url = 'https://danbooru.donmai.us/posts?tags=' + encodeURIComponent(tag);
-      box.innerHTML = `<div>库里没有「${tag}」</div><a href="${url}" target="_blank" rel="noopener" style="color:#a5dfcc">在 Danbooru 搜索这张图 →</a>`;
+      let posts = [];
+      try { const found = await chrome.runtime.sendMessage({ type: 'takoma.danbooru', tag }); if (found?.ok) posts = found.posts || []; } catch {}
+      if (document.getElementById(HOST_ID) !== host) return; /* 期间又双击了别的标签，这条结果作废 */
+      box.innerHTML = `<div>库里没有「${tag}」</div>`
+        + (posts.length ? `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:8px">${posts.map(post => `<img src="${post.thumb}" alt="" style="width:100%;height:64px;object-fit:contain;background:#141b1d;border:1px solid #2a3538;border-radius:6px">`).join('')}</div>` : '')
+        + `<a href="${url}" target="_blank" rel="noopener" style="color:#a5dfcc;display:inline-block;margin-top:8px">在 Danbooru 搜索「${tag}」 →</a>`;
     }
   };
   document.addEventListener('dblclick', async event => {

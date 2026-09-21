@@ -124,6 +124,22 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
   })();
   return true;
 });
+/* takoma 提示词助手：库里没有这个标签时，拿前 8 条 Danbooru 结果回去画缩略图。
+   跨站请求只能在这里发（内容脚本受页面同源限制），所以这一跳也由 background 代劳。 */
+chrome.runtime.onMessage.addListener((message,sender,respond)=>{
+  if(message?.type!=='takoma.danbooru')return;
+  if(sender?.id!==chrome.runtime.id)return;
+  (async()=>{
+    try{
+      const tag=String(message.tag||'').trim();
+      if(!tag){respond({ok:false,reason:'空标签'});return;}
+      const posts=await fetchApi('https://danbooru.donmai.us/posts.json?limit=8&tags='+encodeURIComponent(tag));
+      const list=(Array.isArray(posts)?posts:[]).map(post=>({id:post.id,thumb:post.preview_file_url||post.large_file_url||''})).filter(item=>item.thumb&&Number.isSafeInteger(item.id));
+      respond({ok:true,posts:list});
+    }catch(error){respond({ok:false,reason:'站点没有回应：'+(error?.message||error)});}
+  })();
+  return true;
+});
 /* 点漂浮提示：打开（或切到）画师库，让它定位到新卡片。
    只有「已添加」「已收下」这类真的建好卡的提示才带 uid，才谈得上定位；
    排队/失败那两朵提示没有 uid，它们的意思只是「把页面打开」——建卡由页面领 create 待办自己完成。
