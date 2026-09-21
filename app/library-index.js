@@ -18,7 +18,7 @@
   }
   return {
    summary(artists){prepare(artists);return stats;},
-   select(artists,{category='全部',tags=new Set(),scores=new Set(),special=new Set(),query='',sort='order',desc=false}={}){
+   select(artists,{category='全部',tags=new Set(),scores=new Set(),special=new Set(),query='',sort='order',desc=false,workSlots=5}={}){
     prepare(artists);const mode=['name','score','works'].includes(sort)?sort:'order';
     /* 方向进缓存键：升序与降序各排一份，来回切换不用反复排。 */
     const key=mode+(desc?'~desc':'');
@@ -36,15 +36,14 @@
     /* 特殊筛选：按「缺什么」找，而不是按有什么找。
        站点作品少于 50——「没读到」在数据里是 null 而不是缺字段，Number(null)===0，
        写成数字判断会把没读到的当成 0 张；不知道不等于少。
-       测试风格图不是 2 张——固定格留的就是测试风格 1、2 两格，所以这个筛选问的是
-       「两张齐了没有」：0 张、1 张、3 张都算没齐（缺一张和缺两张一样要补，
-       只报 0 张会漏掉「只有 1 张」这种最常见的半成品）。
-       kind==='test' 只在真的把作品放进预留格时才打上，空预留格不算，所以按它计数就是真实张数。 */
-    const fewWorks=special.has('low-works'),noTest=special.has('no-test');
+       无作品图——作品栏位里只要有一个空着就算（= 非测试风格的作品没填满栏位）。
+       栏位数由调用方给（workSlots）：开了「固定测试风格图」时最右两格归测试风格 1、2，
+       作品只剩 3 格，所以判据必须跟着设置走，不能写死 5。测试风格图不占作品栏位。 */
+    const fewWorks=special.has('low-works'),noWorks=special.has('no-works');
     const knownCount=value=>value!==null&&value!==undefined&&value!=='';
     const hasFewWorks=a=>knownCount(a.counts?.total)&&Number(a.counts.total)<50;
-    const notTwoTests=a=>(a.works||[]).filter(w=>w.kind==='test').length!==2;
-    return sorted.get(key).filter(({artist:a,search})=>(category==='全部'||(category==='待判断'?!a.category:a.category===category))&&activeTags.every(t=>a.tags.includes(t))&&(!scores.size||scores.has(a.score||0))&&(!fewWorks||hasFewWorks(a))&&(!noTest||notTwoTests(a))&&words.every(word=>search.includes(word))).map(entry=>entry.artist);
+    const hasEmptyWorkSlot=a=>(a.works||[]).filter(w=>w.kind!=='test').length<workSlots;
+    return sorted.get(key).filter(({artist:a,search})=>(category==='全部'||(category==='待判断'?!a.category:a.category===category))&&activeTags.every(t=>a.tags.includes(t))&&(!scores.size||scores.has(a.score||0))&&(!fewWorks||hasFewWorks(a))&&(!noWorks||hasEmptyWorkSlot(a))&&words.every(word=>search.includes(word))).map(entry=>entry.artist);
    },
    clear(){source=null;length=0;entries=[];stats=null;sorted.clear();}
   };
