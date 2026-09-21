@@ -26,7 +26,7 @@ takoma 页面（双击）
 
 ## 已完成
 
-**`图片取图扩展/prompt-tag.mjs`** + `prompt-tag.test.mjs`（6 条单测，已进 `package.json` 的 test 列表）：
+**`图片取图扩展/prompt-tag.mjs`** + `prompt-tag.test.mjs`（11 条单测，已进 `package.json` 的 test 列表）：
 
 - `pickPromptTag(text, offset)` —— 按逗号/分号/竖线/换行切段，取落点所在的**那一整段**。
   不能直接用 `getSelection()`：浏览器原生双击遇空格就断，双击 `long hair` 只会给到 `long`。
@@ -34,7 +34,10 @@ takoma 页面（双击）
   `(tag:1.2)` / `[tag]` / `{tag}` 只取标签本身。
 - `promptTagAt(text, offset)` —— 上面两步合并。
 
-## 剩余步骤
+## 全部步骤都已完成（这一节保留下来当作"它由哪几块组成"的索引）
+
+> 下面五步**都已经落地**，源码里能一一对上。原来的标题是「剩余步骤」，容易让人以为还没做——
+> 如果你是按这份文档来接手，请直接看「边界」那一节核对现状。
 
 1. **manifest**：加 content script，`matches: ["https://staging.takoma.app/*"]`，`run_at: document_idle`；
    并把 `prompt-tag.mjs` 加进 `web_accessible_resources`（content script 用它动态 import，
@@ -73,10 +76,14 @@ takoma 页面（双击）
 | `manifest.json` | `content_scripts` 多一条（只匹配 `staging.takoma.app`）；`web_accessible_resources` 一条 |
 | `takoma.js` | 整个文件（内容脚本） |
 | `prompt-tag.mjs` | 整个文件（纯函数，被内容脚本动态 import） |
-| `prompt-tag.test.mjs` + `package.json` 的 test 列表 | 那 7 条单测与列表里的文件名 |
-| `background.js` | 两个独立监听器：`takoma.lookup`、`takoma.danbooru` |
-| `app/app.js` | `normalizeForLookup` / `namesForLookup` / `lookupForPrompt` / `window.ArtistPromptLookup`，以及 `bindExtensionMessages` 里一条 `artist-library.lookup` 分支 |
+| `prompt-tag.test.mjs` + `package.json` 的 test 列表 | 那 11 条单测与列表里的文件名 |
+| `background.js` | **五个**独立监听器：`takoma.lookup`、`takoma.lookup-large`、`takoma.danbooru`、`takoma.add-artist`、`takoma.open-library`（每个都校验 sender，并只认自己的消息类型） |
+| `app/app.js` | `normalizeForLookup` / `namesForLookup` / `lookupForPrompt` / `window.ArtistPromptLookup`，以及 `bindExtensionMessages` 里 `artist-library.lookup` 与 `artist-library.lookup-large` 两条分支（后者是点缩略图要原图时才走，避免一次塞 5 张 base64） |
+| 用户文档 | 本文件、`使用说明.md`（提示词助手一节）、`隐私说明.md`（内容脚本一段）、`图片取图扩展/安装与测试.md`（它列在扩展的 `content_scripts` 里） |
 
-没有改动任何既有代码路径：两个 background 监听器只认自己的消息类型、并校验 sender 是自己扩展；
-app.js 那条分支只认 `artist-library.lookup`，碰不到原有的 create / focus / 取图流程。
-`npm test` 里既有 316 条断言全绿，就是这条边界的证据。
+除此之外，画师库页面还会处理来自提示词助手的 `artist-library.focus`（点结果提示时定位卡片），
+那条分支和右键菜单共用，不是 takoma 独有的。
+
+没有改动任何既有代码路径：五个 background 监听器只认自己的消息类型、并校验 sender 是自己扩展；
+app.js 那两条分支只认 `artist-library.lookup*`，碰不到原有的 create / focus / 取图流程。
+`npm test` 全绿（不再写具体条数，那个数字一直在变），就是这条边界的证据。
