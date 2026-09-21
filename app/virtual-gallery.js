@@ -77,11 +77,12 @@
     for(const uid of mounted.keys())before.set(uid,slots.get(uid).getBoundingClientRect().top-top);
     return before;
   }
-  /* 一张卡片里所有由 --card-size 决定高度的格子：预览图、空格、生图格。 */
-  function previewHeights(slot){
-    return [...slot.querySelectorAll('.thumb,.work-empty,.work-generate')].map(node=>({node,height:node.getBoundingClientRect().height}));
+  /* 一张卡片里所有随视图变尺寸的格子：预览图、空格、生图格，连同它们当前的宽高。 */
+  function previewGeometry(slot){
+    return [...slot.querySelectorAll('.thumb,.work-empty,.work-generate')].map(node=>{const rect=node.getBoundingClientRect();return {node,width:rect.width,height:rect.height};});
   }
-  /* 换布局（舒适 ↔ 紧凑）时，把每张可见卡片的预览高度从旧值补间到新值：
+  /* 换布局（舒适 ↔ 紧凑）时，把每张可见卡片的预览从旧尺寸补间到新尺寸：
+     两套视图之间预览换的不只是高度，宽度也换了——舒适视图五格铺满整卡，紧凑视图只占右列。
      不补间的话整屏会「啪」地跳一下——两套视图的差别主要就在预览高度上。
      卡片高度由预览撑着，跟着一起长；左列信息不会盖过它。
      这里不写成 CSS transition：--card-size 是用户自己拖的那条滑杆，
@@ -90,7 +91,7 @@
     if(typeof mutate!=='function')return;
     if(calm()){mutate();remeasure();return;}
     const before=new Map();
-    for(const [uid,slot] of slots)if(mounted.has(uid))before.set(uid,previewHeights(slot));
+    for(const [uid,slot] of slots)if(mounted.has(uid))before.set(uid,previewGeometry(slot));
     mutate();
     // 离屏占位要立刻按新布局修正，否则它们还留着旧高度，滚到那里会跳一下。
     remeasure();
@@ -102,10 +103,17 @@
       /* 身份信息从「整行」变成「一列」，几何是跳过去的：让它淡一下，
          才看得出是同一张卡换了排法，而不是两块内容互不相干地闪了一下。 */
       card?.querySelector('.artist-info')?.animate?.([{opacity:.45},{opacity:1}],{duration:220,easing:'ease-out'});
-      for(const [index,preview] of previewHeights(slot).entries()){
+      /* 预览整块从卡片左边挪到右列，横向落点不能插值（插值会让图片从身份信息上横穿过去），
+         所以这一步用一次淡入交代；真正能插值的宽高交给下面的格子补间。 */
+      card?.querySelector('.works')?.animate?.([{opacity:.3},{opacity:1}],{duration:320,easing:'ease-out'});
+      for(const [index,preview] of previewGeometry(slot).entries()){
         const from=was[index];
-        if(!from||typeof preview.node.animate!=='function'||Math.abs(from.height-preview.height)<1)continue;
-        preview.node.animate([{height:from.height+'px'},{height:preview.height+'px'}],{duration:320,easing:'cubic-bezier(.22,.61,.36,1)'});
+        if(!from||typeof preview.node.animate!=='function')continue;
+        const first={},last={};
+        if(Math.abs(from.height-preview.height)>1){first.height=from.height+'px';last.height=preview.height+'px';}
+        if(Math.abs(from.width-preview.width)>1){first.width=from.width+'px';last.width=preview.width+'px';}
+        if(!Object.keys(first).length)continue;
+        preview.node.animate([first,last],{duration:320,easing:'cubic-bezier(.22,.61,.36,1)'});
       }
     }
   }
