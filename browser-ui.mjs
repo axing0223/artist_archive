@@ -145,7 +145,19 @@ try{
  await evaluate('document.getElementById("density-toggle").click()');await sleep(420);
  await capture('density-compact');
  await evaluate('document.getElementById("density-toggle").click()');await sleep(420);
- console.log('两套布局实测：'+JSON.stringify(density));
+ /* 滚到中间再切换：用户正看着的那张卡必须停在原地。
+    旧实现里离屏占位的高度是当帧一次性压掉的（实测文档高度一帧少了 1707px），
+    浏览器自带的滚动锚定只兜住一部分，视口里那张卡被拽着往上滑了一百多像素——看着就是「抖一下」。 */
+ const pinned=await evaluate(`(async()=>{const sleep=ms=>new Promise(r=>setTimeout(r,ms));document.getElementById('reset').click();await sleep(400);const cards=document.querySelectorAll('#gallery .artist-slot').length;window.scrollTo(0,1400);const asked=Math.round(scrollY);await sleep(420);const topSlot=()=>[...document.querySelectorAll('#gallery .artist-slot')].find(node=>node.getBoundingClientRect().bottom>0);const read=()=>({uid:topSlot().dataset.uid,top:Math.round(topSlot().getBoundingClientRect().top),scrollY:Math.round(scrollY),anchorStyle:document.documentElement.style.overflowAnchor});const before=read();document.getElementById('density-toggle').click();await sleep(90);const early=read();await sleep(210);const mid=read();await sleep(290);const after=read();await sleep(600);const late=read();document.getElementById('density-toggle').click();await sleep(520);return {cards,asked,before,early,mid,after,late};})()`);
+ /* 先证明这条断言不是空转：列表够长、页面真的滚下去了、视口里那张卡真的不是第一张。 */
+ assert.ok(pinned.cards>=8,'这条断言要有足够长的列表才成立：'+JSON.stringify(pinned));
+ assert.ok(pinned.before.scrollY>1000,'这条断言要在滚动过的页面上跑才有意义：'+JSON.stringify(pinned));
+ assert.notEqual(pinned.before.uid,'0001-demo0-manual','视口里那张卡不能还是第一张：'+JSON.stringify(pinned));
+ assert.equal(pinned.early.uid,pinned.before.uid,'切换途中视口里那张卡不该被换成别的卡：'+JSON.stringify(pinned));
+ assert.ok(Math.abs(pinned.early.top-pinned.before.top)<=3,'切换当帧视口里那张卡不该跳：'+JSON.stringify(pinned));
+ assert.ok(Math.abs(pinned.after.top-pinned.before.top)<=3,'整个过渡期间视口里那张卡都要停在原地：'+JSON.stringify(pinned));
+ assert.ok(Math.abs(pinned.late.top-pinned.before.top)<=3,'过渡结束后也不该再被拽走：'+JSON.stringify(pinned));
+ console.log('切换时的视口锚定：'+JSON.stringify(pinned));
  /* 编辑器不属于这两套视图：它在两套视图里都得是原来那张全宽表单。
     上面那串 .artist:not(.is-editing) 前缀一旦写错，第一个坏掉的就是它。 */
  await evaluate('document.getElementById("density-toggle").click()');await sleep(420);

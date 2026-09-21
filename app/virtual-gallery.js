@@ -84,7 +84,7 @@
     return {left:box?box.left:null,width:box?box.width:null,thumbs:[...slot.querySelectorAll('.thumb,.work-empty,.work-generate')].map(node=>({node,height:node.getBoundingClientRect().height}))};
   }
   const LAYOUT_MS=320,TEXT_MS=160,TEXT_STAGGER_MS=45;
-  let layoutAnimations=[];
+  let layoutAnimations=[],anchorGeneration=0;
   /* 换布局（舒适 ↔ 紧凑）时把版面走成一段动画，走完再让文字按顺序淡入。分两段是有意的：
      版面（预览的位置、宽度、每个格子的高度）先动完，文字才一层层出现；
      两边同时动的话，谁也看不清到底是哪里在变。
@@ -100,11 +100,44 @@
        而且各自的收尾回调会把新动画刚设好的抬层属性抹掉。 */
     for(const animation of layoutAnimations)animation.cancel?.();
     layoutAnimations=[];
+    /* 这一段会一次性改动整份文档的高度，浏览器的滚动锚定会同时插手：它和下面的 keepAnchor
+       叠在一起反而会多走一段（实测残留 12px）。所以这段时间把它关掉、由 keepAnchor 独家负责，
+       动画走完再放开。连点两下时用代次号认领，别把新一轮刚关掉的又放开。 */
+    const generation=++anchorGeneration;
+    if(document.documentElement?.style)document.documentElement.style.overflowAnchor='none';
+    /* 切换前先记一个锚点：视口里最靠上的那张卡。
+       上面的卡片在收矮，如果不管，用户正看着的那张卡会被拽着往上跑——实测滚到中间切换时，
+       视口里那张卡在 230ms 里往上滑了 126px，看着就是「抖一下」；浏览器的滚动锚定只兜住一部分。
+       停在顶部时上方没有内容，这套补正自然什么也不做。 */
+    let anchorUid=null,anchorTop=0;
+    for(const uid of uids){const slot=slots.get(uid);if(!slot||!mounted.has(uid))continue;const rect=slot.getBoundingClientRect();if(rect.bottom<=0)continue;anchorUid=uid;anchorTop=rect.top;break;}
     const before=new Map();
     for(const [uid,slot] of slots)if(mounted.has(uid))before.set(uid,previewGeometry(slot));
     mutate();
     // 离屏占位要立刻按新布局修正，否则它们还留着旧高度，滚到那里会跳一下。
     remeasure();
+    /* 把锚点按回原来的屏幕位置，并在整个版面动画期间逐帧维持——上面的卡片是渐渐收矮的，
+       只在切换那一帧补一次不够。用帧数而不是时钟来收尾：测试里的 rAF 是同步的。 */
+    const keepAnchor=()=>{
+      if(anchorUid===null||typeof window.scrollBy!=='function')return;
+      const slot=slots.get(anchorUid);if(!slot)return;
+      const diff=slot.getBoundingClientRect().top-anchorTop;
+      if(Math.abs(diff)>0.5)window.scrollBy(0,diff);
+    };
+    keepAnchor();
+    /* 收尾按时钟、不按帧数：无头浏览器里 rAF 的频率和 60Hz 无关，按帧数算会提前收工
+       （实测 300ms 时锚定就已经放开了，内容又被拽走几像素）。没有时钟的环境（单元测试的替身）
+       退回帧数，那里的 rAF 是同步的，给多了也只是空转。 */
+    const clock=typeof performance!=='undefined'&&typeof performance.now==='function'?()=>performance.now():null;
+    const deadline=clock?clock()+LAYOUT_MS+120:null;
+    let pinFrames=clock?1000:40;
+    const pin=()=>{
+      if(generation!==anchorGeneration)return;
+      const done=pinFrames--<=0||(deadline!==null&&clock()>=deadline);
+      if(done){if(document.documentElement?.style)document.documentElement.style.overflowAnchor='';return;}
+      keepAnchor();requestAnimationFrame(pin);
+    };
+    requestAnimationFrame(pin);
     for(const [uid,slot] of slots){
       const was=before.get(uid);if(!was)continue;
       const card=slot.firstElementChild;
