@@ -163,6 +163,29 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
   })();
   return true;
 });
+/* takoma 提示词助手：库里没有这个标签时，面板上的「添加至画师库」把它交给画师库页面建卡。
+   复用右键菜单那条已经跑通的通道（artist-library.create → createArtistFromSelection）：
+   画师库开着就直接发给它，面板因此能拿到真正结果（建好了 / 重名了 / 写不了盘）；
+   没开着就排进待办再打开页面——页面加载完成后自己来领，动作不会因为页面还没加载而丢。
+   画师库没开也照样开页面，是因为点这个按钮的意图就是「我要把这张卡建起来」。 */
+chrome.runtime.onMessage.addListener((message,sender,respond)=>{
+  if(message?.type!=='takoma.add-artist')return;
+  if(sender?.id!==chrome.runtime.id)return;
+  (async()=>{
+    const text=String(message.tag||'').replace(/\s+/g,' ').trim().slice(0,SELECTION_MAX);
+    if(!text){respond({ok:false,reason:'标签是空的'});return;}
+    const request={text,requestId:Date.now().toString(36)+Math.random().toString(36).slice(2,7),sourceTabId:Number.isInteger(sender?.tab?.id)?sender.tab.id:null};
+    const found=await findLibraryTab();
+    if(found){
+      try{respond(await chrome.tabs.sendMessage(found.tabId,{type:'artist-library.create',...request}));return;}
+      catch(error){console.warn('[画师库] takoma 建卡直接发失败，改排队：',error?.message||error);}
+    }
+    await queueAction({kind:'create',...request});
+    await showLibrary();
+    respond({ok:true,queued:true,text});
+  })();
+  return true;
+});
 /* 点漂浮提示：打开（或切到）画师库，让它定位到新卡片。
    只有「已添加」「已收下」这类真的建好卡的提示才带 uid，才谈得上定位；
    排队/失败那两朵提示没有 uid，它们的意思只是「把页面打开」——建卡由页面领 create 待办自己完成。

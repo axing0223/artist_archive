@@ -1,6 +1,6 @@
 /* takoma 提示词助手（实验性）：在提示词界面里双击一个提示词，先查本机画师库，
-   命中就把画师卡片浮出来（文字 + 最多 5 张库内预览）；没命中就给 Danbooru 的搜索结果。
-   只在 staging.takoma.app 注入（manifest 里限定），改坏了不影响别处。
+   命中就把画师卡片浮出来（文字 + 最多 5 张库内预览）；没命中就给 Danbooru 的搜索结果，
+   并给一个「添加至画师库」的按钮。只在 staging.takoma.app 注入（manifest 里限定）。
 
    几个刻意的选择：
    1. 不用 getSelection().toString() —— 浏览器原生双击遇到空格就断，双击 long hair 只会给到 long。
@@ -11,9 +11,12 @@
    4. 翻页只重画 Danbooru 那一段：它有独立的容器，标题、库内一行、底部控件都不动。
    5. 点缩略图弹二级界面看原图，点图片以外任何地方或按 Esc 关闭。
    6. 表现层：面板和二级界面各自把一份样式表挂进自己的 shadow root（既不读站点 CSS，
-      也不会漏出去污染站点），尺寸类的东西尽量交给 CSS 自己算，JS 只管数据。
+      也不会漏出去污染站点）。面板是「头 + 可滚动内容 + 固定底栏」的三段竖排，
+      所以底部控件和提示常驻最下方，不跟着内容滚走。
    7. 缩略图以**竖图**为标准：格子本身就是 3:4 的竖格，图片 cover 铺满不留空白；
-      横图会被裁掉上下，要看不裁的原图就点开二级界面。改格子宽度时高度靠 aspect-ratio 自动跟随。 */
+      横图会被裁掉上下，要看不裁的原图就点开二级界面。改格子宽度时高度靠 aspect-ratio 自动跟随。
+   8. 关闭浮窗是把 lastTag 一起清掉的：关掉之后再双击同一个词必须能重新弹出来。
+      （内部换标签重渲染走 removePanel，不清 lastTag，那是另一回事。） */
 (() => {
   const HOST_ID = 'artist-library-prompt-helper';
   const VIEWER_ID = 'artist-library-prompt-helper-viewer';
@@ -22,7 +25,9 @@
   const LARGE_URL = 'https://danbooru.donmai.us/posts?tags=';
   let lastTag = '';
 
-  const close = () => document.getElementById(HOST_ID)?.remove();
+  /* 用户主动关闭 = 也允许同一个词再弹一次；渲染内部换标签用 removePanel，不动 lastTag。 */
+  const removePanel = () => document.getElementById(HOST_ID)?.remove();
+  const close = () => { lastTag = ''; removePanel(); };
   const closeViewer = () => document.getElementById(VIEWER_ID)?.remove();
   const loadLayout = async () => { try { return (await chrome.storage.local.get(LAYOUT_KEY))?.[LAYOUT_KEY] || {}; } catch { return {}; } };
   const saveLayout = layout => { try { chrome.storage.local.set({ [LAYOUT_KEY]: layout }); } catch {} };
@@ -38,16 +43,13 @@
      所以同一份文本里既有 .tk 的规则，也有 :host(.tk-viewer) 的规则。 */
   const CSS = `
 .tk{--fg:#e9eff2;--muted:#8fa0ab;--line:rgba(255,255,255,.08);--line2:rgba(255,255,255,.17);--surf:rgba(255,255,255,.045);--surf2:rgba(255,255,255,.085);--accent:#5eead4;--accent-dim:rgba(94,234,212,.13);--warn:#fbbf24;
-  position:relative;width:100%;height:100%;box-sizing:border-box;overflow:auto;overscroll-behavior:contain;border-radius:16px;
+  position:relative;display:flex;flex-direction:column;width:100%;height:100%;box-sizing:border-box;overflow:hidden;border-radius:16px;
   background:linear-gradient(168deg,#161d22,#0c1114 72%);border:1px solid var(--line2);color:var(--fg);text-align:left;
   font:13px/1.6 "Segoe UI","Microsoft YaHei",system-ui,sans-serif;
   box-shadow:0 30px 80px -22px rgba(0,0,0,.85),0 0 0 1px rgba(0,0,0,.45);backdrop-filter:blur(20px) saturate(140%)}
 .tk *,.tk *::before,.tk *::after{box-sizing:border-box}
-.tk::-webkit-scrollbar{width:11px;height:11px}
-.tk::-webkit-scrollbar-thumb{background:rgba(255,255,255,.13);border:3px solid transparent;border-radius:99px;background-clip:padding-box}
-.tk::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.26);background-clip:padding-box}
-.tk-head{position:sticky;top:0;z-index:3;display:flex;align-items:center;gap:10px;padding:13px 14px 11px;border-bottom:1px solid var(--line);
-  background:linear-gradient(180deg,rgba(13,18,22,.97),rgba(13,18,22,.88));backdrop-filter:blur(10px)}
+.tk-head{flex:none;display:flex;align-items:center;gap:10px;padding:13px 14px 11px;border-bottom:1px solid var(--line);
+  background:linear-gradient(180deg,rgba(15,20,25,.96),rgba(13,18,22,.72))}
 .tk-mark{flex:none;width:22px;height:22px;border-radius:7px;background:linear-gradient(140deg,var(--accent),#38bdf8);box-shadow:0 0 20px -6px var(--accent)}
 .tk-id{flex:1;min-width:0}
 .tk-tag{font-size:14.5px;font-weight:600;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -60,7 +62,11 @@
 .tk-close{flex:none;display:grid;place-items:center;width:26px;height:26px;border-radius:8px;border:1px solid var(--line);background:var(--surf);
   color:var(--muted);font:inherit;font-size:13px;line-height:1;cursor:pointer;transition:background .16s,color .16s,transform .16s}
 .tk-close:hover{background:var(--surf2);color:var(--fg);transform:rotate(90deg)}
-.tk-body{padding:13px 14px 14px}
+/* 中间这段是唯一会滚动的区域，头尾都常驻。 */
+.tk-body{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:13px 14px}
+.tk-body::-webkit-scrollbar{width:11px;height:11px}
+.tk-body::-webkit-scrollbar-thumb{background:rgba(255,255,255,.13);border:3px solid transparent;border-radius:99px;background-clip:padding-box}
+.tk-body::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.26);background-clip:padding-box}
 .tk-sec{margin-bottom:14px}
 .tk-sec>h3{display:flex;align-items:center;gap:9px;margin:0 0 9px;font-size:10.5px;font-weight:600;letter-spacing:.16em;color:var(--muted)}
 .tk-sec>h3::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,var(--line2),transparent)}
@@ -76,7 +82,14 @@
 .tk-link{flex:none;align-self:center;padding:5px 10px;border-radius:9px;border:1px solid rgba(94,234,212,.28);background:var(--accent-dim);
   color:var(--accent);font-size:11.5px;text-decoration:none;white-space:nowrap;transition:background .16s,border-color .16s}
 .tk-link:hover{background:rgba(94,234,212,.2);border-color:rgba(94,234,212,.5)}
-.tk-empty{padding:11px 12px;border-radius:10px;border:1px dashed var(--line2);background:rgba(255,255,255,.02);color:var(--muted);font-size:12px}
+.tk-empty{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:11px 12px;border-radius:10px;border:1px dashed var(--line2);
+  background:rgba(255,255,255,.02);color:var(--muted);font-size:12px}
+.tk-add{flex:none;padding:5px 11px;border-radius:9px;border:1px solid rgba(94,234,212,.34);background:var(--accent-dim);color:var(--accent);
+  font:inherit;font-size:11.5px;cursor:pointer;transition:background .16s,border-color .16s,transform .12s}
+.tk-add:hover:not(:disabled){background:rgba(94,234,212,.2);border-color:rgba(94,234,212,.55)}
+.tk-add:active:not(:disabled){transform:translateY(1px)}
+.tk-add:disabled{opacity:.62;cursor:default}
+.tk-add-note{font-size:11px}
 /* 竖图标准：格子是竖的，图 cover 铺满，不留空白。高度由 aspect-ratio 跟着宽度自己走。 */
 .tk-grid{display:grid;gap:8px;margin-top:10px}
 .tk-thumb{display:block;width:100%;aspect-ratio:3/4;object-fit:cover;object-position:50% 26%;border-radius:10px;border:1px solid var(--line);
@@ -93,14 +106,18 @@
 .tk-btn:active:not(:disabled){transform:translateY(1px)}
 .tk-btn:disabled{opacity:.32;cursor:default}
 .tk-page{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
-.tk-foot{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:16px;padding-top:12px;border-top:1px solid var(--line)}
+/* 底栏和提示常驻面板最下方：不跟着内容滚。 */
+.tk-foot-wrap{flex:none;padding:11px 14px 12px;border-top:1px solid var(--line);background:linear-gradient(0deg,rgba(11,15,19,.98),rgba(13,18,22,.9))}
+.tk-foot{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .tk-size{margin-left:auto;display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted);white-space:nowrap}
 .tk-size output{min-width:64px;text-align:right;color:var(--fg);font-variant-numeric:tabular-nums}
 .tk-range{-webkit-appearance:none;appearance:none;width:112px;height:4px;border-radius:99px;background:linear-gradient(90deg,#2dd4bf,rgba(255,255,255,.14));outline:none}
 .tk-range::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;border-radius:50%;background:#eafffb;border:2px solid var(--accent);
   box-shadow:0 2px 7px rgba(0,0,0,.55);cursor:pointer;transition:transform .15s}
 .tk-range::-webkit-slider-thumb:hover{transform:scale(1.18)}
-.tk-hint{margin-top:9px;font-size:10.5px;color:var(--muted);letter-spacing:.03em}
+.tk-hint{margin-top:8px;font-size:10.5px;color:var(--muted);letter-spacing:.03em}
+.tk-key{display:inline-block;padding:0 5px;margin:0 1px;border-radius:5px;border:1px solid var(--line2);background:rgba(255,255,255,.05);
+  color:var(--fg);font-size:10px;line-height:16px;font-variant-numeric:tabular-nums}
 .tk-grip{position:absolute;left:0;top:0;z-index:5;width:20px;height:20px;border-radius:16px 0 0 0;cursor:nwse-resize;opacity:.55;
   background:linear-gradient(135deg,rgba(255,255,255,.16),transparent 62%);transition:opacity .16s}
 .tk-grip::after{content:'';position:absolute;left:5px;top:5px;width:8px;height:8px;border-left:1.5px solid rgba(255,255,255,.6);
@@ -179,7 +196,7 @@
     + `</div>`;
 
   const render = async (tag, page = 1) => {
-    close();
+    removePanel();
     closeViewer();
     const layout = await loadLayout();
     if (Number.isFinite(layout.cell)) cellWidth = Math.max(120, Math.min(420, layout.cell));
@@ -220,10 +237,34 @@
     });
     root.append(grip);
 
+    /* 库里没这个标签时，把这段文字交给画师库页面建卡（复用右键菜单那条通道：
+       画师库开着就直接建，没开着就排待办 + 打开页面，页面加载后自己领）。
+       按钮自己显示结果，所以这里用面板里的按钮状态回报，而不是另开提示。 */
+    const addArtist = async button => {
+      button.disabled = true;
+      button.textContent = '正在添加…';
+      const note = box.querySelector('[data-add-note]');
+      const answer = await ask('takoma.add-artist', tag);
+      if (document.getElementById(HOST_ID) !== host) return; /* 面板已经关了，别去改它 */
+      if (answer?.ok && answer.queued) {
+        button.textContent = '已排进画师库待办';
+        if (note) note.textContent = '画师库页面正在打开，它会自己把这张卡建好';
+      } else if (answer?.ok) {
+        button.textContent = '已添加' + (answer.name ? '：' + answer.name : '');
+        if (note) note.textContent = answer.works ? `补到了 ${answer.works} 张作品` : '卡片已建立，资料可以在画师库里补全';
+      } else {
+        button.disabled = false;
+        button.textContent = '再试一次';
+        if (note) note.textContent = answer?.reason === 'no-library' ? '画师库页面没打开' : (answer?.reason || '画师库没有回应');
+      }
+    };
+
     /* 点缩略图 → 二级界面。库内的图带 uid/index，点开时才去要原图（懒加载，
        查询时把 5 张原图 base64 一起塞进消息太重）；站点那侧的图直接用它给的 file_url。 */
     box.addEventListener('click', async event => {
       if (event.target?.closest?.('[data-close]')) { close(); return; }
+      const addButton = event.target?.closest?.('[data-add]');
+      if (addButton) { addArtist(addButton); return; }
       const image = event.target?.closest?.('img[src]');
       if (!image) return;
       let src = image.dataset.large || image.src;
@@ -250,17 +291,22 @@
         + `</div>`
         + (hit.artist.url ? `<a class="tk-link" href="${esc(hit.artist.url)}" target="_blank" rel="noopener">在库中打开</a>` : '')
         + `</div>`
-        + (hit.thumbs?.length ? row(hit.thumbs.map((src, index) => ({ thumb: src, uid: hit.artist.uid, index }))) : `<div class="tk-empty">这位画师库里还没有缩略图</div>`)
-      : `<div class="tk-empty">本机画师库里没有「${esc(tag)}」——下面看看 Danbooru 的搜索结果</div>`;
+        + (hit.thumbs?.length ? row(hit.thumbs.map((src, index) => ({ thumb: src, uid: hit.artist.uid, index }))) : `<div class="tk-empty" style="margin-top:10px">这位画师库里还没有缩略图</div>`)
+      /* 没命中：句子末尾直接跟一个「添加至画师库」，点了就把这个标签收进库里。 */
+      : `<div class="tk-empty"><span>本机画师库里没有「${esc(tag)}」——下面看看 Danbooru 的搜索结果</span>`
+        + `<button class="tk-add" data-add>添加至画师库</button>`
+        + `<span class="tk-add-note" data-add-note></span></div>`;
     box.innerHTML = head(tag, hit?.ok ? 'hit' : 'miss', hit?.ok ? '库内命中' : '库内未命中')
       + `<div class="tk-body">`
       + `<div class="tk-sec"><h3>本机画师库</h3>${library}</div>`
-      + `<div class="tk-sec" data-remote></div>`
+      + `<div class="tk-sec" data-remote style="margin-bottom:0"></div>`
+      + `</div>`
+      + `<div class="tk-foot-wrap">`
       + `<div class="tk-foot">`
       + `<a class="tk-link" href="${LARGE_URL}${encodeURIComponent(tag)}" target="_blank" rel="noopener">在 Danbooru 打开 ↗</a>`
       + `<label class="tk-size">缩略图 <input class="tk-range" type="range" min="120" max="420" step="10" value="${cellWidth}" title="调整缩略图大小（宽高按竖图比例一起变）"><output data-size>${cellWidth}×${cellHeight()}</output></label>`
       + `</div>`
-      + `<div class="tk-hint">双击别处、按 Esc 或点面板外关闭</div>`
+      + `<div class="tk-hint">双击别处、按 <span class="tk-key">Esc</span> 或点面板外关闭 · 翻页 <span class="tk-key">a</span><span class="tk-key">d</span> / <span class="tk-key">←</span><span class="tk-key">→</span></div>`
       + `</div>`;
 
     /* 只重画 Danbooru 那一段：翻页时标题、库内一行、底部控件都不动。 */
@@ -307,14 +353,30 @@
       const mod = await promptModule();
       tag = picked.field ? mod.promptTagAt(picked.text, picked.offset) : mod.promptTagIn(picked.container, picked.node, picked.offset);
     } catch { return; }
-    if (!tag || tag === lastTag) return; /* 同一个标签连着双击不重复弹 */
+    if (!tag || tag === lastTag) return; /* 面板已经开着同一个词，不用重查；关掉后 lastTag 会被清掉 */
     lastTag = tag;
     render(tag);
   }, true);
   document.addEventListener('keydown', event => {
-    if (event.key !== 'Escape') return;
-    if (document.getElementById(VIEWER_ID)) closeViewer(); /* 先关二级界面，再关面板 */
-    else close();
+    if (event.key === 'Escape') {
+      if (document.getElementById(VIEWER_ID)) closeViewer(); /* 先关二级界面，再关面板 */
+      else close();
+      return;
+    }
+    if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+    const panel = document.getElementById(HOST_ID);
+    if (!panel || document.getElementById(VIEWER_ID)) return; /* 看原图时翻页没意义 */
+    /* 焦点在滑杆上时左右键归滑杆。事件从 shadow 里冒出来会被重定向到宿主元素，
+       所以要用 composedPath 拿到真正挨按键的那个元素。 */
+    const inner = event.composedPath?.()[0];
+    if (inner?.closest?.('.tk-range')) return;
+    const step = event.key === 'a' || event.key === 'ArrowLeft' ? -1 : (event.key === 'd' || event.key === 'ArrowRight' ? 1 : 0);
+    if (!step) return;
+    const buttons = (panel.shadowRoot || panel).querySelectorAll?.('[data-remote] button[data-page]');
+    const button = buttons?.[step < 0 ? 0 : 1];
+    if (!button || button.disabled) return;
+    event.preventDefault(); /* 别让 a/d 落进提示词输入框，也别让方向键滚页面 */
+    button.click();
   }, true);
   document.addEventListener('click', event => {
     if (document.getElementById(VIEWER_ID)) return; /* 二级界面自己处理关闭 */
