@@ -32,7 +32,7 @@
     return { container, node, offset: selection.anchorOffset };
   };
   const close = () => document.getElementById(HOST_ID)?.remove();
-  const ask = (type, tag) => chrome.runtime.sendMessage({ type, tag }).catch(error => ({ ok: false, reason: '扩展没有回应：' + (error?.message || error) }));
+  const ask = (type, tag, page) => chrome.runtime.sendMessage({ type, tag, page }).catch(error => ({ ok: false, reason: '扩展没有回应：' + (error?.message || error) }));
   /* 浮窗的位置/尺寸/缩略图大小记在 chrome.storage.local（manifest 里本来就有 storage 权限）。
      内容脚本存自己的东西，不碰画师库的数据。 */
   const LAYOUT_KEY = 'takoma-helper.layout';
@@ -48,7 +48,9 @@
     + items.map(item => `<img src="${item.thumb}" alt=""${item.uid != null ? ` data-uid="${item.uid}" data-index="${item.index}"` : ` data-large="${item.large || item.thumb}"`} title="点击看大图" style="width:100%;height:${cellHeight}px;object-fit:contain;background:#141b1d;border:1px solid #2a3538;border-radius:6px;cursor:zoom-in">`).join('')
     + `</div>`;
 
-  const render = async tag => {
+  /* page 是给翻页用的：翻页时整块重画一次，位置尺寸从记住的配置里来，所以观感是连续的。
+     只重画面板、不重新绑定双击——翻页按钮走的就是这条路径。 */
+  const render = async (tag, page = 1) => {
     close();
     const layout = await loadLayout();
     const host = document.createElement('div');
@@ -101,8 +103,9 @@
     root.append(box);
     document.documentElement.append(host);
     /* 两路一起问：浮窗固定三行——第一行库内、后两行 Danbooru，所以不管库有没有命中都要搜站点。 */
-    const [hit, remote] = await Promise.all([ask('takoma.lookup', tag), ask('takoma.danbooru', tag)]);
+    const [hit, remote] = await Promise.all([ask('takoma.lookup', tag), ask('takoma.danbooru', tag, page)]);
     if (document.getElementById(HOST_ID) !== host) return; /* 期间又双击了别的标签，这条结果作废 */
+    if (remote?.ok && Number(remote.page) > 0) page = Number(remote.page);
     const posts = (remote?.ok && Array.isArray(remote.posts) ? remote.posts : []).slice(0, 10);
     const countText = artist => artist.total == null ? '未读取' : artist.total + (artist.beforeTotal == null ? '' : `（${artist.beforeTotal}）`);
     const library = hit?.ok
@@ -113,7 +116,11 @@
       : `<div style="color:#abbcb9;margin-top:4px">本机画师库里没有「${tag}」</div>`;
     box.innerHTML = `<div data-drag style="font-size:15px;font-weight:600;cursor:move;user-select:none">${tag}</div>`
       + library
-      + `<div style="color:#8d9e9c;font-size:11px;margin-top:10px">Danbooru${posts.length ? ` 前 ${posts.length} 张` : ''}</div>`
+      + `<div style="display:flex;align-items:center;gap:8px;margin-top:10px;color:#8d9e9c;font-size:11px;flex-wrap:wrap">`
+      + `<span>Danbooru 第 ${page} 页${posts.length ? '' : '（没有结果）'}</span>`
+      + `<button data-page="${page - 1}" ${page <= 1 ? 'disabled' : ''} style="background:#252935;color:#e9efee;border:1px solid #364346;border-radius:6px;padding:2px 8px;cursor:pointer">‹ 上一页</button>`
+      + `<button data-page="${page + 1}" ${posts.length ? '' : 'disabled'} style="background:#252935;color:#e9efee;border:1px solid #364346;border-radius:6px;padding:2px 8px;cursor:pointer">下一页 ›</button>`
+      + `</div>`
       + (posts.length ? row(posts) : '<div style="color:#8d9e9c">站点没有返回图片</div>')
       + `<div style="display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap">`
       + `<a href="${LARGE_URL}${encodeURIComponent(tag)}" target="_blank" rel="noopener" style="color:#a5dfcc">在 Danbooru 打开「${tag}」 →</a>`
@@ -121,6 +128,13 @@
       + `</div>`
       + `<div style="color:#8d9e9c;font-size:11px;margin-top:6px">双击别处或按 Esc 关闭</div>`;
     wireSlider();
+    /* 翻页：重画面板时会带上新页码。库内那一行会跟着一起重画，但它查的是同一个标签、
+       结果一样，观感上没有变化；换来的是不必为翻页单写一套增量渲染。 */
+    box.querySelectorAll('button[data-page]').forEach(button => button.addEventListener('click', event => {
+      event.stopPropagation();
+      const next = Number(button.dataset.page) || 1;
+      if (next >= 1 && next !== page) render(tag, next);
+    }));
     /* 拖动：按标题条移动（图片区域留给点开看大图，不抢手势）。
        位置取 style.left/top 而不是 offsetLeft——fixed 元素没有 offsetParent，offsetLeft 会是 0。 */
     const position = () => ({ left: parseFloat(host.style.left) || 0, top: parseFloat(host.style.top) || 0 });

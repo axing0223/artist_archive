@@ -150,12 +150,14 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
     try{
       const tag=String(message.tag||'').trim();
       if(!tag){respond({ok:false,reason:'空标签'});return;}
-      const {json}=await fetchApi('https://danbooru.donmai.us/posts.json?limit=12&tags='+encodeURIComponent(tag));
+      /* 翻页：内容脚本把页码带过来，回包也带上实际页码，浮窗才知道自己在第几页。 */
+      const page=Math.max(1,Math.floor(Number(message.page)||1));
+      const {json}=await fetchApi('https://danbooru.donmai.us/posts.json?limit=12&page='+page+'&tags='+encodeURIComponent(tag));
       const list=(Array.isArray(json)?json:[])
         .filter(post=>post&&Number.isSafeInteger(post.id)&&(post.preview_file_url||post.large_file_url))
         .slice(0,10)
         .map(post=>({id:post.id,thumb:post.preview_file_url||post.large_file_url,large:post.file_url||post.large_file_url||post.preview_file_url}));
-      respond({ok:true,posts:list});
+      respond({ok:true,page,posts:list});
     }catch(error){respond({ok:false,reason:'站点没有回应：'+(error?.message||error)});}
   })();
   return true;
