@@ -77,21 +77,29 @@
     for(const uid of mounted.keys())before.set(uid,slots.get(uid).getBoundingClientRect().top-top);
     return before;
   }
-  /* 一张卡片里所有随视图变尺寸的格子：预览图、空格、生图格，连同它们当前的宽高。
-     另外记下预览整块的横向起点——两套视图之间它是从卡片左边挪到右列的。 */
+  /* 一张卡片里所有随视图变高度的格子：预览图、空格、生图格，连同它们当前的高度。
+     另外记下预览整块的位置和宽度——两套视图之间它是从卡片左边挪到右列的。 */
   function previewGeometry(slot){
     const works=slot.querySelector('.works'),box=works?.getBoundingClientRect();
-    return {left:box?box.left:null,thumbs:[...slot.querySelectorAll('.thumb,.work-empty,.work-generate')].map(node=>{const rect=node.getBoundingClientRect();return {node,width:rect.width,height:rect.height};})};
+    return {left:box?box.left:null,width:box?box.width:null,thumbs:[...slot.querySelectorAll('.thumb,.work-empty,.work-generate')].map(node=>({node,height:node.getBoundingClientRect().height}))};
   }
-  /* 换布局（舒适 ↔ 紧凑）时，把每张可见卡片的预览从旧尺寸补间到新尺寸：
-     两套视图之间预览换的不只是高度，宽度也换了——舒适视图五格铺满整卡，紧凑视图只占右列。
-     不补间的话整屏会「啪」地跳一下——两套视图的差别主要就在预览高度上。
-     卡片高度由预览撑着，跟着一起长；左列信息不会盖过它。
+  const LAYOUT_MS=320,TEXT_MS=160,TEXT_STAGGER_MS=45;
+  let layoutAnimations=[];
+  /* 换布局（舒适 ↔ 紧凑）时把版面走成一段动画，走完再让文字按顺序淡入。分两段是有意的：
+     版面（预览的位置、宽度、每个格子的高度）先动完，文字才一层层出现；
+     两边同时动的话，谁也看不清到底是哪里在变。
+     宽度只作用在预览整块上，不逐个格子补间——格子是 1fr，早就变成新宽度了，
+     要是再让每个格子从旧宽度补间过去，动画一开始五张图会各自溢出自己的格子、互相压住，
+     看着就是「闪一下」。整块收放时格子跟着一起变，图只是等比缩放，不会错位。
      这里不写成 CSS transition：--card-size 是用户自己拖的那条滑杆，
      给它加过渡会让拖动变得不跟手，只有切换视图这一下才该有动画。 */
   function animateLayoutChange(mutate){
     if(typeof mutate!=='function')return;
     if(calm()){mutate();remeasure();return;}
+    /* 连点两下时先收掉上一轮的动画：它们和新动画打在同一批元素上，
+       而且各自的收尾回调会把新动画刚设好的抬层属性抹掉。 */
+    for(const animation of layoutAnimations)animation.cancel?.();
+    layoutAnimations=[];
     const before=new Map();
     for(const [uid,slot] of slots)if(mounted.has(uid))before.set(uid,previewGeometry(slot));
     mutate();
@@ -100,34 +108,49 @@
     for(const [uid,slot] of slots){
       const was=before.get(uid);if(!was)continue;
       const card=slot.firstElementChild;
-      // 编辑器是全宽表单，两套视图里长得一样，别跟着一起淡。
+      // 编辑器是全宽表单，两套视图里长得一样，不参与这套动画。
       if(card?.classList.contains('is-editing'))continue;
-      /* 身份信息从「整行」变成「一列」，几何是跳过去的：让它淡一下，
-         才看得出是同一张卡换了排法，而不是两块内容互不相干地闪了一下。 */
-      card?.querySelector('.artist-info')?.animate?.([{opacity:.45},{opacity:1}],{duration:220,easing:'ease-out'});
+      /* 身份信息从「整行」变成「一列」，几何是跳过去的；它的淡入交给下面那段按序文字动画，
+         不在这里先淡一次——否则两段会叠在一起，看不出是「先版面、后文字」。 */
       /* 预览整块在两套视图之间左右换位，这里要的是实打实的位移，不是淡入：
          网格已经把它瞬移到新位置了，用 transform 把它拉回旧位置再滑过去。
          滑动期间它会从身份信息上面压过去，所以临时抬到上层——
          position/zIndex 不参与布局，动画结束就撤掉，不会留下副作用。 */
       const now=previewGeometry(slot),works=card?.querySelector('.works');
       if(works&&was.left!==null&&now.left!==null&&typeof works.animate==='function'){
-        const dx=was.left-now.left;
-        if(Math.abs(dx)>1){
-          works.style.position='relative';works.style.zIndex='1';
-          const slide=works.animate([{transform:'translateX('+dx+'px)'},{transform:'none'}],{duration:320,easing:'cubic-bezier(.22,.61,.36,1)'});
-          const settle=()=>{works.style.position='';works.style.zIndex='';};
+        const dx=was.left-now.left,widthChanged=Math.abs(was.width-now.width)>1;
+        if(Math.abs(dx)>1||widthChanged){
+          works.style.position='relative';works.style.zIndex='1';works.style.willChange='transform,width';
+          const from={transform:'translateX('+dx+'px)'},to={transform:'none'};
+          if(widthChanged){from.width=was.width+'px';to.width=now.width+'px';}
+          const settle=()=>{works.style.position='';works.style.zIndex='';works.style.willChange='';};
+          const slide=works.animate([from,to],{duration:LAYOUT_MS,easing:'cubic-bezier(.22,.61,.36,1)'});
           slide.onfinish=settle;slide.oncancel=settle;
+          layoutAnimations.push(slide);
         }
       }
+      /* 格子只补间高度：宽度已经由整块带着走了。 */
       for(const [index,preview] of now.thumbs.entries()){
         const from=was.thumbs[index];
-        if(!from||typeof preview.node.animate!=='function')continue;
-        const first={},last={};
-        if(Math.abs(from.height-preview.height)>1){first.height=from.height+'px';last.height=preview.height+'px';}
-        if(Math.abs(from.width-preview.width)>1){first.width=from.width+'px';last.width=preview.width+'px';}
-        if(!Object.keys(first).length)continue;
-        preview.node.animate([first,last],{duration:320,easing:'cubic-bezier(.22,.61,.36,1)'});
+        if(!from||typeof preview.node.animate!=='function'||Math.abs(from.height-preview.height)<1)continue;
+        layoutAnimations.push(preview.node.animate([{height:from.height+'px'},{height:preview.height+'px'}],{duration:LAYOUT_MS,easing:'cubic-bezier(.22,.61,.36,1)'}));
       }
+      /* 文字排在版面动画之后，按顺序一行一行淡入：序号与数量（含破窗的分类标签）→ 名字 → 笔名 → 备注。
+         顺序写死成设计顺序，不按文档顺序（文档里名字排在数量前面），也不按几何位置算——
+         动画刚起步时元素的几何还夹着上一套视图的中间值，算出来的顺序会飘（实测把分类标签
+         排到了序号和数量中间）。
+         判断「这一行要不要淡入」只看 display，不看当前高度：备注的 ::details-content 是从
+         0 高度过渡展开的，切换那一瞬间量到的高度还是 0，用高度过滤会把整段备注漏掉。 */
+      const rows=[
+        [...card.querySelectorAll('.serial,.artist-site-count,.artist-meta')],
+        [card.querySelector('h2')],
+        [card.querySelector('.alias')],
+        [card.querySelector('.artist-notes')],
+      ];
+      rows.forEach((nodes,step)=>nodes.filter(node=>node&&getComputedStyle(node).display!=='none').forEach(node=>{
+        if(typeof node.animate!=='function')return;
+        layoutAnimations.push(node.animate([{opacity:0},{opacity:1}],{duration:TEXT_MS,delay:LAYOUT_MS+step*TEXT_STAGGER_MS,easing:'ease-out',fill:'backwards'}));
+      }));
     }
   }
   function render(container,rows,makeCard,key,patchCard){
