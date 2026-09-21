@@ -217,6 +217,34 @@ test('查看器里缩略图换成原图时做交叉淡入，中途不清空已�
   assert.equal(animations[2][1].opacity,1,'第三段是淡入');
   assert.notEqual(img.src,firstSrc,'换完才指向新图');
 });
+test('同一组缩略图逐张进场：每多一张多等一档，隔久了重新排队，延迟期间不许先闪出来',async()=>{
+  const observers=[],animations=[];
+  let clock=1000;
+  class IO{constructor(fn){this.fn=fn;observers.push(this);}observe(){}unobserve(){}}
+  const window={};
+  const context={window,ImageResources:{ByteCache,Queue},IntersectionObserver:IO,AbortController,DOMException,Date:{now:()=>clock},Map,fetch,URL:{createObjectURL:()=>'blob:x',revokeObjectURL(){}},FolderStore:{imageOf:store.imageOf,readImage:async()=>new Blob(['bytes'])},ArtistExtension:{image:()=>{throw Error('本地图片不应联网');}}};
+  vm.runInNewContext(await fs.readFile('app/image-loader.js','utf8'),context);
+  const api=window.ArtistImages;
+  const make=()=>({classList:{add(){},remove(){}},src:'',removeAttribute(){this.src='';},animate(keyframes,options){animations.push({keyframes,options});return {finished:Promise.resolve(),cancel(){}};}});
+  const settle=async()=>{for(let i=0;i<12;i++)await new Promise(r=>setImmediate(r));};
+  const thumb='缩略图/'+'c'.repeat(24)+'.png';
+  api.setFolder({});
+  const group='card:0001-a';
+  for(let i=0;i<4;i++){const img=make();api.bind(img,'0001-a',{thumb},group);observers[0].fn([{target:img,isIntersecting:true}]);}
+  await settle();
+  assert.equal(animations.length,4,'四张都进场了');
+  assert.deepEqual(animations.map(item=>item.options.delay),[0,24,48,72],'同一组里逐张进场，每多一张多等一档');
+  assert.equal(animations[0].options.fill,'backwards','延迟期间要压住首帧，否则会先整张闪出来再淡入');
+  assert.equal(animations[0].keyframes[0].opacity,0,'进场从透明开始');
+  assert.equal(animations[0].keyframes[0].transform,'translateY(10px) scale(.97)','进场和 takoma 一样：轻微上浮 + 放大到位');
+  animations.length=0;
+  clock+=5000;
+  const late=make();
+  api.bind(late,'0001-a',{thumb},group);
+  observers[0].fn([{target:late,isIntersecting:true}]);
+  await settle();
+  assert.equal(animations[0].options.delay,0,'隔久了就是新的一批，从 0 重新排');
+});
 test('连接通道只接受本扩展在本地顶层页面注入的脚本，不接受网站、子框架或其他扩展',()=>{
   const s={id:'this-extension',tab:{id:1},frameId:0,url:'file:///F:/test/'+encodeURIComponent('画师库.html')};assert.equal(allowedSender(s,'this-extension'),true);
   assert.equal(allowedSender({...s,url:'file:///F:/工具/'+encodeURIComponent('回填作品.html')},'this-extension'),true,'本地工具页也要能连上：页面身份改由 content.js 的 meta 标记把关');

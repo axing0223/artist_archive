@@ -1,5 +1,15 @@
 (() => {
   const cache=new ImageResources.ByteCache(),queue=new ImageResources.Queue(3),bindings=new Map(),failures=new Map(),revisions=new Map();let folder,epoch=0;
+  /* 同一组缩略图连续就绪时排队进场：0、24、48…（封顶 11 档 = 264ms）。
+     图像是异步就绪的，所以按「到达顺序」而不是格子序号排——谁先读到谁先冒出来，
+     但每多一张就多等一档，"一张接一张"的节奏和 takoma 换页时一样。
+     隔 350ms 以上没有新图，就当作新的一批从 0 重新排，滚动长列表时不会越拖越慢。 */
+  const bursts=new Map();
+  function cascadeDelay(group){
+    const now=Date.now(),burst=bursts.get(group);
+    if(!burst||now-burst.at>350){bursts.set(group,{at:now,count:1});return 0;}
+    burst.at=now;return Math.min(burst.count++,11)*24;
+  }
   const refOf=(w,size)=>{const ref=FolderStore.imageOf(w,size);if(!ref)throw Error(size==='large'?'这张作品没有可用的原图。':'这张作品没有可用的预览图。');return ref;};
   const key=(uid,w,size)=>{const ref=FolderStore.imageOf(w,size);if(!ref)return uid+':'+size+':none';return ref.kind==='local'?'local:'+epoch+':'+uid+':'+ref.path+':'+(revisions.get(uid+':'+ref.path)||0):uid+':'+size+':'+(ref.url||ref.data);};
   async function fetchBlob(uid,w,size,signal){
@@ -31,7 +41,14 @@
         if(record.controller!==controller||!bindings.has(img))return;
       }
       img.src=record.objectUrl;img.title='';
-      if(motion())img.animate?.([{opacity:0},{opacity:1}],{duration:240,easing:'ease-out'});
+      if(motion()){
+        /* 缩略图逐张进场，和 takoma 换页时同一套观感：淡入 + 轻微上浮放大，同组内依次延迟。
+           延迟必须配 fill:'backwards'——不然延迟期间元素按自然状态（不透明）显示，
+           会先整张闪出来、再从头淡入。查看器里那张原图是单独一张，不做位移也不排队，
+           保持干净的交叉淡入。 */
+        if(record.size==='large')img.animate?.([{opacity:0},{opacity:1}],{duration:240,easing:'ease-out'});
+        else img.animate?.([{opacity:0,transform:'translateY(10px) scale(.97)'},{opacity:1,transform:'none'}],{duration:260,easing:'cubic-bezier(.2,.9,.25,1)',delay:cascadeDelay(record.group),fill:'backwards'});
+      }
     }
     catch(error){if(error.name!=='AbortError'&&record.controller===controller){record.img.classList.add('image-failed');record.img.title=error.message;record.img.alt='图片未加载：'+error.message;record.error?.(error);}}
   }
@@ -60,7 +77,7 @@
     }
   }
   function unbind(img){const r=bindings.get(img);if(r){observer.unobserve(img);release(r);bindings.delete(img);}}
-  function dispose(group){for(const [img,r] of bindings)if(r.group===group)unbind(img);}
+  function dispose(group){for(const [img,r] of bindings)if(r.group===group)unbind(img);bursts.delete(group);}
   function clear(){cache.clear();failures.clear();for(const r of bindings.values()){release(r);observer.unobserve(r.img);observer.observe(r.img);}}
-  window.ArtistImages={bind,unbind,adoptPersisted,dispose,fetch:fetchBlob,clear,invalidate,setFolder(value){for(const img of [...bindings.keys()])unbind(img);cache.clear();failures.clear();revisions.clear();epoch++;folder=value;},stats(){return {bytes:cache.bytes,entries:cache.items.size,active:queue.active,queued:queue.waiting.length,bound:bindings.size};},async dataUrl(uid,w,size='thumb',signal){const blob=await fetchBlob(uid,w,size,signal);return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(blob);});}};
+  window.ArtistImages={bind,unbind,adoptPersisted,dispose,fetch:fetchBlob,clear,invalidate,setFolder(value){for(const img of [...bindings.keys()])unbind(img);cache.clear();failures.clear();revisions.clear();bursts.clear();epoch++;folder=value;},stats(){return {bytes:cache.bytes,entries:cache.items.size,active:queue.active,queued:queue.waiting.length,bound:bindings.size};},async dataUrl(uid,w,size='thumb',signal){const blob=await fetchBlob(uid,w,size,signal);return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(blob);});}};
 })();
