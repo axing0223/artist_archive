@@ -109,6 +109,21 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
   if(message.type==='ready'){drainActions().then(actions=>respond({actions}));return true;}
   if(message.type==='created'){finish(message.result);}
 });
+/* takoma 提示词助手：内容脚本问「这个标签对应库里的哪位画师」。
+   只找已经开着的画师库页面（findLibraryTab 不会创建标签页，正合已确认的方案），
+   没开着就如实回 no-library，由浮窗提示用户先打开。库数据只有画师库页面拿得到
+   （File System Access 的文件夹句柄在那边），所以这一跳不能省。 */
+chrome.runtime.onMessage.addListener((message,sender,respond)=>{
+  if(message?.type!=='takoma.lookup')return;
+  if(sender?.id!==chrome.runtime.id)return;
+  (async()=>{
+    const found=await findLibraryTab();
+    if(!found){respond({ok:false,reason:'no-library'});return;}
+    try{respond(await chrome.tabs.sendMessage(found.tabId,{type:'artist-library.lookup',tag:String(message.tag||'')}));}
+    catch(error){respond({ok:false,reason:'画师库没有回应：'+(error?.message||error)});}
+  })();
+  return true;
+});
 /* 点漂浮提示：打开（或切到）画师库，让它定位到新卡片。
    只有「已添加」「已收下」这类真的建好卡的提示才带 uid，才谈得上定位；
    排队/失败那两朵提示没有 uid，它们的意思只是「把页面打开」——建卡由页面领 create 待办自己完成。

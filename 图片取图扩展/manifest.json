@@ -6,7 +6,8 @@
   "host_permissions": ["https://danbooru.donmai.us/*", "https://cdn.donmai.us/*", "https://image.novelai.net/*", "https://api.novelai.net/*"],
   "permissions": ["contextMenus", "storage", "scripting", "activeTab"],
   "background": {"service_worker": "background.js", "type": "module"},
-  "content_scripts": [{"matches": ["file:///*"], "js": ["content.js"], "run_at": "document_idle", "all_frames": false}],
+  "content_scripts": [{"matches": ["file:///*"], "js": ["content.js"], "run_at": "document_idle", "all_frames": false}, {"matches": ["https://staging.takoma.app/*"], "js": ["takoma.js"], "run_at": "document_idle", "all_frames": false}],
+  "web_accessible_resources": [{"resources": ["prompt-tag.mjs"], "matches": ["https://staging.takoma.app/*"]}],
   "action": {"default_title": "打开画师库（详细：右键 → 选项）"},
   "options_page": "test.html",
   "content_security_policy": {
