@@ -34,7 +34,7 @@
         prepared.push({uid:list[i].artist.uid,original,thumb:await host.thumbnail(original)});
       }
       let done=0;
-      await host.save(next=>{
+      const saved=await host.save(next=>{
         for(const item of prepared){
           const target=next.artists.find(a=>a.uid===item.uid);
           if(!target)continue;
@@ -43,6 +43,9 @@
         }
         return next;
       },()=>`已为 ${done} 位画师导入测试风格图片`);
+      /* 写盘失败时不能报「完成」：修改只在本页里，用户必须知道，而且要指向真正能保住图片的
+         办法——资料备份里不含图片，复制整个「数据」文件夹才是完整备份。 */
+      if(!saved){message.textContent='没有写进磁盘：这些修改还留在本页。要保住图片请复制整个「数据」文件夹（资料备份里不含图片）。';return;}
       message.textContent=`完成：${done} 张测试风格图片已导入，各自排在作品图之后。`;
       files=[];$('test-files').value='';$('test-preview').replaceChildren();$('test-files-info').textContent='还没有选择图片。';
     }catch(error){message.textContent='导入失败：'+error.message;}
@@ -87,7 +90,8 @@
       artist.works=artist.works.filter(work=>!(work.kind==='test'&&seqs.includes(Number.isSafeInteger(work.testSeq)&&work.testSeq>0?work.testSeq:1)));
       removed+=before-artist.works.length;
     }
-    await host.save(next,`已删除 ${removed} 张测试风格图片`);
+    const saved=await host.save(next,`已删除 ${removed} 张测试风格图片`);
+    if(!saved){message.textContent='没有写进磁盘：这些修改还留在本页。要保住图片请复制整个「数据」文件夹（资料备份里不含图片）。';return;}
     message.textContent=`完成：删除了 ${removed} 张测试风格图片。`;
     renderRemoval();
   }

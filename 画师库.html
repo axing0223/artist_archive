@@ -2311,7 +2311,7 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
         prepared.push({uid:list[i].artist.uid,original,thumb:await host.thumbnail(original)});
       }
       let done=0;
-      await host.save(next=>{
+      const saved=await host.save(next=>{
         for(const item of prepared){
           const target=next.artists.find(a=>a.uid===item.uid);
           if(!target)continue;
@@ -2320,6 +2320,9 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
         }
         return next;
       },()=>`已为 ${done} 位画师导入测试风格图片`);
+      /* 写盘失败时不能报「完成」：修改只在本页里，用户必须知道，而且要指向真正能保住图片的
+         办法——资料备份里不含图片，复制整个「数据」文件夹才是完整备份。 */
+      if(!saved){message.textContent='没有写进磁盘：这些修改还留在本页。要保住图片请复制整个「数据」文件夹（资料备份里不含图片）。';return;}
       message.textContent=`完成：${done} 张测试风格图片已导入，各自排在作品图之后。`;
       files=[];$('test-files').value='';$('test-preview').replaceChildren();$('test-files-info').textContent='还没有选择图片。';
     }catch(error){message.textContent='导入失败：'+error.message;}
@@ -2364,7 +2367,8 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
       artist.works=artist.works.filter(work=>!(work.kind==='test'&&seqs.includes(Number.isSafeInteger(work.testSeq)&&work.testSeq>0?work.testSeq:1)));
       removed+=before-artist.works.length;
     }
-    await host.save(next,`已删除 ${removed} 张测试风格图片`);
+    const saved=await host.save(next,`已删除 ${removed} 张测试风格图片`);
+    if(!saved){message.textContent='没有写进磁盘：这些修改还留在本页。要保住图片请复制整个「数据」文件夹（资料备份里不含图片）。';return;}
     message.textContent=`完成：删除了 ${removed} 张测试风格图片。`;
     renderRemoval();
   }
@@ -3448,7 +3452,7 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
       clearTimeout(timer);armed=false;
       await onConfirm();
     };
-    if(button){button.textContent=label;button.addEventListener('click',fire);return button;}
+    if(button){if(cls)button.classList.add(cls);button.textContent=label;button.addEventListener('click',fire);return button;}
     button=btn(label,fire,cls);
     return button;
   }
@@ -4173,7 +4177,7 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
     /* 「从备份恢复资料」会清空当前全部画师，所以走和删除画师一样的「点两次」：
        第一次只是上膛（文案变成「导入会清空当前数据」、变红），第二次才打开文件选择框。
        以前用的是原生 confirm()，文案里没提会清空，也不符合其他危险操作的交互。 */
-    const importButton=confirmButton('从备份恢复资料','导入会清空当前数据',()=>$('import-file').click(),'',$('import-data'));
+    const importButton=confirmButton('从备份恢复资料','导入会清空当前数据',()=>$('import-file').click(),'danger',$('import-data'));
     importButton.title='会用备份里的资料替换当前全部画师，且会删掉不在备份里的画师目录；建议先导出当前备份';
     $('import-file').onchange=importData;
     let searchTimer;

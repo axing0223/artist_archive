@@ -929,7 +929,7 @@
       clearTimeout(timer);armed=false;
       await onConfirm();
     };
-    if(button){button.textContent=label;button.addEventListener('click',fire);return button;}
+    if(button){if(cls)button.classList.add(cls);button.textContent=label;button.addEventListener('click',fire);return button;}
     button=btn(label,fire,cls);
     return button;
   }
@@ -1654,7 +1654,7 @@
     /* 「从备份恢复资料」会清空当前全部画师，所以走和删除画师一样的「点两次」：
        第一次只是上膛（文案变成「导入会清空当前数据」、变红），第二次才打开文件选择框。
        以前用的是原生 confirm()，文案里没提会清空，也不符合其他危险操作的交互。 */
-    const importButton=confirmButton('从备份恢复资料','导入会清空当前数据',()=>$('import-file').click(),'',$('import-data'));
+    const importButton=confirmButton('从备份恢复资料','导入会清空当前数据',()=>$('import-file').click(),'danger',$('import-data'));
     importButton.title='会用备份里的资料替换当前全部画师，且会删掉不在备份里的画师目录；建议先导出当前备份';
     $('import-file').onchange=importData;
     let searchTimer;
