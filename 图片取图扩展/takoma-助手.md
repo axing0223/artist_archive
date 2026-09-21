@@ -62,3 +62,21 @@ takoma 页面（双击）
 - 扩展改完要在 `chrome://extensions` 重新加载才生效。
 - 实验性：只在 `staging.takoma.app` 注入，改坏了不影响本站。
 - `prompt-tag.mjs` 一旦改了，跑 `npm test` 会连带覆盖到注入脚本用的那份逻辑。
+
+## 边界：这块功能只碰了这些地方（可整体摘掉）
+
+按用户要求，这块功能不掺进插件原有流程。要停掉或卸载时照下表逐个还原即可，
+每一处源码里都带「takoma」字样，直接搜这个词就能找齐：
+
+| 文件 | 改动 |
+|---|---|
+| `manifest.json` | `content_scripts` 多一条（只匹配 `staging.takoma.app`）；`web_accessible_resources` 一条 |
+| `takoma.js` | 整个文件（内容脚本） |
+| `prompt-tag.mjs` | 整个文件（纯函数，被内容脚本动态 import） |
+| `prompt-tag.test.mjs` + `package.json` 的 test 列表 | 那 7 条单测与列表里的文件名 |
+| `background.js` | 两个独立监听器：`takoma.lookup`、`takoma.danbooru` |
+| `app/app.js` | `normalizeForLookup` / `namesForLookup` / `lookupForPrompt` / `window.ArtistPromptLookup`，以及 `bindExtensionMessages` 里一条 `artist-library.lookup` 分支 |
+
+没有改动任何既有代码路径：两个 background 监听器只认自己的消息类型、并校验 sender 是自己扩展；
+app.js 那条分支只认 `artist-library.lookup`，碰不到原有的 create / focus / 取图流程。
+`npm test` 里既有 316 条断言全绿，就是这条边界的证据。

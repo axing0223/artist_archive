@@ -124,8 +124,10 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
   })();
   return true;
 });
-/* takoma 提示词助手：库里没有这个标签时，拿前 8 条 Danbooru 结果回去画缩略图。
-   跨站请求只能在这里发（内容脚本受页面同源限制），所以这一跳也由 background 代劳。 */
+/* takoma 提示词助手：库里没有这个标签时，拿 Danbooru 结果回去画缩略图。
+   跨站请求只能在这里发（内容脚本受页面同源限制），所以这一跳也由 background 代劳。
+   取 12 条再挑出前 10 条有效的：浮窗是固定 5 列，两行正好 10 张，多要两条是为了剔掉没预览图的。
+   同时带上大图地址，点图看大图那一步不用再跑一趟。 */
 chrome.runtime.onMessage.addListener((message,sender,respond)=>{
   if(message?.type!=='takoma.danbooru')return;
   if(sender?.id!==chrome.runtime.id)return;
@@ -133,8 +135,11 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
     try{
       const tag=String(message.tag||'').trim();
       if(!tag){respond({ok:false,reason:'空标签'});return;}
-      const posts=await fetchApi('https://danbooru.donmai.us/posts.json?limit=8&tags='+encodeURIComponent(tag));
-      const list=(Array.isArray(posts)?posts:[]).map(post=>({id:post.id,thumb:post.preview_file_url||post.large_file_url||''})).filter(item=>item.thumb&&Number.isSafeInteger(item.id));
+      const posts=await fetchApi('https://danbooru.donmai.us/posts.json?limit=12&tags='+encodeURIComponent(tag));
+      const list=(Array.isArray(posts)?posts:[])
+        .filter(post=>post&&Number.isSafeInteger(post.id)&&(post.preview_file_url||post.large_file_url))
+        .slice(0,10)
+        .map(post=>({id:post.id,thumb:post.preview_file_url||post.large_file_url,large:post.large_file_url||post.file_url||post.preview_file_url}));
       respond({ok:true,posts:list});
     }catch(error){respond({ok:false,reason:'站点没有回应：'+(error?.message||error)});}
   })();

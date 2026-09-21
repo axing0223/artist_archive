@@ -6,10 +6,13 @@
    1. 不用 getSelection().toString() —— 浏览器原生双击遇到空格就断，双击 long hair 只会给到 long。
       所以拿「整段文本 + 选区起点」，交给 prompt-tag.mjs 切出完整那一段。
    2. 标签的切片规则与「空格换下划线」都是 import 进来的：被单测覆盖的就是这里跑的那一份，
-      不复制一遍，免得两边慢慢长歪。 */
+      不复制一遍，免得两边慢慢长歪。
+
+   浮窗是固定 5 列 × 3 行：第一行是库内预览，后两行是 Danbooru —— 所以不管库有没有命中，
+   Danbooru 那一路都要去搜。点任意一张图就地放大，再点一下回来。 */
 (() => {
   const HOST_ID = 'artist-library-prompt-helper';
-  const SEPARATOR = /[,，;；|\n\r]/;
+  const LARGE_URL = 'https://danbooru.donmai.us/posts?tags=';
   let lastTag = '';
 
   const promptTag = async (text, offset) => {
@@ -44,48 +47,58 @@
     return { text, offset };
   };
   const close = () => document.getElementById(HOST_ID)?.remove();
+  const ask = (type, tag) => chrome.runtime.sendMessage({ type, tag }).catch(error => ({ ok: false, reason: '扩展没有回应：' + (error?.message || error) }));
+
+  /* 5 列铺满一行；不足 5 张用空占位补齐，行高才不会被撑得忽大忽小。 */
+  const row = items => `<div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;margin-top:6px">`
+    + items.map(item => `<img src="${item.thumb}" alt="" data-large="${item.large || item.thumb}" title="点击看大图" style="width:100%;height:112px;object-fit:contain;background:#141b1d;border:1px solid #2a3538;border-radius:6px;cursor:zoom-in">`).join('')
+    + Array.from({ length: Math.max(0, 5 - items.length) }, () => '<span></span>').join('')
+    + `</div>`;
+
   const render = async tag => {
     close();
     const host = document.createElement('div');
     host.id = HOST_ID;
     Object.assign(host.style, { position: 'fixed', right: '24px', bottom: '24px', zIndex: '2147483647' });
     const root = host.attachShadow?.({ mode: 'open' }) || host;
-    /* 宽度跟着画布走（takoma 的画布是 .tkCanvasPane），量不到就 480 兜底，再夹进视口。
-       图放大到 150px 高、4 列——浮窗本来就是用来看图的，不是看字的。 */
+    /* 宽度跟着画布走（takoma 的画布是 .tkCanvasPane），量不到就用 640 兜底，再夹进视口。
+       要放得下 5 列，所以下限给到 420。 */
     const paneWidth = Math.round(document.querySelector('.tkCanvasPane')?.getBoundingClientRect?.().width || 0);
-    const width = Math.max(360, Math.min(paneWidth || 480, Math.round(innerWidth * 0.9)));
+    const width = Math.max(420, Math.min(paneWidth || 640, Math.round(innerWidth * 0.94)));
     const box = document.createElement('div');
-    Object.assign(box.style, { width: width + 'px', maxHeight: '70vh', overflow: 'auto', background: '#1b2224', color: '#e9efee', border: '1px solid #364346', borderRadius: '12px', boxShadow: '0 16px 50px #0008', font: '13px/1.6 "Segoe UI","Microsoft YaHei",sans-serif', padding: '12px' });
+    Object.assign(box.style, { width: width + 'px', maxHeight: '80vh', overflow: 'auto', background: '#1b2224', color: '#e9efee', border: '1px solid #364346', borderRadius: '12px', boxShadow: '0 16px 50px #0008', font: '13px/1.6 "Segoe UI","Microsoft YaHei",sans-serif', padding: '12px' });
     box.textContent = `正在查「${tag}」…`;
     box.addEventListener('dblclick', event => event.stopPropagation());
+    /* 点图看大图：就地换内容，再点一下回到列表（记下原内容再还原，省一套覆盖层）。 */
+    box.addEventListener('click', event => {
+      const image = event.target?.closest?.('img[data-large]');
+      if (!image) return;
+      const list = box.innerHTML;
+      box.innerHTML = `<img src="${image.dataset.large}" alt="" style="width:100%;max-height:70vh;object-fit:contain;background:#141b1d;border:1px solid #2a3538;border-radius:8px;cursor:zoom-out">`
+        + `<div style="color:#8d9e9c;font-size:11px;margin-top:8px">点图片返回</div>`;
+      box.querySelector('img')?.addEventListener('click', () => { box.innerHTML = list; }, { once: true });
+    });
     root.append(box);
     document.documentElement.append(host);
-    let result = null;
-    try { result = await chrome.runtime.sendMessage({ type: 'takoma.lookup', tag }); }
-    catch (error) { result = { ok: false, reason: '扩展没有回应：' + (error?.message || error) }; }
+    /* 两路一起问：浮窗固定三行——第一行库内、后两行 Danbooru，所以不管库有没有命中都要搜站点。 */
+    const [hit, remote] = await Promise.all([ask('takoma.lookup', tag), ask('takoma.danbooru', tag)]);
     if (document.getElementById(HOST_ID) !== host) return; /* 期间又双击了别的标签，这条结果作废 */
-    const line = (label, value) => (value ? `<div style="color:#abbcb9">${label} <span style="color:#e9efee">${value}</span></div>` : '');
-    if (result?.ok) {
-      const a = result.artist || {};
-      const counts = a.total == null ? '未读取' : a.total + (a.beforeTotal == null ? '' : `（${a.beforeTotal}）`);
-      box.innerHTML = `<div style="font-size:15px;font-weight:600">${a.name || ''}</div>`
-        + line('笔名', a.alias) + line('分类', a.category) + line('作品数量', counts)
-        + (result.thumbs?.length ? `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:8px">${result.thumbs.map(src => `<img src="${src}" style="width:100%;height:72px;object-fit:contain;background:#141b1d;border:1px solid #2a3538;border-radius:6px">`).join('')}</div>` : '')
-        + `<div style="color:#8d9e9c;font-size:11px;margin-top:8px">来自本机画师库 · 双击别处关闭</div>`;
-    } else if (result?.reason === 'no-library') {
-      box.innerHTML = `<div>「${tag}」需要画师库来查</div><div style="color:#abbcb9;margin-top:6px">先把画师库页面打开（数据在你的文件夹里，只有那个页面读得到），再回来双击。</div>`;
-    } else {
-      /* 库里没有 → 交给 Danbooru：先拿前 8 条渲染缩略图，拿不到就退回一条能点的搜索链接，
-         别让这次双击落空。图片地址直接用站点的 preview_file_url（跨站请求由 background 代发）。 */
-      const url = 'https://danbooru.donmai.us/posts?tags=' + encodeURIComponent(tag);
-      let posts = [];
-      try { const found = await chrome.runtime.sendMessage({ type: 'takoma.danbooru', tag }); if (found?.ok) posts = found.posts || []; } catch {}
-      if (document.getElementById(HOST_ID) !== host) return; /* 期间又双击了别的标签，这条结果作废 */
-      box.innerHTML = `<div>库里没有「${tag}」</div>`
-        + (posts.length ? `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:8px">${posts.map(post => `<img src="${post.thumb}" alt="" style="width:100%;height:64px;object-fit:contain;background:#141b1d;border:1px solid #2a3538;border-radius:6px">`).join('')}</div>` : '')
-        + `<a href="${url}" target="_blank" rel="noopener" style="color:#a5dfcc;display:inline-block;margin-top:8px">在 Danbooru 搜索「${tag}」 →</a>`;
-    }
+    const posts = (remote?.ok && Array.isArray(remote.posts) ? remote.posts : []).slice(0, 10);
+    const countText = artist => artist.total == null ? '未读取' : artist.total + (artist.beforeTotal == null ? '' : `（${artist.beforeTotal}）`);
+    const library = hit?.ok
+      ? `<div style="margin-top:4px"><b style="font-size:14px">${hit.artist.name}</b>`
+        + `<span style="color:#abbcb9"> ${[hit.artist.alias, hit.artist.category].filter(Boolean).join(' · ')}</span>`
+        + `<div style="color:#abbcb9">作品数量 ${countText(hit.artist)}</div></div>`
+        + (hit.thumbs?.length ? row(hit.thumbs.map(src => ({ thumb: src, large: src }))) : '')
+      : `<div style="color:#abbcb9;margin-top:4px">本机画师库里没有「${tag}」</div>`;
+    box.innerHTML = `<div style="font-size:15px;font-weight:600">${tag}</div>`
+      + library
+      + `<div style="color:#8d9e9c;font-size:11px;margin-top:10px">Danbooru${posts.length ? ` 前 ${posts.length} 张` : ''}</div>`
+      + (posts.length ? row(posts) : '<div style="color:#8d9e9c">站点没有返回图片</div>')
+      + `<a href="${LARGE_URL}${encodeURIComponent(tag)}" target="_blank" rel="noopener" style="color:#a5dfcc;display:inline-block;margin-top:10px">在 Danbooru 打开「${tag}」 →</a>`
+      + `<div style="color:#8d9e9c;font-size:11px;margin-top:6px">双击别处或按 Esc 关闭</div>`;
   };
+
   document.addEventListener('dblclick', async event => {
     if (event.target?.closest?.(`#${HOST_ID}`)) return;
     const picked = readSelection();
