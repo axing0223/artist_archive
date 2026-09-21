@@ -56,13 +56,15 @@
     return seq;
   }
   /* 卡片预览格排布。默认 5 格、测试风格图按序号从右往左占位、作品图从左往右补空。
-     reserve>0 时（设置里开了「固定测试风格图」）最右 reserve 格留给序号 1..reserve 的测试图：
-     作品图只能用到左边的 limit-reserve 格，测试图还没生成时这几格也不会被作品挤占。 */
+     reserve>0 时（设置里开了「显示测试风格图」）最右 reserve 格留给序号 1..reserve 的测试图：
+     作品图只能用到左边的 limit-reserve 格，测试图还没生成时这几格也不会被作品挤占。
+     reserve===0 时（那个开关关着）测试风格图**一格都不占**：既没有固定格，也不去挤作品格——
+     用户关掉这个开关的意思就是"卡片上不要出现测试图"。数据本身还在，开关再打开就又能看到。 */
   function previewWorks(artist,limit=5,reserve=0){
     const works=Array.isArray(artist?.works)?artist.works:[],slots=new Array(limit).fill(null);
     const fixed=Math.max(0,Math.min(Number.isSafeInteger(reserve)&&reserve>0?reserve:0,limit)),cut=limit-fixed;
     const seqOf=work=>Number.isSafeInteger(work.testSeq)&&work.testSeq>0?work.testSeq:1;
-    for(const work of works){
+    if(fixed)for(const work of works){
       if(work.kind!=='test')continue;
       const seq=seqOf(work),primary=seq<=fixed?limit-seq:cut-seq;
       /* 固定格只认自己的序号：同一个序号重复出现时退到左边区域找空位，不去抢别的固定格。 */
@@ -91,10 +93,17 @@
     for(const raw of incoming){
       if(at>=limit){works.push({...raw});at++;continue;}
       const slots=previewWorks({works},limit,reserve);
+      /* 定位「这一格现在摆的是哪张图」要用一份**测试图也在场**的布局：
+         reserve=0 时显示用的布局把测试图整个略过了，拿它去找就会找不到，
+         于是拖图过去不是替换、而是往列表末尾多塞一张（原来那张就成了看不见的隐藏图）。
+         在场的那一份要按**已有序号的最大值**来放，不能按"测试图有几张"——
+         决定测试图渲染在哪一格的是序号（slot = limit - seq），不是个数，按个数放会错位。 */
+      const highestSeq=Math.min(limit,works.reduce((max,work)=>work.kind==='test'?Math.max(max,Number.isSafeInteger(work.testSeq)&&work.testSeq>0?work.testSeq:1):max,0));
+      const lookup=reserve?slots:(highestSeq?previewWorks({works},limit,highestSeq):slots);
       /* 已经被别的测试图占掉的格子跳过（只可能出现在没开固定格的时候）。 */
-      while(at>index&&at<cut&&slots[at]&&slots[at].kind==='test')at++;
+      while(at>index&&at<cut&&lookup[at]&&lookup[at].kind==='test')at++;
       if(at>=limit){works.push({...raw});at++;continue;}
-      const current=slots[at]||null,isTest=at>=cut||!!(current&&current.kind==='test');
+      const current=lookup[at]||null,isTest=at>=cut||!!(current&&current.kind==='test');
       const entry=isTest?{...raw,kind:'test',testSeq:Math.max(1,limit-at)}:{...raw};
       if(current){const seat=works.indexOf(current);if(seat>=0)works[seat]=entry;else works.push(entry);}
       /* 空格子：作品是从左往右填的，所以空格子一定在所有已显示作品之后，直接排到末尾就是它。 */

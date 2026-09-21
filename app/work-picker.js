@@ -96,6 +96,22 @@
     });
     render();const ready=go(1);
     return {ready,tools:status,focus,selected:()=>[...picked.values()],added:()=>[...picked.keys()],
+      /* 外部把某件作品从作品列表里删掉之后调它：就地取消那一格的勾选与「已加入」标记。
+         只改这一个格子，不重画整页——重画会把候选列表的滚动位置和已经加载好的图片一起冲掉。
+         这里**不能先看 picked 里有没有它**：用户从作品格删掉时，onRemove 已经把 id 从 picked 里删了，
+         再去查就等于什么都没做（那一格还勾着，用户看到"删了还在"）。
+         定位用格子里那枚「#编号」文本——它就是这一格的标识，比 aria 属性更直接。 */
+      syncRemoved(id){
+        const key=String(id),wanted='#'+key;picked.delete(key);
+        for(const label of grid.children||[]){
+          if(!String(label.className||'').split(/\s+/).includes('pick'))continue;
+          const mark=label.children?.[2];
+          if(String(mark?.textContent??'')!==wanted)continue;
+          const box=label.children?.[0];
+          if(box)box.checked=false;
+          label.classList.remove('is-added');update();break;
+        }
+      },
       dispose(){disposed=true;revision++;if(typeof clearTimeout==='function')clearTimeout(focusTimer);controller?.abort();ArtistImages.dispose(group);container.replaceChildren();}};
   }
   root.WorkPicker={mount};

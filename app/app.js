@@ -198,10 +198,18 @@
      所以这类添加排队串行，各自轮到自己时才取最新数据、发序号——不能各自克隆整库快照。 */
   let addArtistTail=Promise.resolve();
   const saveControls=new Map();
+  /* 「设置」里的控件不参与写盘锁定。写盘期间把整页控件全禁用一下，用户看到的是
+     数字/日期框和滑块短暂变灰又变回来——而设置里的改一项就要写一次盘，等于每点一下都闪一次。
+     设置本身和列表没有冲突，锁它没有意义。 */
+  const insideSettings=node=>{
+    const dialog=node.closest?.('dialog');
+    return !!dialog&&(dialog.id==='settings'||dialog.id==='gen-settings');
+  };
   function lockSaveControls(){
     // 惰性挂载的卡片也不可在写盘中再次修改；inert 不阻止页面滚动。
     $('gallery').inert=true;
     for(const node of document.querySelectorAll('button,input,textarea,select')){
+      if(insideSettings(node))continue;
       if(!saveControls.has(node))saveControls.set(node,node.disabled);
       if(!saveControls.get(node))node.classList.add('is-saving-locked');
       node.disabled=true;
@@ -271,6 +279,12 @@
     for(const node of [...parent.children])if(!wanted.has(node))node.remove();
     nodes.forEach((node,i)=>{if(parent.children[i]!==node)parent.insertBefore(node,parent.children[i]||null);});
   }
+  /* 作品从草稿里删掉时，如果作品选择器正开着，就把那一格的勾选跟着取消掉。
+     不这么做的话，候选区里它仍是勾着的——用户看到的是"删了还在"，再点一下反而又加回来。 */
+  function syncPickerAfterWorkRemoved(work){
+    const id=work?.id;if(!id||!editorPicker)return;
+    editorPicker.syncRemoved?.(id);
+  }
   const workStamp=(a,w)=>JSON.stringify([a.uid,w.id||'',w.kind||'',w.testSeq||0,FolderStore.imageOf(w,'thumb')]);
   function workFigure(a,w,slot,editing=false){
     const figure=el('figure','work'),img=el('img'),caption=el('figcaption');
@@ -279,6 +293,7 @@
     const remove=editing?btn('移除',()=>{
       if(draft!==record.artist)return;const index=draft.works.indexOf(record.work);if(index<0)return;
       const settle=rememberWorkSlots(draft.uid);draft.works.splice(index,1);paintEditorWorks();markEditorPainted();settle();
+      syncPickerAfterWorkRemoved(record.work);
     },'danger-link'):confirmButton('删除','再点一次删除',()=>deleteSlotWork(record.artist,record.work),'slot-delete');
     record.remove=remove;ArtistImages.bind(img,a.uid,w,editing?'editor':'card:'+a.uid,'thumb');open.append(img);figure.append(open,caption);
     updateWorkFigure(figure,a,w,slot);return figure;
@@ -624,7 +639,11 @@
   }
   function render(){
     const restoreFocus=window.ArtistWorkspace?.captureFilterFocus();
-    $('history-date').value=data.cutoffDate;$('save-large').checked=data.saveLargeImages===true;$('work-order').value=data.workOrder;
+    /* 设置对话框开着的时候不碰它里面的控件：数据截至日期是"改了要手动确认才生效"的输入框，
+       用户正在改、还没离开输入框时，一次无关的保存（比如顺手切了「保存大图」）会把它按
+       data.cutoffDate 重新赋值，把刚敲的日期冲掉。打开对话框时已经同步过一次，不用再刷。 */
+    const settingsOpen=$('settings').open===true;
+    if(!settingsOpen){$('history-date').value=data.cutoffDate;$('save-large').checked=data.saveLargeImages===true;$('work-order').value=data.workOrder;}
     /* 关了「显示测试风格图」就把顶部那个菜单整个收起来：留着入口却不显示那两格会让人以为坏了。
        关掉时顺手把展开状态也收起，免得下次打开时它自己弹着。 */
     const testMenu=$('test-menu');
@@ -738,6 +757,7 @@
     if(index<0)return false;
     const settle=rememberWorkSlots();
     draft.works.splice(index,1);paintEditorWorks();markEditorPainted();settle();
+    syncPickerAfterWorkRemoved(work);
     return true;
   }
   function togglePicker(expand,manual=true){

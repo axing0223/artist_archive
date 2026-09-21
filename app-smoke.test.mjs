@@ -974,7 +974,7 @@ test('固定测试风格图：已有的测试图回自己的固定格，只剩�
   assert.equal(String(children[4].className).includes('is-test'),true,'序号 1 的测试图占最右格');
 });
 test('卡片格子左下角：#编号可点开对应的 Danbooru 作品页，测试风格图不给链接',async()=>{
-  const {state}=await boot();
+  const {state,elements}=await boot();
   const card=state.card(bareArtist({works:[{id:'12345',url:'https://danbooru.donmai.us/posts/12345',thumb:null}]}));
   const mark=findByClass(card,'work-id');
   assert.ok(mark,'有编号的作品要给出可点的编号');
@@ -984,10 +984,13 @@ test('卡片格子左下角：#编号可点开对应的 Danbooru 作品页，测
   /* 没有存 url 但知道编号时，按编号拼出作品页 */
   const built=state.card(bareArtist({works:[{id:'777',url:'',thumb:null}]}));
   assert.equal(findByClass(built,'work-id').href,'https://danbooru.donmai.us/posts/777');
-  /* 测试风格图只有序号文字，不是链接 */
+  /* 测试风格图：开关关着时卡片上一格都不占（连序号文字都不出现）；打开开关才按序号排进固定格。 */
   const test=state.card(bareArtist({works:[{id:'',kind:'test',testSeq:2,thumb:null}]}));
   assert.equal(findByClass(test,'work-id'),null,'测试风格图不该有编号链接');
-  assert.ok(findText(test,'测试风格 2'),'测试风格图只写序号');
+  assert.equal(findText(test,'测试风格 2'),null,'关着「显示测试风格图」时测试图不该出现在卡片上');
+  const toggle=getEl(elements,'show-test');toggle.checked=true;await toggle.onchange();
+  const withSlot=state.card(bareArtist({works:[{id:'',kind:'test',testSeq:2,thumb:null}]}));
+  assert.ok(findText(withSlot,'测试风格 2'),'打开开关后测试风格图只写序号');
 });
 test('卡片格子右下角：删除按钮要点两次，第二次才真的删掉这一格',async()=>{
   const {elements,state}=await boot();
@@ -1446,6 +1449,28 @@ test('编辑态的作品选择器不再过滤已选作品：勾着的照旧列�
   const box=selected[0].children[0];box.checked=false;await box.onchange();
   assert.equal(String(findByClass(card(),'work-count').textContent).startsWith('本库图片 1'),true,'取消勾选即移出');
   assert.equal(findAllByClass(grid(),'pick').filter(node=>node.children[0].checked).length,1,'只剩另一张还勾着');
+});
+test('编辑态删掉作品后，候选区那一格也要取消勾选（删了不能还显示勾着）',async()=>{
+  const {elements,state,ctx}=await boot();
+  stub(ctx,{lookup:async()=>[],details:async()=>({counts:{}}),posts:async()=>[post('11'),post('12')]});
+  elements.get('add-artist').onclick();
+  const card=()=>lastRender(state)[0];
+  const input=findByPlaceholder(card(),'画师名字（必填）');
+  input.value='tester';input.oninput();
+  findText(card(),'展开读取').onclick();
+  await wait(30);
+  const grid=()=>findByClass(card(),'candidate-previews');
+  const checkedCount=()=>findAllByClass(grid(),'pick').filter(node=>node.children[0].checked).length;
+  /* 勾上 #11，再回到作品格把它删掉。 */
+  const box=grid().children[0].children[0];box.checked=true;await box.onchange();
+  await wait(20);
+  assert.equal(checkedCount(),1,'勾上之后候选区应有 1 格显示已勾选');
+  const figure=findAllByClass(card(),'work').find(node=>findText(node,'移除'));
+  assert.ok(figure,'编辑态的作品格里应能找到「移除」');
+  findText(figure,'移除').onclick();
+  await wait(20);
+  assert.equal(String(findByClass(card(),'work-count').textContent).startsWith('本库图片 0'),true,'作品已从草稿里移出');
+  assert.equal(checkedCount(),0,'候选区那一格必须跟着取消勾选，不能还显示勾着');
 });
 test('页面是刚被右键菜单打开的那种：等数据文件夹就绪再建卡，然后回传结果',async()=>{
   const app=await fs.readFile('app/app.js','utf8');
@@ -2156,11 +2181,17 @@ test('回归：采集期间切换文件夹不打开选择器或写入另一库',
 
 
 test('浏览卡片按实际五格排列顺序切图，站点作品数跟随名字',async()=>{
- const {state,ctx}=await boot();let opened;ctx.ArtistViewer.open=value=>opened=value;
+ const {state,ctx,elements}=await boot();let opened;ctx.ArtistViewer.open=value=>opened=value;
  const reference={id:'10',thumb:'data:image/jpeg;base64,/9j/2Q=='},test1={id:'11',kind:'test',testSeq:1,thumb:reference.thumb},test2={id:'12',kind:'test',testSeq:2,thumb:reference.thumb};
- const card=state.card(bareArtist({works:[test1,test2,reference],counts:{total:456}}));
- findAllByClass(card,'thumb')[0].onclick();assert.deepEqual([...opened.items].map(work=>work.id),['10','12','11']);assert.equal(opened.work.id,'10');
- const count=findByClass(card,'artist-site-count');assert.equal(String(count.textContent),'作品数量：456');assert.equal(findByClass(findByClass(card,'name-row'),'artist-site-count'),count);
+ const artist=()=>bareArtist({works:[test1,test2,reference],counts:{total:456}});
+ /* 关着「显示测试风格图」：卡片上只有作品图，翻图列表里也就不该出现测试图。 */
+ const card=state.card(artist());
+ findAllByClass(card,'thumb')[0].onclick();assert.deepEqual([...opened.items].map(work=>work.id),['10'],'关掉开关时只列作品图');
+ /* 打开之后测试图回到最右两格，翻图顺序按卡片实际格位来：作品在最左，序号 2 在中间，序号 1 在最右。 */
+ const toggle=getEl(elements,'show-test');toggle.checked=true;await toggle.onchange();
+ const withSlots=state.card(artist());
+ findAllByClass(withSlots,'thumb')[0].onclick();assert.deepEqual([...opened.items].map(work=>work.id),['10','12','11']);assert.equal(opened.work.id,'10');
+ const count=findByClass(withSlots,'artist-site-count');assert.equal(String(count.textContent),'作品数量：456');assert.equal(findByClass(findByClass(withSlots,'name-row'),'artist-site-count'),count);
 });
 
 test('顶部额度分开显示张数、百分比与点数，重复点击合并请求',async()=>{

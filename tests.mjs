@@ -305,18 +305,23 @@ test('识别区按页取作品，每张都带缩略图与原图地址，无效�
  await assert.rejects(posts('a',{fetcher:async()=>({ok:false,status:429})}),/频繁/);
  await assert.rejects(posts('a',{fetcher:async()=>({ok:true,json:async()=>({})})}),/未返回作品/);
 });
-test('测试风格图片固定占右侧格子，序号 1 在最右，作品从左往右填空',()=>{
+test('测试风格图片只在开启「显示测试风格图」时占右侧格子，序号 1 在最右，作品从左往右填空',()=>{
  const works=n=>Array.from({length:n},(_,i)=>({id:String(i+1)}));
  const test=seq=>({id:'',kind:'test',testSeq:seq});
  const mark=slots=>slots.map(w=>w?(w.kind==='test'?'测'+w.testSeq:w.id):'空');
- assert.deepEqual(mark(store.previewWorks({works:[...works(2),test(1)]})),['1','2','空','空','测1'],'只有 2 张作品时中间留空，测试图仍在最右');
+ /* reserve=0（设置里关着「显示测试风格图」）：测试图一格都不占，也不去挤作品格。
+    用户关掉那个开关的意思就是"卡片上不要出现测试图"，所以这里不再是"排到最右"。 */
+ assert.deepEqual(mark(store.previewWorks({works:[...works(2),test(1)]})),['1','2','空','空','空'],'关掉开关时只排作品，测试图不出现');
  assert.deepEqual(mark(store.previewWorks({works:works(5)})),['1','2','3','4','5'],'没有测试图时照旧显示 5 张作品');
- assert.deepEqual(mark(store.previewWorks({works:[...works(2),test(1),test(2)]})),['1','2','空','测2','测1'],'序号 2 排在序号 1 的左边');
- assert.deepEqual(mark(store.previewWorks({works:[...works(6),test(1),test(2)]})),['1','2','3','测2','测1'],'作品让出被测试图占用的格子');
  assert.deepEqual(mark(store.previewWorks({works:works(3)})),['1','2','3','空','空'],'作品不足 5 张时后面留空');
- assert.deepEqual(mark(store.previewWorks({works:[...works(1),test(9)]})),['1','空','空','空','空'],'序号超出 5 格的测试图不显示');
+ assert.deepEqual(mark(store.previewWorks({works:[...works(1),test(9)]})),['1','空','空','空','空'],'序号超出的测试图更不该出现');
  assert.deepEqual(store.previewWorks({works:[]}).length,5,'空画师也要返回 5 个格子');
- assert.equal(store.previewWorks({works:[...works(1),test(1)]})[4].testSeq,1);
+ /* 开着「显示测试风格图」（reserve=2）：最右 2 格归测试图，测试图从右往左按序号排。 */
+ assert.deepEqual(mark(store.previewWorks({works:[...works(2),test(1)]},5,2)),['1','2','空','空','测1'],'只有 2 张作品时中间留空，测试图仍在最右');
+ assert.deepEqual(mark(store.previewWorks({works:[...works(2),test(1),test(2)]},5,2)),['1','2','空','测2','测1'],'序号 2 排在序号 1 的左边');
+ assert.deepEqual(mark(store.previewWorks({works:[...works(6),test(1),test(2)]},5,2)),['1','2','3','测2','测1'],'作品让出被测试图占用的格子');
+ assert.deepEqual(mark(store.previewWorks({works:[...works(1),test(9)]},5,2)),['1','空','空','空','空'],'序号超出 5 格的测试图不显示');
+ assert.equal(store.previewWorks({works:[...works(1),test(1)]},5,2)[4].testSeq,1);
 });
 test('固定测试风格图：右侧 2 格留给序号 1、2，作品图只占左边 3 格',()=>{
  const works=n=>Array.from({length:n},(_,i)=>({id:String(i+1)}));
@@ -349,9 +354,11 @@ test('拖进来的图片落到格子上：测试格按序号、作品格替换�
  next=store.placeWork({works:works(2)},2,[img(3)],{limit:5,reserve:2});
  assert.deepEqual(order(next),['1','2','新'],'拖到第 3 格（空位）就排在那里');
  assert.deepEqual(layout(next),['1','2','新','空','空']);
- /* 没开固定格、中间被测试图占了一格：多张图往右填时会跳过那一格 */
+ /* 多张图往右填时跳过中间那张测试图占的格子：第 1 张落到它后面（第 3 格），第 2 张接着第 4 格。
+    这里直接断言 placeWork 的返回顺序（不经过 previewWorks）——关掉「显示测试风格图」时
+    测试图本来就不出现在卡片上，用它核对排布只会把人绕进去。 */
  next=store.placeWork({works:[works(1)[0],{id:'',kind:'test',testSeq:3,thumb:'测试'}]},1,[img(1),img(2)],{limit:5,reserve:0});
- assert.deepEqual(layout(next,0),['1','新','测3','新','空'],'第 2 张跳过测试图占的格子，落到第 4 格');
+ assert.deepEqual(order(next),['1','测3','新','新'],'两张新图跳过测试图占的格子，依次落在它后面');
  /* 作品格：拖到已有作品的格子 → 换掉那一格 */
  next=store.placeWork({works:works(3)},1,[img(4)],{limit:5,reserve:2});
  assert.deepEqual(order(next),['1','新','3'],'换掉第 2 格，长度不变');
@@ -364,7 +371,7 @@ test('拖进来的图片落到格子上：测试格按序号、作品格替换�
  next=store.placeWork({works:works(3)},0,[img(1),img(2),img(3)],{limit:5,reserve:2});
  assert.deepEqual(layout(next),['新','新','新','空','空'],'左边 3 格换完就没有空位了');
  next=store.placeWork({works:works(5)},0,[img(1),img(2)],{limit:5,reserve:0});
- assert.deepEqual(layout(next,0),['新','新','3','4','5'],'没开固定格时左边 5 格都是作品格');
+ assert.deepEqual(layout(next,0),['新','新','3','4','5'],'关掉「显示测试风格图」时 5 格都是作品格');
  next=store.placeWork({works:works(5)},4,[img(1),img(2),img(3)],{limit:5,reserve:2});
  assert.equal(next.length,8,'格子用完了就追加到作品列表末尾');
  assert.equal(next[5].kind,'test','第一张进最右的固定测试格');assert.equal(next[5].testSeq,1);

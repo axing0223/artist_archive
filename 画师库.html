@@ -1002,13 +1002,15 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
     return seq;
   }
   /* 卡片预览格排布。默认 5 格、测试风格图按序号从右往左占位、作品图从左往右补空。
-     reserve>0 时（设置里开了「固定测试风格图」）最右 reserve 格留给序号 1..reserve 的测试图：
-     作品图只能用到左边的 limit-reserve 格，测试图还没生成时这几格也不会被作品挤占。 */
+     reserve>0 时（设置里开了「显示测试风格图」）最右 reserve 格留给序号 1..reserve 的测试图：
+     作品图只能用到左边的 limit-reserve 格，测试图还没生成时这几格也不会被作品挤占。
+     reserve===0 时（那个开关关着）测试风格图**一格都不占**：既没有固定格，也不去挤作品格——
+     用户关掉这个开关的意思就是"卡片上不要出现测试图"。数据本身还在，开关再打开就又能看到。 */
   function previewWorks(artist,limit=5,reserve=0){
     const works=Array.isArray(artist?.works)?artist.works:[],slots=new Array(limit).fill(null);
     const fixed=Math.max(0,Math.min(Number.isSafeInteger(reserve)&&reserve>0?reserve:0,limit)),cut=limit-fixed;
     const seqOf=work=>Number.isSafeInteger(work.testSeq)&&work.testSeq>0?work.testSeq:1;
-    for(const work of works){
+    if(fixed)for(const work of works){
       if(work.kind!=='test')continue;
       const seq=seqOf(work),primary=seq<=fixed?limit-seq:cut-seq;
       /* 固定格只认自己的序号：同一个序号重复出现时退到左边区域找空位，不去抢别的固定格。 */
@@ -1037,10 +1039,17 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
     for(const raw of incoming){
       if(at>=limit){works.push({...raw});at++;continue;}
       const slots=previewWorks({works},limit,reserve);
+      /* 定位「这一格现在摆的是哪张图」要用一份**测试图也在场**的布局：
+         reserve=0 时显示用的布局把测试图整个略过了，拿它去找就会找不到，
+         于是拖图过去不是替换、而是往列表末尾多塞一张（原来那张就成了看不见的隐藏图）。
+         在场的那一份要按**已有序号的最大值**来放，不能按"测试图有几张"——
+         决定测试图渲染在哪一格的是序号（slot = limit - seq），不是个数，按个数放会错位。 */
+      const highestSeq=Math.min(limit,works.reduce((max,work)=>work.kind==='test'?Math.max(max,Number.isSafeInteger(work.testSeq)&&work.testSeq>0?work.testSeq:1):max,0));
+      const lookup=reserve?slots:(highestSeq?previewWorks({works},limit,highestSeq):slots);
       /* 已经被别的测试图占掉的格子跳过（只可能出现在没开固定格的时候）。 */
-      while(at>index&&at<cut&&slots[at]&&slots[at].kind==='test')at++;
+      while(at>index&&at<cut&&lookup[at]&&lookup[at].kind==='test')at++;
       if(at>=limit){works.push({...raw});at++;continue;}
-      const current=slots[at]||null,isTest=at>=cut||!!(current&&current.kind==='test');
+      const current=lookup[at]||null,isTest=at>=cut||!!(current&&current.kind==='test');
       const entry=isTest?{...raw,kind:'test',testSeq:Math.max(1,limit-at)}:{...raw};
       if(current){const seat=works.indexOf(current);if(seat>=0)works[seat]=entry;else works.push(entry);}
       /* 空格子：作品是从左往右填的，所以空格子一定在所有已显示作品之后，直接排到末尾就是它。 */
@@ -2248,6 +2257,22 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
     });
     render();const ready=go(1);
     return {ready,tools:status,focus,selected:()=>[...picked.values()],added:()=>[...picked.keys()],
+      /* 外部把某件作品从作品列表里删掉之后调它：就地取消那一格的勾选与「已加入」标记。
+         只改这一个格子，不重画整页——重画会把候选列表的滚动位置和已经加载好的图片一起冲掉。
+         这里**不能先看 picked 里有没有它**：用户从作品格删掉时，onRemove 已经把 id 从 picked 里删了，
+         再去查就等于什么都没做（那一格还勾着，用户看到"删了还在"）。
+         定位用格子里那枚「#编号」文本——它就是这一格的标识，比 aria 属性更直接。 */
+      syncRemoved(id){
+        const key=String(id),wanted='#'+key;picked.delete(key);
+        for(const label of grid.children||[]){
+          if(!String(label.className||'').split(/\s+/).includes('pick'))continue;
+          const mark=label.children?.[2];
+          if(String(mark?.textContent??'')!==wanted)continue;
+          const box=label.children?.[0];
+          if(box)box.checked=false;
+          label.classList.remove('is-added');update();break;
+        }
+      },
       dispose(){disposed=true;revision++;if(typeof clearTimeout==='function')clearTimeout(focusTimer);controller?.abort();ArtistImages.dispose(group);container.replaceChildren();}};
   }
   root.WorkPicker={mount};
@@ -2830,10 +2855,18 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
      所以这类添加排队串行，各自轮到自己时才取最新数据、发序号——不能各自克隆整库快照。 */
   let addArtistTail=Promise.resolve();
   const saveControls=new Map();
+  /* 「设置」里的控件不参与写盘锁定。写盘期间把整页控件全禁用一下，用户看到的是
+     数字/日期框和滑块短暂变灰又变回来——而设置里的改一项就要写一次盘，等于每点一下都闪一次。
+     设置本身和列表没有冲突，锁它没有意义。 */
+  const insideSettings=node=>{
+    const dialog=node.closest?.('dialog');
+    return !!dialog&&(dialog.id==='settings'||dialog.id==='gen-settings');
+  };
   function lockSaveControls(){
     // 惰性挂载的卡片也不可在写盘中再次修改；inert 不阻止页面滚动。
     $('gallery').inert=true;
     for(const node of document.querySelectorAll('button,input,textarea,select')){
+      if(insideSettings(node))continue;
       if(!saveControls.has(node))saveControls.set(node,node.disabled);
       if(!saveControls.get(node))node.classList.add('is-saving-locked');
       node.disabled=true;
@@ -2903,6 +2936,12 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
     for(const node of [...parent.children])if(!wanted.has(node))node.remove();
     nodes.forEach((node,i)=>{if(parent.children[i]!==node)parent.insertBefore(node,parent.children[i]||null);});
   }
+  /* 作品从草稿里删掉时，如果作品选择器正开着，就把那一格的勾选跟着取消掉。
+     不这么做的话，候选区里它仍是勾着的——用户看到的是"删了还在"，再点一下反而又加回来。 */
+  function syncPickerAfterWorkRemoved(work){
+    const id=work?.id;if(!id||!editorPicker)return;
+    editorPicker.syncRemoved?.(id);
+  }
   const workStamp=(a,w)=>JSON.stringify([a.uid,w.id||'',w.kind||'',w.testSeq||0,FolderStore.imageOf(w,'thumb')]);
   function workFigure(a,w,slot,editing=false){
     const figure=el('figure','work'),img=el('img'),caption=el('figcaption');
@@ -2911,6 +2950,7 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
     const remove=editing?btn('移除',()=>{
       if(draft!==record.artist)return;const index=draft.works.indexOf(record.work);if(index<0)return;
       const settle=rememberWorkSlots(draft.uid);draft.works.splice(index,1);paintEditorWorks();markEditorPainted();settle();
+      syncPickerAfterWorkRemoved(record.work);
     },'danger-link'):confirmButton('删除','再点一次删除',()=>deleteSlotWork(record.artist,record.work),'slot-delete');
     record.remove=remove;ArtistImages.bind(img,a.uid,w,editing?'editor':'card:'+a.uid,'thumb');open.append(img);figure.append(open,caption);
     updateWorkFigure(figure,a,w,slot);return figure;
@@ -3256,7 +3296,11 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
   }
   function render(){
     const restoreFocus=window.ArtistWorkspace?.captureFilterFocus();
-    $('history-date').value=data.cutoffDate;$('save-large').checked=data.saveLargeImages===true;$('work-order').value=data.workOrder;
+    /* 设置对话框开着的时候不碰它里面的控件：数据截至日期是"改了要手动确认才生效"的输入框，
+       用户正在改、还没离开输入框时，一次无关的保存（比如顺手切了「保存大图」）会把它按
+       data.cutoffDate 重新赋值，把刚敲的日期冲掉。打开对话框时已经同步过一次，不用再刷。 */
+    const settingsOpen=$('settings').open===true;
+    if(!settingsOpen){$('history-date').value=data.cutoffDate;$('save-large').checked=data.saveLargeImages===true;$('work-order').value=data.workOrder;}
     /* 关了「显示测试风格图」就把顶部那个菜单整个收起来：留着入口却不显示那两格会让人以为坏了。
        关掉时顺手把展开状态也收起，免得下次打开时它自己弹着。 */
     const testMenu=$('test-menu');
@@ -3370,6 +3414,7 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
     if(index<0)return false;
     const settle=rememberWorkSlots();
     draft.works.splice(index,1);paintEditorWorks();markEditorPainted();settle();
+    syncPickerAfterWorkRemoved(work);
     return true;
   }
   function togglePicker(expand,manual=true){
