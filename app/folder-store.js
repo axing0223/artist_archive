@@ -15,7 +15,7 @@
   const imagePathPattern=new RegExp('^(?:缩略图|大图)\\/(?:[a-f0-9]{24}|'+NAME_CHARS+'\\.'+EXT+')$');
   const inlinePattern=/^data:image\/(jpeg|png|webp|gif|avif);base64,([a-zA-Z0-9+/=\s]+)$/;
   const remotePattern=/^https:\/\/\S+$/;
-  const snapshots=new WeakMap(),legacy=new WeakMap(),warnings=[];
+  const snapshots=new WeakMap(),legacy=new WeakMap(),indexText=new WeakMap(),warnings=[];
   const warn=message=>warnings.push(message);
   function takeWarnings(){const list=warnings.slice();warnings.length=0;return list;}
   /* order 不进指纹：它就是画师在 画师库.json 里的位置，读回来一律按位置重排，
@@ -150,7 +150,8 @@
     return new Blob([blob],{type:TYPES[name.split('.').pop()]||'application/octet-stream'});
   }
   async function read(dir){
-    let index;try{index=await json(dir,'画师库.json');}catch(e){if(e.name!=='NotFoundError')throw e;for await(const entry of dir.values())throw Error('请选择现有「数据」文件夹，或一个空文件夹。');snapshots.set(dir,new Map());legacy.set(dir,new Map());return empty();}
+    let index;try{const text=await (await (await dir.getFileHandle('画师库.json')).getFile()).text();index=JSON.parse(text);indexText.set(dir,text);}
+    catch(e){if(e.name!=='NotFoundError')throw e;for await(const entry of dir.values())throw Error('请选择现有「数据」文件夹，或一个空文件夹。');snapshots.set(dir,new Map());legacy.set(dir,new Map());indexText.set(dir,null);return empty();}
     if(index.version!==1||!Array.isArray(index.artists)||index.artists.length>20000||index.artists.some(id=>!ArtistId.valid(id)))throw Error('画师库索引格式错误');
     const taken=new Set(),seqOf=new Map();
     for(const stored of index.artists){const p=ArtistId.parse(stored);seqOf.set(stored,p?p.seq:null);if(p)taken.add(p.seq);}
@@ -284,7 +285,12 @@
       await Promise.allSettled(workers);
     }
     if(firstError)throw firstError;
-    await put(dir,'画师库.json',JSON.stringify({...data,artists:[...ids]},null,2));snapshots.set(dir,records);legacy.set(dir,new Map());
+    /* 索引只在内容真的变了时才写。它随画师人数线性变大（1200 位时一次约 89 ms，
+       比所有画师文件加起来还贵），而「只改标签名 / 改设置」这类操作经常连它一起没变——
+       序列化照做（这是判定的代价），但那一笔写盘可以省掉。 */
+    const index=JSON.stringify({...data,artists:[...ids]},null,2);
+    if(indexText.get(dir)!==index){await put(dir,'画师库.json',index);indexText.set(dir,index);}
+    snapshots.set(dir,records);legacy.set(dir,new Map());
     for(const {folder,used} of cleanup)for(const kind of IMAGE_KINDS)try{const images=await folder.getDirectoryHandle(FOLDER_OF[kind]);for await(const entry of images.values())if(entry.kind==='file'&&ownedNamePattern.test(entry.name)&&!used[kind].has(entry.name))await images.removeEntry(entry.name);}catch(error){warn('旧图片清理失败（'+error.message+'）');}
     /* 下面两段会删到同一批目录：登记过改名的旧目录，往往就是上一次索引里有、这次没有的那个。
        第一段删掉之后第二段再删只会报「找不到」，可那正说明目的已经达到，不该当成失败。

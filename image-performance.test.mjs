@@ -342,7 +342,10 @@ test('作品真的变了照样重写 信息.json 并清掉不再引用的旧图�
     edited.artists[1].works[1].thumb='缩略图/'+stale;
     const before={...counters};
     await store.write(dir,edited);
-    assert.equal(counters.write-before.write,2,'改了作品要重写这位画师的 信息.json，外加 画师库.json');
+    /* 只有 1 个文件：这位画师的 信息.json。索引（画师标识列表 + 头部设置）这次没变，
+       所以不重写——见下面「索引内容没变时不重写 画师库.json」。 */
+    assert.equal(counters.write-before.write,1,'改了作品要重写这位画师的 信息.json');
+    assert.equal(JSON.parse(await fs.readFile(path.join(root,'画师',target.uid,'信息.json'),'utf8')).works[1].thumb,'缩略图/'+stale,'改完的引用必须真的落盘');
     assert.ok((await fs.readdir(images)).includes(stale),'还在引用的图片不能被当成垃圾删掉');
     const dropped=structuredClone(edited);
     dropped.artists[1].works[1].thumb='https://cdn.donmai.us/preview/other.jpg';
@@ -421,6 +424,28 @@ test('只调整画师顺序时不重写任何 信息.json，只提交索引',asy
     assert.ok(counters.dir-before.dir<=4,'不该逐位打开画师目录，实际查了 '+(counters.dir-before.dir)+' 次');
     assert.deepEqual(saved.artists.map(a=>a.uid),reordered.artists.map(a=>a.uid));
     assert.deepEqual(JSON.parse(await fs.readFile(path.join(root,'画师库.json'),'utf8')).artists,reordered.artists.map(a=>a.uid));
+  }finally{await fs.rm(root,{recursive:true,force:true});}
+});
+/* 索引随人数线性变大（1200 位时写一次约 89 ms），而有些保存连它一起没变。
+   这时候不该再写一遍：内容一样，写下去只是白等。 */
+test('索引内容没变时不重写 画师库.json',async()=>{
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),'artist-index-')),counters={dir:0,file:0,write:0,remove:0};
+  try{
+    const library=sampleLibrary(30),dir=new NodeDir(root,counters);
+    await store.write(dir,library);
+    const indexFile=path.join(root,'画师库.json');
+    /* 只改一位画师的标签：索引里没有标签信息，所以索引内容一个字都不该变。 */
+    const tagged=structuredClone(library);
+    tagged.artists[0].tags=['新标签'];
+    let before={...counters};
+    await store.write(dir,tagged,'meta');
+    assert.equal(counters.write-before.write,1,'只该写那一位画师的 信息.json，索引不该重写');
+    /* 反过来：索引真变了就必须写。 */
+    const settings=structuredClone(tagged);settings.saveLargeImages=true;
+    before={...counters};
+    await store.write(dir,settings);
+    assert.equal(counters.write-before.write,1,'设置变了要重写索引');
+    assert.equal(JSON.parse(await fs.readFile(indexFile,'utf8')).saveLargeImages,true);
   }finally{await fs.rm(root,{recursive:true,force:true});}
 });
 test('扩展版本过旧时不启用接口通道，直接退回直连而不是干等到超时',async()=>{

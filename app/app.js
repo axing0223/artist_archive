@@ -206,8 +206,9 @@
   /* 业务校验拒绝（重名、目标已被删除…）与真正的写盘失败是两回事，不能混成一个 catch。 */
   const reject=message=>Object.assign(Error(message),{validation:true});
   /* onApplied 在数据校验合并后呈现本次操作，界面无需等待文件系统往返。
-     mode 是给落盘路径的提示：只有「改标签名 / 删标签」这类纯元数据操作才传 'meta'，
-     它让 folder-store 跳过图片目录与旧图清理——那些开销跟元数据毫无关系。 */
+     mode 是给落盘路径的提示：只有「改标签名 / 删标签 / 改分类名 / 删分类」这类纯元数据操作才传 'meta'，
+     它让 folder-store 跳过图片目录与旧图清理——那些开销跟元数据毫无关系。
+     别给会动图片的操作加这个标记：store 里有一道保险丝会把它退回完整路径，但那说明标记用错了。 */
   function save(next,message='已保存到数据文件夹',onApplied,mode=null){
     const targetFolder=folder;
     if(pendingSaves++===0){
@@ -1009,12 +1010,13 @@
         if(!name||name===from){listCategories();return;}
         if(data.categories.includes(name)){alert('这个分类已存在。');listCategories();return;}
         const next=clone(data);next.categories=next.categories.map(x=>x===from?name:x);next.artists.forEach(a=>{if(a.category===from)a.category=name;});if(state.category===from)state.category=name;
-        return save(next).then(listCategories);
+        /* 改分类名和改标签名一样，只动 信息.json 里的一个字段，图片一格都没变。 */
+        return save(next,`已把分类「${from}」改名为「${name}」`,undefined,'meta').then(listCategories);
       },
       onRemove:async from=>{
         const used=data.artists.filter(a=>a.category===from).length;
         const next=clone(data);next.categories=next.categories.filter(x=>x!==from);next.artists.forEach(a=>{if(a.category===from)a.category=null;});if(state.category===from)state.category='全部';
-        await save(next,used?`已删除分类「${from}」，${used} 位画师回到「待判断」`:`已删除分类「${from}」`);listCategories();
+        await save(next,used?`已删除分类「${from}」，${used} 位画师回到「待判断」`:`已删除分类「${from}」`,undefined,'meta');listCategories();
       }
     })));
     fillManageEmpty('category-empty',filter,visible.length,'分类');

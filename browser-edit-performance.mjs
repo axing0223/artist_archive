@@ -64,7 +64,9 @@ try{
   const state=await send('Runtime.evaluate',{expression:'document.readyState === "complete" && typeof FolderStore !== "undefined"',returnByValue:true});
   if(state.result.value)break;await sleep(50);
  }
- const result=await send('Runtime.evaluate',{awaitPromise:true,returnByValue:true,expression:'(window.__tagRenameCheck='+tagRenameCheck.toString()+',window.__perfTagArtists='+JSON.stringify(Number(process.env.PERF_TAG_ARTISTS)||60)+',('+browserChecks.toString()+'))('+JSON.stringify(Number(process.env.PERF_ARTISTS)||2)+')'});
+ const taggedSetting=process.env.PERF_TAG_TAGGED?Number(process.env.PERF_TAG_TAGGED):null;
+ const expression='(window.__tagRenameCheck='+tagRenameCheck.toString()+',window.__perfTagArtists='+JSON.stringify(Number(process.env.PERF_TAG_ARTISTS)||60)+',window.__perfTagTagged='+JSON.stringify(taggedSetting)+',('+browserChecks.toString()+'))('+JSON.stringify(Number(process.env.PERF_ARTISTS)||2)+')';
+ const result=await send('Runtime.evaluate',{awaitPromise:true,returnByValue:true,expression});
  if(result.exceptionDetails)throw Error(result.exceptionDetails.exception?.description||result.exceptionDetails.text);
  assert.deepEqual(errors,[],'页面不应出现未处理异常');
  console.log(JSON.stringify(result.result.value,null,2));
@@ -119,7 +121,7 @@ async function browserChecks(artistCount){
   results.push({action,artistCount,storageDelay,renderMs:Math.round(renderMs),firstRenderMs:Math.round(firstRender-start),lastRenderMs:Math.round(renderStart-start),movementMs:Math.round(movementMs),maxFrameGap:Math.round(maxFrameGap),writeMs:Math.round(writeMs),writeStartedMs:Math.round(writeStart-start)});
   FolderStore.write=originalWrite;FolderStore.read=originalRead;ArtistGallery.render=originalRender;
  }
- results.push(await window.__tagRenameCheck({folder,originalWrite,originalRead,until,check,tagCount:window.__perfTagArtists}));
+ results.push(...await window.__tagRenameCheck({folder,originalWrite,originalRead,until,check,tagCount:window.__perfTagArtists}));
  return results;
 }
 /* 「改标签命名」这条路的尺子。重命名一个标签要重写"带这个标签的那批画师"，
@@ -130,7 +132,10 @@ async function browserChecks(artistCount){
    索引与 信息.json 都走 FileSystemFileHandle.createWritable，拿不到独立计数，
    所以直接比对 信息.json 的修改时间，数出到底重写了几位画师。 */
 async function tagRenameCheck({folder:rawFolder,originalWrite,originalRead,until,check,tagCount:count}){
- const tagCount=Math.max(2,Number(count)||60),oldName='旧名',newName='新名',tagged=Math.floor(tagCount/2);
+ const tagCount=Math.max(2,Number(count)||60),oldName='旧名',newName='新名';
+ /* 带标签的人数默认取一半；PERF_TAG_TAGGED 可以把它压到很小，
+    用来把「改一位画师的代价」与「索引写盘的固定代价」分开量。 */
+ const tagLimit=Number(window.__perfTagTagged),tagged=Number.isFinite(tagLimit)&&tagLimit>0?Math.min(tagCount,Math.floor(tagLimit)):Math.floor(tagCount/2);
  const counters={dir:0,file:0,write:0,remove:0,list:0};
  /* Chrome 的 FileSystemDirectoryHandle 上，方法不是可写属性，直接赋值无法拦截（会静默无效）。
     所以包一层 Proxy，只改写五个要计数的成员，其余原样透出。 */
@@ -226,8 +231,21 @@ async function tagRenameCheck({folder:rawFolder,originalWrite,originalRead,until
  /* store 侧实测耗时按位均摊。注意这**只是落盘那一段**：用户体感的等待还包含
     应用在它外面的 structuredClone、指纹与索引序列化，那部分这次没单独量。 */
  const writePerArtist=writeMs/tagged;
- return {action:'重命名标签',artistCount:tagCount,tagged,rewritten:touched.length,
+ const tagResult={action:'重命名标签',artistCount:tagCount,tagged,rewritten:touched.length,
   startupMs:Math.round(startupMs),writeMs:Math.round(writeMs),perArtistMs:+writePerArtist.toFixed(2),
   counts:{dir:delta.dir,file:delta.file,list:delta.list,write:delta.write,remove:delta.remove},
   perArtist:{dir:+(delta.dir/tagged).toFixed(2),file:+(delta.file/tagged).toFixed(2),list:+(delta.list/tagged).toFixed(2)}};
+ /* 再量一次「只改设置」：它只动索引里一个开关，画师文件一位都不该碰、图片一格都不该动。
+     这次保存的耗时基本就是**索引写盘的固定成本**，正是要拿来判断"跳过没变的索引"值不值。 */
+ const toggle=document.getElementById('save-large'),before1=!!toggle.checked;
+ counters.dir=0;counters.file=0;counters.list=0;counters.write=0;counters.remove=0;meta=null;
+ toggle.checked=!before1;toggle.dispatchEvent(new Event('change',{bubbles:true}));
+ await until(()=>!document.getElementById('gallery').inert);
+ check(meta,'改设置也必须真的走到落盘');
+ const setting=await originalRead(folder);
+ check(setting.saveLargeImages===!before1,'设置开关必须真的落盘');
+ check(meta.dir<=4,'只改设置不该逐位打开画师目录，实际查了 '+meta.dir+' 次');
+ check(meta.list===0,'只改设置不该遍历任何图片目录，实际遍历了 '+meta.list+' 轮');
+ return [tagResult,{action:'改设置（只改索引）',artistCount:tagCount,writeMs:Math.round(writeMs),
+  counts:{dir:meta.dir,file:meta.file,list:meta.list,write:meta.write,remove:meta.remove}}];
 }
