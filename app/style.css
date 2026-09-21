@@ -401,12 +401,7 @@ html[data-density=compact] .artist:not(.is-editing) .artist-footer{grid-area:not
 html[data-density=compact] .artist:not(.is-editing) .serial{font-size:11px}
 html[data-density=compact] .artist:not(.is-editing) .alias{font-size:11px}
 html[data-density=compact] .artist:not(.is-editing) .secondary span,html[data-density=compact] .artist:not(.is-editing) .artist-site-count,html[data-density=compact] .artist:not(.is-editing) .artist-before-inline{font-size:11px}
-html[data-density=compact] .artist:not(.is-editing) :is(.artist-site-count,.artist-before-count){border-inline-start:0;padding-inline-start:0}
-/* 「作品数量：N（M）」是紧凑视图的说法；舒适视图仍用「站点作品 N」+ 独立的截至量那一项。 */
-html[data-density=compact] .artist:not(.is-editing) .count-wide{display:none}
-html[data-density=compact] .artist:not(.is-editing) .count-compact{display:inline}
-html[data-density=compact] .artist:not(.is-editing) .artist-before-count{display:none}
-html[data-density=compact] .artist:not(.is-editing) .artist-before-inline{display:inline}
+html[data-density=compact] .artist:not(.is-editing) :is(.artist-site-count){border-inline-start:0;padding-inline-start:0}
 html[data-density=compact] .artist:not(.is-editing) h2{font-size:20px;line-height:1.3}
 html[data-density=compact] .artist:not(.is-editing) .artist-notes{max-width:100%;font-size:12px}
 html[data-density=compact] .artist:not(.is-editing) .artist-notes>summary{display:none}
@@ -564,13 +559,11 @@ to{opacity:1;transform:none}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after,*::backdrop,*::details-content{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 
 /* 分页选择器与卡片元信息 */
-.artist-site-count,.artist-before-count{font-size:12px;color:var(--muted);border-inline-start:1px solid var(--faint);padding-inline-start:10px;white-space:nowrap}
+.artist-site-count{font-size:12px;color:var(--muted);border-inline-start:1px solid var(--faint);padding-inline-start:10px;white-space:nowrap}
 /* 站点作品少于 50：整项标红，一屏卡片里一眼能挑出来。 */
 .artist-site-count.is-low{color:var(--danger);background:var(--danger-bg);border-inline-start-color:var(--danger);border-radius:4px;padding-inline-end:6px;font-weight:600}
-/* 截至量的简略形态（紧凑视图用），跟在「站点作品 N」后面；默认藏起来，由紧凑视图那条规则放出来。 */
-.artist-before-inline{display:none;color:var(--muted)}
-/* 紧凑视图的数量说法（「作品数量：N（M）」），默认藏起来，由紧凑视图那条规则放出来。 */
-.count-compact{display:none}
+/* 截至量的括号（「作品数量：1800（1200）」），两套视图都显示，只是颜色淡一点。 */
+.artist-before-inline{color:var(--muted)}
 .artist-footer:empty{display:none}
 .artist-footer{justify-content:flex-start}
 .is-armed:is(.danger,.slot-delete,.primary-action,.danger-link),.artist-actions>.danger.is-armed{color:#fff;background:var(--danger-solid);border-color:var(--danger-solid)}

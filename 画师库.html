@@ -409,12 +409,7 @@ html[data-density=compact] .artist:not(.is-editing) .artist-footer{grid-area:not
 html[data-density=compact] .artist:not(.is-editing) .serial{font-size:11px}
 html[data-density=compact] .artist:not(.is-editing) .alias{font-size:11px}
 html[data-density=compact] .artist:not(.is-editing) .secondary span,html[data-density=compact] .artist:not(.is-editing) .artist-site-count,html[data-density=compact] .artist:not(.is-editing) .artist-before-inline{font-size:11px}
-html[data-density=compact] .artist:not(.is-editing) :is(.artist-site-count,.artist-before-count){border-inline-start:0;padding-inline-start:0}
-/* 「作品数量：N（M）」是紧凑视图的说法；舒适视图仍用「站点作品 N」+ 独立的截至量那一项。 */
-html[data-density=compact] .artist:not(.is-editing) .count-wide{display:none}
-html[data-density=compact] .artist:not(.is-editing) .count-compact{display:inline}
-html[data-density=compact] .artist:not(.is-editing) .artist-before-count{display:none}
-html[data-density=compact] .artist:not(.is-editing) .artist-before-inline{display:inline}
+html[data-density=compact] .artist:not(.is-editing) :is(.artist-site-count){border-inline-start:0;padding-inline-start:0}
 html[data-density=compact] .artist:not(.is-editing) h2{font-size:20px;line-height:1.3}
 html[data-density=compact] .artist:not(.is-editing) .artist-notes{max-width:100%;font-size:12px}
 html[data-density=compact] .artist:not(.is-editing) .artist-notes>summary{display:none}
@@ -572,13 +567,11 @@ to{opacity:1;transform:none}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after,*::backdrop,*::details-content{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 
 /* 分页选择器与卡片元信息 */
-.artist-site-count,.artist-before-count{font-size:12px;color:var(--muted);border-inline-start:1px solid var(--faint);padding-inline-start:10px;white-space:nowrap}
+.artist-site-count{font-size:12px;color:var(--muted);border-inline-start:1px solid var(--faint);padding-inline-start:10px;white-space:nowrap}
 /* 站点作品少于 50：整项标红，一屏卡片里一眼能挑出来。 */
 .artist-site-count.is-low{color:var(--danger);background:var(--danger-bg);border-inline-start-color:var(--danger);border-radius:4px;padding-inline-end:6px;font-weight:600}
-/* 截至量的简略形态（紧凑视图用），跟在「站点作品 N」后面；默认藏起来，由紧凑视图那条规则放出来。 */
-.artist-before-inline{display:none;color:var(--muted)}
-/* 紧凑视图的数量说法（「作品数量：N（M）」），默认藏起来，由紧凑视图那条规则放出来。 */
-.count-compact{display:none}
+/* 截至量的括号（「作品数量：1800（1200）」），两套视图都显示，只是颜色淡一点。 */
+.artist-before-inline{color:var(--muted)}
 .artist-footer:empty{display:none}
 .artist-footer{justify-content:flex-start}
 .is-armed:is(.danger,.slot-delete,.primary-action,.danger-link),.artist-actions>.danger.is-armed{color:#fff;background:var(--danger-solid);border-color:var(--danger-solid)}
@@ -1772,17 +1765,6 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
     const works=slot.querySelector('.works'),box=works?.getBoundingClientRect();
     return {left:box?box.left:null,width:box?box.width:null,thumbs:[...slot.querySelectorAll('.thumb,.work-empty,.work-generate')].map(node=>({node,height:node.getBoundingClientRect().height}))};
   }
-  /* 把即将被 CSS 藏起来的元素冻在它原来的位置淡出：藏掉之后它就不再渲染，动画也就没意义了。
-     position/left/top/width 都是临时的内联值，动画一结束全部撤掉，不留副作用。 */
-  function fadeOutFrozen(node,rect,cardRect){
-    const style=node.style;
-    style.display='block';style.position='absolute';style.zIndex='1';style.margin='0';
-    style.left=(rect.left-cardRect.left)+'px';style.top=(rect.top-cardRect.top)+'px';style.width=rect.width+'px';
-    const fade=node.animate([{opacity:1},{opacity:0}],{duration:LAYOUT_MS,easing:'ease-in'});
-    const settle=()=>{for(const name of ['display','position','zIndex','margin','left','top','width'])style[name]='';};
-    fade.onfinish=settle;fade.oncancel=settle;
-    layoutAnimations.push(fade);
-  }
   const LAYOUT_MS=320,TEXT_MS=160,TEXT_STAGGER_MS=45;
   let layoutAnimations=[];
   /* 换布局（舒适 ↔ 紧凑）时把版面走成一段动画，走完再让文字按顺序淡入。分两段是有意的：
@@ -1800,26 +1782,11 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
        而且各自的收尾回调会把新动画刚设好的抬层属性抹掉。 */
     for(const animation of layoutAnimations)animation.cancel?.();
     layoutAnimations=[];
-    /* 同一份数据的两种写法（舒适视图是独立一项「数据截至日前作品」，紧凑视图并进括号里）：
-       切换后会被 CSS 藏成 display:none 的那一个，得在版面段里就淡出去，不能等文字段。
-       它的旧位置要先量下来——切换之后它就不渲染了，量不到。 */
-    const leaving=[];
-    for(const node of document.querySelectorAll('.artist .artist-before-count,.artist .artist-before-inline')){
-      const card=node.closest?.('.artist');
-      if(!card||getComputedStyle(node).display==='none')continue;
-      leaving.push({node,rect:node.getBoundingClientRect(),cardRect:card.getBoundingClientRect()});
-    }
     const before=new Map();
     for(const [uid,slot] of slots)if(mounted.has(uid))before.set(uid,previewGeometry(slot));
     mutate();
     // 离屏占位要立刻按新布局修正，否则它们还留着旧高度，滚到那里会跳一下。
     remeasure();
-    /* 切换后确实被藏起来的那些，冻住旧位置淡出——和版面段同时走，所以它是「走」不是「啪」地消失。
-       顺序有讲究：冻住时会给它加上内联的 display:block，而下面按行淡入是按 display 判断的，
-       所以必须把它们记进 frozen、在文字段里排除掉；否则同一个元素会同时挂着淡出和淡入两个动画，
-       后建的那个（fill:'backwards' 的淡入）会把它一直按在透明上。 */
-    const frozen=new Set();
-    for(const item of leaving)if(item.node.isConnected&&getComputedStyle(item.node).display==='none'){frozen.add(item.node);fadeOutFrozen(item.node,item.rect,item.cardRect);}
     for(const [uid,slot] of slots){
       const was=before.get(uid);if(!was)continue;
       const card=slot.firstElementChild;
@@ -1857,12 +1824,12 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
          判断「这一行要不要淡入」只看 display，不看当前高度：备注的 ::details-content 是从
          0 高度过渡展开的，切换那一瞬间量到的高度还是 0，用高度过滤会把整段备注漏掉。 */
       const rows=[
-        [...card.querySelectorAll('.serial,.artist-site-count,.artist-before-count,.artist-meta')],
+        [...card.querySelectorAll('.serial,.artist-site-count,.artist-meta')],
         [card.querySelector('h2')],
         [card.querySelector('.alias')],
         [card.querySelector('.artist-notes')],
       ];
-      rows.forEach((nodes,step)=>nodes.filter(node=>node&&!frozen.has(node)&&getComputedStyle(node).display!=='none').forEach(node=>{
+      rows.forEach((nodes,step)=>nodes.filter(node=>node&&getComputedStyle(node).display!=='none').forEach(node=>{
         if(typeof node.animate!=='function')return;
         layoutAnimations.push(node.animate([{opacity:0},{opacity:1}],{duration:TEXT_MS,delay:LAYOUT_MS+step*TEXT_STAGGER_MS,easing:'ease-out',fill:'backwards'}));
       }));
@@ -2811,16 +2778,13 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
     /* 站点作品少于 50 的整项标红：这一档基本等于刚起步或快清号了，值得一眼从一屏卡片里挑出来。
        注意「没读到」在数据里是 null 而不是缺字段——Number(null)===0，写成数字判断会把没读到的当成 0。 */
     const siteTotal=a.counts?.total,lowWorks=knownCount(siteTotal)&&Number(siteTotal)<50;
-    const count=el('span','artist-site-count'+(lowWorks?' is-low':''));count.title='本库收录 '+a.works.length+' 张；截至日期：'+(a.counts?.beforeDate||data.cutoffDate);
-    /* 两套视图各用各的说法：舒适视图是「站点作品 N」（截至量另起一项），
-       紧凑视图按《使用说明》里那句合成一行「作品数量：N（M）」。两套文字都挂在同一项里、
-       由 CSS 挑一个显示——切换密度就不必重画卡片（重画会让图片重新加载，正是要避免的闪烁）。 */
-    count.append(el('span','count-wide','站点作品 '+(siteTotal??'未读取')));
-    count.append(el('span','count-compact','作品数量：'+(siteTotal??'未读取')));
+    /* 两套视图共用一套说法：「作品数量：最新数量（截至日期数量）」，和《使用说明》里那句一致。
+       括号里是截至日期之前有多少——并排才看得出涨了多少；没读到就整个省略括号。
+       括号外那个数才是「少于 50 标红」的判定对象。 */
+    const count=el('span','artist-site-count'+(lowWorks?' is-low':''),'作品数量：'+(siteTotal??'未读取'));
     if(knownCount(a.counts?.beforeTotal))count.append(el('span','artist-before-inline','（'+a.counts.beforeTotal+'）'));
+    count.title='本库收录 '+a.works.length+' 张；截至日期：'+(a.counts?.beforeDate||data.cutoffDate);
     row.append(count);
-    /* 站点作品是「现在有多少」，这一项是「截至日期之前有多少」：两者并排才看得出涨了多少。 */
-    const beforeCount=el('span','artist-before-count','数据截至日前作品 '+(a.counts?.beforeTotal??'未读取'));beforeCount.title='截至日期：'+(a.counts?.beforeDate||data.cutoffDate);row.append(beforeCount);
     const meta=el('div','artist-meta');meta.append(el('span',a.category?'primary':'pending-badge',a.category||'待判断'));
     if(a.tags.length){const tags=el('div','secondary');a.tags.forEach(t=>tags.append(el('span','',t)));meta.append(tags);}
     if(previous)for(const node of [...article.children])if(node.className.startsWith('score-badge'))node.remove();

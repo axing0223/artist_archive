@@ -1186,15 +1186,14 @@ test('站点作品少于 50 的整项标红，数量没读到的不标',async()=
   await wait(40);
   const low=findByClass(lastRender(state)[0],'artist-site-count');
   assert.equal(String(low.className),'artist-site-count is-low','少于 50 要整项标红');
-  assert.match(String(findByClass(low,'count-wide').textContent),/站点作品 12/,'数字照常显示');
-  assert.equal(findByClass(low,'count-compact').textContent,'作品数量：12','紧凑视图的说法也在同一项里，由 CSS 挑一个显示');
+  assert.match(String(low.textContent),/作品数量：12/,'数字照常显示');
   /* 数量没读到 = 不知道，不等于少：不许标红。 */
   stub(ctx,{lookup:async plan=>[{id:2,name:plan.query,aliases:[],pageUrl:''}],details:async()=>({}),posts:async()=>[post('2')]});
   state.pageListeners[0]({type:'artist-library.create',text:'unknown',requestId:'r2',sourceTabId:42},null,()=>{});
   await wait(40);
   const unknown=findByClass(lastRender(state)[1],'artist-site-count');
   assert.equal(String(unknown.className),'artist-site-count','未读取数量不该标红：'+JSON.stringify({class:String(unknown.className),text:String(unknown.textContent),rows:state.rows.map(a=>[a.name,a.counts]),cards:lastRender(state).map(c=>[c.dataset?.artist,findByClass(c,'artist-site-count')?.className])}));
-  assert.match(String(findByClass(unknown,'count-wide').textContent),/未读取/);
+  assert.match(String(unknown.textContent),/作品数量：未读取/);
 });
 test('快捷识别：勾选候选作品后点「添加此画师」，只有勾上的才保存',async()=>{
   const {elements,state,ctx}=await boot();
@@ -1561,12 +1560,12 @@ test('批量采集：每位画师采完就刷新对应卡片，不用等整批�
   await runBatch(elements,'甲\n乙',true);
   assert.deepEqual(asked,['甲','乙'],'一位一位按名单顺序采');
   const cardOf=(render,name)=>render.find(card=>card.dataset.artist===name);
-  const showsCount=(render,name,text)=>{const card=cardOf(render,name);return !!card&&String(findByClass(card,'count-wide').textContent)===text;};
-  const at=state.renders.findIndex(render=>showsCount(render,'甲','站点作品 11'));
+  const showsCount=(render,name,text)=>{const card=cardOf(render,name);return !!card&&String(findByClass(card,'artist-site-count').textContent)===text;};
+  const at=state.renders.findIndex(render=>showsCount(render,'甲','作品数量：11'));
   assert.ok(at>0,'甲采完就该有一次渲染把他的数量与缩略图补上');
   assert.ok(at<state.renders.length-1,'这次渲染要发生在整批结束之前，而不是最后统一刷新');
-  assert.equal(showsCount(state.renders[at],'乙','站点作品 22'),false,'那一刻乙还没采到');
-  assert.equal(showsCount(state.renders[state.renders.length-1],'乙','站点作品 22'),true,'乙采完同样补上');
+  assert.equal(showsCount(state.renders[at],'乙','作品数量：22'),false,'那一刻乙还没采到');
+  assert.equal(showsCount(state.renders[state.renders.length-1],'乙','作品数量：22'),true,'乙采完同样补上');
 });
 test('批量采集：采完自动清空筛选，并把分类切到「待判断」',async()=>{
   const {elements,state,ctx}=await boot();
@@ -1871,7 +1870,7 @@ test('浏览卡片按实际五格排列顺序切图，站点作品数跟随名�
  const reference={id:'10',thumb:'data:image/jpeg;base64,/9j/2Q=='},test1={id:'11',kind:'test',testSeq:1,thumb:reference.thumb},test2={id:'12',kind:'test',testSeq:2,thumb:reference.thumb};
  const card=state.card(bareArtist({works:[test1,test2,reference],counts:{total:456}}));
  findAllByClass(card,'thumb')[0].onclick();assert.deepEqual([...opened.items].map(work=>work.id),['10','12','11']);assert.equal(opened.work.id,'10');
- const count=findByClass(card,'artist-site-count');assert.equal(findByClass(count,'count-wide').textContent,'站点作品 456');assert.equal(findByClass(findByClass(card,'name-row'),'artist-site-count'),count);
+ const count=findByClass(card,'artist-site-count');assert.equal(String(count.textContent),'作品数量：456');assert.equal(findByClass(findByClass(card,'name-row'),'artist-site-count'),count);
 });
 
 test('顶部额度分开显示张数、百分比与点数，重复点击合并请求',async()=>{
@@ -2072,21 +2071,23 @@ test('回归：勾选作品下载缩略图期间仍然可以按 a/d 翻页',asyn
 
 /* ── 回归：卡片计数与顶部动作区 ─────────────────────────────────────── */
 
-test('画师卡片：站点作品后面跟着「数据截至日前作品」',async()=>{
+test('画师卡片：作品数量把截至量放在括号里，两套视图同一套说法',async()=>{
   const {state}=await boot();
   const card=state.card(bareArtist({counts:{total:456,beforeTotal:332,beforeDate:'2026-07-01'}}));
-  const before=findByClass(card,'artist-before-count');
-  assert.ok(before,'卡片要显示数据截至日前的作品数');
-  assert.equal(before.textContent,'数据截至日前作品 332');
-  assert.equal(findByClass(findByClass(card,'artist-site-count'),'count-wide').textContent,'站点作品 456','原来那一项不受影响');
-  const row=findByClass(card,'name-row');
-  assert.ok(row.children.indexOf(before)>row.children.indexOf(findByClass(card,'artist-site-count')),'排在「站点作品」后面');
-  assert.match(String(before.title),/2026-07-01/,'悬停要说明这是哪个截至日期');
+  const count=findByClass(card,'artist-site-count');
+  assert.equal(String(count.textContent),'作品数量：456','括号外是站点上的最新数量');
+  const inline=findByClass(count,'artist-before-inline');
+  assert.ok(inline,'截至量要跟在同一个里，不再另起一项');
+  assert.equal(inline.textContent,'（332）','括号里是截至日期之前的数量');
+  assert.equal(findByClass(card,'artist-before-count'),null,'独立的「数据截至日前作品」那一项已经删掉');
+  assert.match(String(count.title),/2026-07-01/,'悬停要说明这是哪个截至日期');
 });
-test('画师卡片：没读过数量时，数据截至日前作品显示未读取',async()=>{
+test('画师卡片：没读过数量时只写未读取，也不留空括号',async()=>{
   const {state}=await boot();
   const card=state.card(bareArtist({counts:{}}));
-  assert.equal(findByClass(card,'artist-before-count').textContent,'数据截至日前作品 未读取');
+  const count=findByClass(card,'artist-site-count');
+  assert.equal(String(count.textContent),'作品数量：未读取');
+  assert.equal(findByClass(count,'artist-before-inline'),null,'没读到截至量就整个省略括号');
 });
 test('顶部动作：菜单并进标题区，顺序为更多操作 / 测试风格图 / 批量采集画师 / 添加画师',async()=>{
   const html=await fs.readFile('app/index.html','utf8');
