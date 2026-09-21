@@ -368,7 +368,7 @@ html[data-density=comfortable] .artist-footer{margin-top:6px;padding-top:6px}
 /* 紧凑：左列按《使用说明》那句与参考图重排——序号与数量一行、名字单独一行、笔名做成小 chip，
    画风描述与备注跟在下面；分类与标签浮到上边框之上；操作按钮停在右上角。 */
 html[data-density=compact] #gallery{gap:18px}
-html[data-density=compact] .artist:not(.is-editing){--compact-col:220px;--compact-gap:14px;--compact-pad:11px;display:grid;grid-template-columns:var(--compact-col) minmax(0,1fr);grid-template-areas:"info works" "notes works";align-items:start;column-gap:var(--compact-gap);padding:9px var(--compact-pad) 7px;background:linear-gradient(90deg,var(--identity) 0 calc(var(--compact-pad) + var(--compact-col) + 6px),var(--panel) calc(var(--compact-pad) + var(--compact-col) + 6px))}
+html[data-density=compact] .artist:not(.is-editing){--compact-col:220px;--compact-gap:14px;--compact-pad:11px;--compact-actions:200px;display:grid;grid-template-columns:var(--compact-col) minmax(0,1fr);grid-template-areas:"info works" "notes works";align-items:start;column-gap:var(--compact-gap);padding:9px var(--compact-pad) 7px;background:linear-gradient(90deg,var(--identity) 0 calc(var(--compact-pad) + var(--compact-col) + 6px),var(--panel) calc(var(--compact-pad) + var(--compact-col) + 6px))}
 html[data-density=compact] .artist:not(.is-editing) .artist-info{grid-area:info;flex-direction:column;align-items:stretch;justify-content:flex-start;gap:7px;margin-bottom:0}
 /* 左列四行：①序号 + 作品数量 ②名字 ③笔名 ④采集中（有才出现）。 */
 html[data-density=compact] .artist:not(.is-editing) .name-row{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:baseline;gap:4px 8px}
@@ -377,10 +377,11 @@ html[data-density=compact] .artist:not(.is-editing) .name-row>.artist-site-count
 html[data-density=compact] .artist:not(.is-editing) .name-row>h2{grid-area:2/1/3/3}
 html[data-density=compact] .artist:not(.is-editing) .name-row>.alias{grid-area:3/1/4/3;justify-self:start;background:var(--accent-soft);color:var(--accent);border-radius:4px;padding:1px 6px}
 html[data-density=compact] .artist:not(.is-editing) .name-row>.artist-collecting{grid-area:4/1/5/3;justify-self:start}
-/* 分类与标签贴在卡片内的最顶上一行（top:0，不再破窗），从预览列左缘开始向右排。
-   横带自己不要底色，底色留给每个 chip；左边界跟网格第一列对齐，用同一组变量算。
-   高度压到 14px 是为了给下面那排按钮让位——它们必须和舒适视图落在同一处。 */
-html[data-density=compact] .artist:not(.is-editing) .artist-meta{position:absolute;top:0;left:calc(var(--compact-pad) + var(--compact-col) + var(--compact-gap));right:var(--compact-pad);height:14px;align-items:center;flex-wrap:nowrap;overflow:hidden;gap:4px;border-inline-start:0;padding:0;background:none}
+/* 顶部就一行：分类标签在左、右上角按钮在右，和舒适视图一样共用一行。
+   标签从预览列左缘开始向右排，到按钮前面收住——按钮宽度用 --compact-actions 预留
+   （删除 / 画师页面 / 编辑；文案改了要同步这个值，断言会守住「不许压上去」）。
+   行高取按钮的高度、内容垂直居中，两块才对得齐。 */
+html[data-density=compact] .artist:not(.is-editing) .artist-meta{position:absolute;top:15px;left:calc(var(--compact-pad) + var(--compact-col) + var(--compact-gap));right:calc(var(--compact-pad) + var(--compact-actions) + 8px);height:30px;align-items:center;flex-wrap:nowrap;overflow:hidden;gap:4px;border-inline-start:0;padding:0;background:none}
 html[data-density=compact] .artist:not(.is-editing) .secondary{gap:4px}
 html[data-density=compact] .artist:not(.is-editing) .secondary span{background:var(--raised);color:var(--muted);border-radius:0 0 4px 4px;padding:1px 6px;font-size:11px;line-height:1}
 html[data-density=compact] .artist:not(.is-editing) .secondary span+span::before{content:none}
@@ -388,7 +389,9 @@ html[data-density=compact] .artist:not(.is-editing) .secondary span+span::before
    量出来同为 16/15），间距不覆盖、沿用基础规则的 6px 与同样的字号内边距。
    绝对定位只是为了脱离「左列」这个容器，视觉上它就是卡片右上角那一排。 */
 html[data-density=compact] .artist:not(.is-editing) .artist-actions{position:absolute;top:15px;right:14px}
-html[data-density=compact] .artist:not(.is-editing) .works{grid-area:works;gap:6px;margin-top:36px}
+/* 预览与按钮的间距同样对齐舒适视图：那边按钮下沿 46、预览上沿 54，隔 8px；
+   这边内容从 10px 开始，所以 10 + 44 = 54，间距也是 8px。 */
+html[data-density=compact] .artist:not(.is-editing) .works{grid-area:works;gap:6px;margin-top:44px}
 /* 紧凑视图的高度由它自己那条滑杆决定：设置里两条滑杆互不影响。 */
 html[data-density=compact] .artist:not(.is-editing) :is(.thumb,.work-empty,.work-generate){height:var(--card-size-compact)}
 html[data-density=compact] .artist:not(.is-editing) .work figcaption{margin-top:2px;min-height:15px;font-size:11px}
