@@ -615,8 +615,10 @@ to{opacity:1;transform:none}
 .is-armed:is(.danger,.slot-delete,.primary-action,.danger-link),.artist-actions>.danger.is-armed{color:#fff;background:var(--danger-solid);border-color:var(--danger-solid)}
 /* 反选态（排除）也走实心红，和「上膛」的危险操作同一套颜色，一眼就能和正选（实心强调色）分开。
    这条必须在按钮基础样式之后，否则颜色会被顺序盖掉。减号用 ::before 加，不改按钮文字。 */
-.is-excluded,.is-excluded:hover,.is-excluded:focus-visible{color:#fff;background:var(--danger-solid);border-color:var(--danger-solid)}
-.is-excluded::before{content:'−';margin-right:3px;font-weight:700}
+/* 反选态（排除）：实心红，和「上膛」的危险操作同一套颜色。只用颜色表达，不加任何符号。
+   这里必须 !important：各筛选组都有自己的基础样式，其中像 .score-filter button 是「类+元素」，
+   特异性比单个类高，写在后面也压不住——表现就是只有 :hover 那条生效、常态看不出变化。 */
+.is-excluded{color:#fff!important;background:var(--danger-solid)!important;border-color:var(--danger-solid)!important}
 .picker-status{display:flex;align-items:center;gap:8px 14px;flex-wrap:wrap;min-width:0}
 .picker-status .picker-order{flex-shrink:0}
 .picker-pagination{display:flex;align-items:center;gap:8px;margin-left:auto}
