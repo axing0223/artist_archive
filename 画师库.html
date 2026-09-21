@@ -1799,12 +1799,27 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
     // 离屏占位要立刻按新布局修正，否则它们还留着旧高度，滚到那里会跳一下。
     remeasure();
     /* 把锚点按回原来的屏幕位置，并在整个版面动画期间逐帧维持——上面的卡片是渐渐收矮的，
-       只在切换那一帧补一次不够。用帧数而不是时钟来收尾：测试里的 rAF 是同步的。 */
+       只在切换那一帧补一次不够。
+       但页面已经到底（或到顶）时这个修正根本落不下去：舒适切紧凑会把文档压掉几千像素，
+       滚在底部的那次切换里锚点位置已经够不到了。那时候再逐帧试就成了和浏览器的夹取互搏，
+       屏幕上表现为来回抽搐（实测逐帧 top 在 -3 到 -195 之间跳）。所以试不动就放手，
+       剩下的交给浏览器自己稳定——它会停在新的底部，这本来就是这种情况下最合理的结果。 */
+    let anchorMisses=0;
     const keepAnchor=()=>{
-      if(anchorUid===null||typeof window.scrollBy!=='function')return;
+      if(typeof window.scrollBy!=='function')return;
+      if(anchorUid===null)return;
       const slot=slots.get(anchorUid);if(!slot)return;
       const diff=slot.getBoundingClientRect().top-anchorTop;
-      if(Math.abs(diff)>0.5)window.scrollBy(0,diff);
+      if(Math.abs(diff)<=0.5)return;
+      /* 锚点的目标位置已经落在能滚到的范围之外——页面缩短之后滚在底部附近的那次切换就是这样。
+         这时候修正根本落不下去：向"有效"的方向滚一下、下一帧又被夹回来，逐帧往复，
+         屏幕上就是来回抽搐。够不到就直接放手，让浏览器夹到新的位置。 */
+      const max=Math.max(0,(document.documentElement?.scrollHeight||0)-(window.innerHeight||0));
+      const want=(window.scrollY||0)+diff;
+      if(want<0||want>max+1){anchorUid=null;return;}
+      const wasY=window.scrollY||0;
+      window.scrollBy(0,diff);
+      if(Math.abs((window.scrollY||0)-wasY)<0.5&&++anchorMisses>=2)anchorUid=null;
     };
     keepAnchor();
     /* 收尾按时钟、不按帧数：无头浏览器里 rAF 的频率和 60Hz 无关，按帧数算会提前收工
@@ -1825,6 +1840,11 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
       const card=slot.firstElementChild;
       // 编辑器是全宽表单，两套视图里长得一样，不参与这套动画。
       if(card?.classList.contains('is-editing'))continue;
+      /* 完全在视口上方的占位不参与动画：它们看不见，动画纯属白做；更要紧的是它们的伸缩会
+         把视口里的内容整体拽走，而修正滚动只能在下一帧生效（rAF 跑在动画更新之前），
+         于是每帧都残留一点、看起来就是持续抖动。让它们在切换那一帧直接到位，
+         锚点补偿就能一次补干净，动画期间视口上方不再有任何变化。 */
+      if(slot.getBoundingClientRect().bottom<0)continue;
       /* 身份信息从「整行」变成「一列」，几何是跳过去的；它的淡入交给下面那段按序文字动画，
          不在这里先淡一次——否则两段会叠在一起，看不出是「先版面、后文字」。 */
       /* 预览整块在两套视图之间左右换位，这里要的是实打实的位移，不是淡入：
