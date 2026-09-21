@@ -79,15 +79,15 @@
   function normalize(raw,backup=false){
     if(!raw||!Array.isArray(raw.artists)||(backup&&raw.version!==1))throw Error('不是此网页导出的备份。');
     if(raw.artists.length>20000)throw Error('最多支持 20,000 位画师。');
-    const names=new Set(),ids=new Set(),issued=[];
+    const names=new Set(),ids=new Set();let nextSequence=1;
     const categoryList=unique(Array.isArray(raw.categories)?raw.categories:defaultCategories).map(c=>c.slice(0,40));
     const artists=raw.artists.map((a,i)=>{
       if(!a||typeof a.name!=='string'||!a.name.trim()||!Array.isArray(a.works))throw Error(`第 ${i+1} 位画师数据不完整。`);
       const name=a.name.trim().slice(0,160),key=name.toLowerCase();if(names.has(key))throw Error('重复画师：'+name);names.add(key);
       if(a.category&&!categoryList.includes(a.category))throw Error('不支持的主分类：'+a.category);
       const danbooruId=Number.isSafeInteger(a.danbooruId)&&a.danbooruId>0?a.danbooruId:null,stored=text(a.uid,100);
-      const id=ArtistId.valid(stored)&&!ids.has(stored)?stored:ArtistId.issue(issued,{name,danbooruId});
-      ids.add(id);issued.push({uid:id});
+      const id=ArtistId.valid(stored)&&!ids.has(stored)?stored:ArtistId.create({seq:nextSequence,name,danbooruId});
+      ids.add(id);nextSequence=Math.max(nextSequence,(ArtistId.parse(id)?.seq||0)+1);
       const works=a.works.map(w=>{if(!FolderStore.validWork(w))throw Error(name+' 的图片格式或本地路径无效。');return {id:text(String(w.id??''),100),url:url(w.url),caption:text(w.caption),thumb:imageValue(w.thumb),thumbUrl:httpsValue(w.thumbUrl),previewUrl:httpsValue(w.previewUrl),large:imageValue(w.large),largeUrl:httpsValue(w.largeUrl),...(w.kind==='test'?{kind:'test',testSeq:Number.isSafeInteger(w.testSeq)&&w.testSeq>0?w.testSeq:1}:{})};});
       const c=a.counts||{},number=n=>Number.isSafeInteger(n)&&n>=0?n:null;
       return {uid:id,order:i+1,name,category:a.category||null,score:Number.isSafeInteger(a.score)&&a.score>=1&&a.score<=5?a.score:null,aliases:unique(Array.isArray(a.aliases)?a.aliases:[]).map(x=>x.slice(0,60)),alias:typeof a.alias==='string'&&a.alias.trim()?a.alias.trim().slice(0,60):null,tags:unique(a.tags||[]).map(t=>t.slice(0,40)),danbooruId,counts:{total:number(c.total),checkedAt:text(c.checkedAt,40),beforeDate:text(c.beforeDate,10),beforeTotal:number(c.beforeTotal)},artistUrl:url(a.artistUrl),description:text(a.description),note:text(a.note),basis:text(a.basis,100),status:text(a.status,100),works};
@@ -113,8 +113,8 @@
   }
   async function write(value,targetFolder=folder,mode=null){
     if(!targetFolder)throw Error('请先选择数据文件夹');
-    const saved=await FolderStore.write(targetFolder,value,mode);
-    const normalized=normalize(saved),persisted=new Map(),byArtist=new Map();
+    // 默认字段在写盘前补齐，保证磁盘指纹与返回内存的数据一致。
+    const normalized=await FolderStore.write(targetFolder,normalize(value),mode),persisted=new Map(),byArtist=new Map();
     // 真正覆盖了同路径文件仍需使旧缓存失效；新预览则沿用已经显示的相同内容。
     for(let i=0;i<value.artists.length;i++)for(let j=0;j<value.artists[i].works.length;j++){
       const before=value.artists[i].works[j],artist=normalized.artists[i],work=artist.works[j];
@@ -206,9 +206,7 @@
   /* 业务校验拒绝（重名、目标已被删除…）与真正的写盘失败是两回事，不能混成一个 catch。 */
   const reject=message=>Object.assign(Error(message),{validation:true});
   /* onApplied 在数据校验合并后呈现本次操作，界面无需等待文件系统往返。
-     mode 是给落盘路径的提示：只有「改标签名 / 删标签 / 改分类名 / 删分类」这类纯元数据操作才传 'meta'，
-     它让 folder-store 跳过图片目录与旧图清理——那些开销跟元数据毫无关系。
-     别给会动图片的操作加这个标记：store 里有一道保险丝会把它退回完整路径，但那说明标记用错了。 */
+     mode 保留旧调用兼容；store 按每位画师的作品快照判断是否需要处理图片。 */
   function save(next,message='已保存到数据文件夹',onApplied,mode=null){
     const targetFolder=folder;
     if(pendingSaves++===0){
@@ -847,10 +845,12 @@
             done++;paint();
           }
         }));
+        if(!results.length)continue;
         const saved=await save(next=>{
           const takenNames=new Set(next.artists.map(a=>a.name.toLowerCase()));
+          const byId=new Map(next.artists.map(a=>[a.uid,a]));
           for(const {item,hit,counts} of results){
-            const target=next.artists.find(a=>a.uid===item.uid);
+            const target=byId.get(item.uid);
             // 查询期间删除或改名的画师不再套用旧查询结果。
             if(!target||target.name!==item.name){skipped++;continue;}
             if(counts)target.counts={...target.counts,...counts.counts};
@@ -1097,10 +1097,42 @@
     const message=$('batch-message'),total=targets.length;
     let done=0,failed=0,renamed=0,images=0,degraded=0;
     const text=()=>`正在采集 ${done} / ${total} · 补编号 ${renamed} · 缩略图 ${images} 张${degraded?` · 数量待补 ${degraded}`:''}${failed?` · 失败 ${failed}`:''}`;
+    // 快速响应合并落盘；完成一位后检查时间、人数与图片大小，停止时也提交尾批。
+    // 请求仍逐位进行，保留站点请求节奏；合并时始终取最新数据，避免覆盖期间的编辑。
+    let pending=[],pendingBytes=0,lastFlush=Date.now(),sourceSnapshot=null,sourceById=new Map();
+    const result=storageFailed=>({done,failed,renamed,images,degraded,...(storageFailed?{storageFailed:true}:{})});
+    const flush=async()=>{
+      if(!pending.length)return true;
+      const batch=pending;pending=[];pendingBytes=0;
+      const saved=await save(next=>{
+        const byId=new Map(next.artists.map(a=>[a.uid,a])),taken=new Set(next.artists.map(a=>a.name.toLowerCase()));
+        for(const {job,name,hit,works,hasCount,counts} of batch){
+          const artist=byId.get(job.uid);
+          if(!artist||artist.name!==name)continue;
+          const canonical=hit&&hit.canonical&&hit.canonical!==name&&(!taken.has(hit.canonical.toLowerCase())||hit.canonical.toLowerCase()===name.toLowerCase())?hit.canonical:name;
+          const danbooruId=hit&&hit.id!=null?hit.id:(Number.isSafeInteger(artist.danbooruId)?artist.danbooruId:null);
+          taken.delete(artist.name.toLowerCase());taken.add(canonical.toLowerCase());
+          if(reidentify(artist,canonical,danbooruId))renamed++;
+          artist.name=canonical;job.uid=artist.uid;
+          if(danbooruId!=null)artist.danbooruId=danbooruId;
+          if(hit&&hit.aliases.length)artist.aliases=hit.aliases;
+          const added=works.filter(w=>!artist.works.some(existing=>w.id?existing.id===w.id:w.url&&existing.url===w.url));
+          artist.works.push(...added);
+          if(hasCount)artist.counts={...artist.counts,...counts};
+          images+=added.filter(w=>typeof w.thumb==='string'&&w.thumb.startsWith('data:')).length;
+        }
+        return next;
+      },text);
+      lastFlush=Date.now();
+      if(!saved&&folder){batchStop=true;return false;}
+      return true;
+    };
     try{
     for(const job of targets){
       if(batchStop)break;
-      const source=data.artists.find(a=>a.uid===job.uid);done++;
+      if(pending.length&&Date.now()-lastFlush>=2000&&!await flush())return result(true);
+      if(sourceSnapshot!==data.artists){sourceSnapshot=data.artists;sourceById=new Map(data.artists.map(a=>[a.uid,a]));}
+      const source=sourceById.get(job.uid);done++;
       if(!source||source.counts?.checkedAt)continue;
       const name=source.name,cutoffDate=data.cutoffDate;
       setCollecting(job.uid);
@@ -1121,29 +1153,15 @@
         if(detail.countsError){degraded++;if(batchFailed.length<5)batchFailed.push(name+'：作品数量读取失败，再提交同一名单会补');}
         else if(hasCount&&!hasWorks){degraded++;if(batchFailed.length<5)batchFailed.push(name+'：作品列表读取失败'+(detail.previewError?'（'+detail.previewError+'）':'')+'，只剩编号与数量，再提交同一名单可补作品');}
         const works=await cacheWorks(job.uid,detail.works.slice(0,BATCH_WORKS));
-        const saved=await save(next=>{
-          const artist=next.artists.find(a=>a.uid===job.uid);
-          if(!artist||artist.name!==name)return next;
-          const taken=new Set(next.artists.filter(a=>a!==artist).map(a=>a.name.toLowerCase()));
-          const canonical=hit&&hit.canonical&&hit.canonical!==name&&!taken.has(hit.canonical.toLowerCase())?hit.canonical:name;
-          const danbooruId=hit&&hit.id!=null?hit.id:(Number.isSafeInteger(artist.danbooruId)?artist.danbooruId:null);
-          if(reidentify(artist,canonical,danbooruId))renamed++;
-          artist.name=canonical;job.uid=artist.uid;
-          if(danbooruId!=null)artist.danbooruId=danbooruId;
-          if(hit&&hit.aliases.length)artist.aliases=hit.aliases;
-          // 保留请求期间上传、编辑或生成的作品，只追加尚未保存的采集结果。
-          const added=works.filter(w=>!artist.works.some(existing=>w.id?existing.id===w.id:w.url&&existing.url===w.url));
-          artist.works.push(...added);
-          // 数量读失败时保留原值（不写 checkedAt），再次提交同一名单会重试这一位。
-          if(hasCount)artist.counts={...artist.counts,...detail.counts};
-          images+=added.filter(w=>typeof w.thumb==='string'&&w.thumb.startsWith('data:')).length;
-          return next;
-        },text());
-        if(!saved&&folder){batchStop=true;return {done,failed,renamed,images,storageFailed:true};}
+        const bytes=works.reduce((sum,w)=>sum+(w.thumb?.startsWith('data:')?w.thumb.length*2:0),0);
+        if(pendingBytes+bytes>8*1024*1024&&!await flush())return result(true);
+        pending.push({job,name,hit,works,hasCount,counts:detail.counts});pendingBytes+=bytes;
+        if((pending.length>=10||pendingBytes>=8*1024*1024||Date.now()-lastFlush>=2000)&&!await flush())return result(true);
       }catch(error){failed++;if(batchFailed.length<5)batchFailed.push(name+'：'+error.message);}
       const line=text();message.textContent=line;status(line);
     }
-    return {done,failed,renamed,images,degraded};
+    if(!await flush())return result(true);
+    return result(false);
     }finally{setCollecting(null);}
   }
   /* 超过这个人数、又勾了「同时生成测试风格图」时，按钮要变红再确认一次。 */
@@ -1161,7 +1179,11 @@
   function queueTestImages(targets,stopped){
     if(stopped){status('导入已中止，没有排入生成需求。');return 0;}
     let queued=0;
-    for(const job of targets){const artist=data.artists.find(a=>a.uid===job.uid);if(artist&&!artist.works.some(w=>w.kind==='test'&&(w.testSeq||1)===1)&&enqueueGenerate(artist,1,null))queued++;}
+    const byId=new Map(data.artists.map(a=>[a.uid,a]));
+    enqueueBulk=true;
+    try{for(const job of targets){const artist=byId.get(job.uid);if(artist&&!artist.works.some(w=>w.kind==='test'&&(w.testSeq||1)===1)&&enqueueGenerate(artist,1,null))queued++;}}
+    finally{enqueueBulk=false;}
+    if(queued){paintQueue();render();}
     if(queued)status(`已为 ${queued} 位画师排入「生成测试风格 1」，队列一条一条跑，两条之间隔 5±3 秒。`);
     return queued;
   }
@@ -1178,8 +1200,15 @@
       return;
     }
     disarmBatch();
-    const next=clone(data),seen=new Set(next.artists.map(a=>a.name.toLowerCase())),targets=[];let count=0;
-    for(const name of names){if(seen.has(name.toLowerCase())){const existing=next.artists.find(a=>a.name.toLowerCase()===name.toLowerCase());if(collect&&!existing.counts?.checkedAt&&!targets.some(job=>job.uid===existing.uid))targets.push({uid:existing.uid,name:existing.name});continue;}seen.add(name.toLowerCase());if(next.artists.length>=20000){$('batch-message').textContent='最多支持 20,000 位画师。';return;}next.artists.push({uid:ArtistId.issue(next.artists,{name}),order:next.artists.length+1,name,category:null,score:null,aliases:[],alias:null,tags:[],counts:{total:null,checkedAt:'',beforeDate:'',beforeTotal:null},artistUrl:'https://danbooru.donmai.us/posts?tags='+encodeURIComponent(name),description:'',note:'',works:[]});targets.push({uid:next.artists[next.artists.length-1].uid,name});count++;}
+    const next=clone(data),byName=new Map(next.artists.map(a=>[a.name.toLowerCase(),a])),targetIds=new Set(),targets=[];
+    let count=0,nextSeq=ArtistId.nextSeq(next.artists.map(a=>a.uid));
+    for(const name of names){
+      const key=name.toLowerCase(),existing=byName.get(key);
+      if(existing){if(collect&&!existing.counts?.checkedAt&&!targetIds.has(existing.uid)){targets.push({uid:existing.uid,name:existing.name});targetIds.add(existing.uid);}continue;}
+      if(next.artists.length>=20000){$('batch-message').textContent='最多支持 20,000 位画师。';return;}
+      const artist={uid:ArtistId.create({seq:nextSeq++,name}),order:next.artists.length+1,name,category:null,score:null,aliases:[],alias:null,tags:[],counts:{total:null,checkedAt:'',beforeDate:'',beforeTotal:null},artistUrl:'https://danbooru.donmai.us/posts?tags='+encodeURIComponent(name),description:'',note:'',works:[]};
+      next.artists.push(artist);byName.set(key,artist);targetIds.add(artist.uid);targets.push({uid:artist.uid,name});count++;
+    }
     batchStop=false;batchFailed.length=0;
     /* 采完就能看着新卡一张张补上：清掉筛选，把分类切到「待判断」——新加的画师都落在这里。 */
     reset();state.category='待判断';
@@ -1665,7 +1694,7 @@
     $('work-order').replaceChildren(...WORK_ORDERS.map(order=>new Option(WORK_ORDER_LABELS[order],order)));
     $('batch-order').replaceChildren(...WORK_ORDERS.map(order=>new Option(WORK_ORDER_LABELS[order],order)));
     bindGenSettings();
-    ArtistTestImages.init({getData:()=>data,getBusy:()=>busy,readImage,thumbnail,save});
+    ArtistTestImages.init({getData:()=>data,getBusy:()=>busy||uploading,setImportRunning:value=>{uploading=value;},readImage,thumbnail,save});
     $('test-import-open').onclick=()=>ArtistTestImages.open();$('close-test-import').onclick=()=>$('test-import').close();$('test-cancel').onclick=()=>$('test-import').close();
     $('test-files').onchange=e=>{ArtistTestImages.files=[...e.target.files];ArtistTestImages.refresh();};
     $('test-start').oninput=()=>ArtistTestImages.refresh();$('test-seq').oninput=()=>ArtistTestImages.refresh();$('test-run').onclick=()=>ArtistTestImages.runImport();
@@ -1720,7 +1749,7 @@
        在窗口这一层兜住：整页都不接受文件拖放，只有格子上的处理器会把事件拿走。 */
     window.addEventListener('dragover',event=>event.preventDefault());
     window.addEventListener('drop',event=>event.preventDefault());
-    window.addEventListener('beforeunload',e=>{if(volatile||busy||generating||syncingAll||batchRunning||!genQueue.idle){e.preventDefault();e.returnValue='';}});render();document.querySelectorAll('button,input,textarea,select').forEach(b=>b.disabled=true);$('choose-folder').disabled=false;$('extension-status').disabled=false;$('choose-folder').onclick=connectFolder;window.ArtistWorkspace?.init({saveEditor:()=>{if(!busy&&!uploading&&draft)saveDraft();}});checkExtension().then(autoAccount);restoreFolder();
+    window.addEventListener('beforeunload',e=>{if(volatile||busy||uploading||generating||syncingAll||batchRunning||!genQueue.idle){e.preventDefault();e.returnValue='';}});render();document.querySelectorAll('button,input,textarea,select').forEach(b=>b.disabled=true);$('choose-folder').disabled=false;$('extension-status').disabled=false;$('choose-folder').onclick=connectFolder;window.ArtistWorkspace?.init({saveEditor:()=>{if(!busy&&!uploading&&draft)saveDraft();}});checkExtension().then(autoAccount);restoreFolder();
   }
   init();
 })();

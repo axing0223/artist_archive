@@ -29,6 +29,7 @@
 | `工具/` | 独立的小工具页，例如 `回填作品.html`。 |
 | `后续待办.md` | 已知问题与尚未动手的事项清单，每条都写了位置。 |
 | `性能基线-改标签.md` | 「改标签保存慢」这条优化的实测数字与口径。 |
+| `性能基线-批量操作.md` | 批量刷新、采集、测试图导入与备份导出的对照结果及边界。 |
 
 ## 常用命令
 
@@ -38,6 +39,7 @@ npm run build            # 重新生成 画师库.html，并把 app/ 镜像进�
 npm run test:browser     # 真实浏览器验收（需要 Chrome/Edge 与 Node.js 22+）
 npm run test:ui          # 界面验收
 npm run test:edit-performance   # 编辑保存的性能回归（真实浏览器 + OPFS）
+npm run test:bulk-performance   # 批量刷新、采集、测试图与导出的性能回归
 ```
 
 **改完 `app/` 里的任何文件，先跑 `npm run build` 再重新加载扩展**——扩展里跑的是镜像，

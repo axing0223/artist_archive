@@ -18,6 +18,29 @@ const put=async(dir,name,bytes)=>{const handle=await dir.getFileHandle(name,{cre
 const png='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l9sAAAAASUVORK5CYII=';
 const jpeg='data:image/jpeg;base64,/9j/2Q==';
 const bytesOf=async blob=>new Uint8Array(await blob.arrayBuffer());
+
+test('批量性能：仅更新数量自动跳过图片目录，meta 提示不能跳过改名迁移',async()=>{
+ const dir=new Directory(),old='0001-old-1',uid='0001-new-1';
+ let data=await store.write(dir,{...store.empty(),artists:[{uid:old,name:'old',works:[{thumb:png}],counts:{total:1}}]});
+ const artistDir=dir.items.get('画师').items.get(old),original=artistDir.getDirectoryHandle;
+ let imageQueries=0;
+ artistDir.getDirectoryHandle=async function(...args){imageQueries++;return original.apply(this,args);};
+ data.artists[0].counts.total=2;
+ data=await store.write(dir,data);
+ assert.equal(imageQueries,0,'数量变化不该打开或扫描图片目录');
+ store.rename(dir,old,uid);data.artists[0].uid=uid;data.artists[0].name='new';
+ const saved=await store.write(dir,data,'meta');
+ assert.ok((await store.readImage(dir,uid,saved.artists[0].works[0].thumb)).size>0,'即使传入 meta 也必须搬迁图片');
+ assert.equal(dir.items.get('画师').items.has(old),false);
+});
+
+test('批量性能：备份导出按有界块写入，中文与跨块表情保持完整',async()=>{
+ const artists=Array.from({length:100},(_,i)=>({uid:'artist'+i,name:'画师'+i,note:'甲😀'.repeat(200),works:Array.from({length:5},()=>({thumb:null,large:null,thumbUrl:'https://example.com/x.png'}))}));
+ const chunks=[];await store.exportTo(null,{...store.empty(),artists},{write:async value=>chunks.push(Buffer.from(value,'utf8'))});
+ assert.ok(chunks.length<20,'不能为每位画师、每张作品分别写流，实际 '+chunks.length+' 次');
+ assert.ok(chunks.every(chunk=>chunk.length<=256*1024),'输出块必须有大小上限');
+ assert.deepEqual(JSON.parse(Buffer.concat(chunks).toString('utf8')).artists,artists);
+});
 test('缩略图与原图分别落进 缩略图/ 大图/，imageOf 本地优先于在线',async()=>{
  const dir=new Directory();await store.write(dir,store.empty());
  const thumb=await store.saveImage(dir,'0001-a-1','thumb',new Blob([Uint8Array.from([1,2,3])],{type:'image/jpeg'}));

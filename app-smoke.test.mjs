@@ -118,6 +118,102 @@ FileUrl.createObjectURL=()=>'blob:x';FileUrl.revokeObjectURL=()=>{};
   return {elements,state,ctx};
 }
 const lastRender=state=>state.renders[state.renders.length-1]||[];
+test('批量性能：新增后切换设置不应再次写全部画师',async()=>{
+ const {elements,ctx,dir}=await connectedApp();
+ await runBatch(elements,'a\nb\nc',false);
+ let writes=0;
+ for(const artist of dir.items.get('画师').items.values()){
+  const file=artist.items.get('信息.json'),original=file.createWritable;
+  file.createWritable=async function(...args){writes++;return original.apply(this,args);};
+ }
+ getEl(elements,'save-large').checked=true;await getEl(elements,'save-large').onchange();
+ assert.equal(writes,0,'写盘前后规范化必须一致，否则新增的所有记录会再写一次');
+ assert.equal((await ctx.FolderStore.read(dir)).saveLargeImages,true);
+});
+
+test('批量性能：快速采集分批落盘并保留全部结果，不逐位扫描整库分配编号',async()=>{
+ const {elements,ctx,dir}=await connectedApp();let saves=0,issuedScans=0,renders=0;
+ const write=ctx.FolderStore.write,issue=ctx.ArtistId.issue;
+ ctx.FolderStore.write=async(...args)=>{saves++;return write(...args);};
+ ctx.ArtistId.issue=(artists,...args)=>{issuedScans+=artists.length;return issue(artists,...args);};
+ ctx.ArtistGallery.render=()=>{renders++;};
+ stub(ctx,{lookup:async()=>[],details:async()=>({counts:{total:10,checkedAt:'now'},works:[post('1')],countsError:false})});
+ await runBatch(elements,Array.from({length:100},(_,i)=>'artist'+i).join('\n'));
+ const saved=await ctx.FolderStore.read(dir);
+ assert.equal(saved.artists.length,100);assert.ok(saved.artists.every(a=>a.counts.total===10&&a.works.length===1));
+ assert.ok(saves<=12,'100 位快速采集应合并保存，实际 '+saves+' 次');
+ assert.ok(issuedScans<=100,'编号不能每新增一位就重扫全部画师，实际 '+issuedScans+' 次');
+ assert.ok(renders<150,'分批保存应减少完整渲染调用，实际 '+renders+' 次');
+ assert.deepEqual(Array.from(saved.artists,a=>RealArtistId.parse(a.uid).seq),Array.from({length:100},(_,i)=>i+1));
+});
+
+test('批量性能：测试图分批释放，后续解码失败保留已保存进度',async()=>{
+ const {elements,ctx}=await boot();
+ let stored={artists:Array.from({length:30},(_,i)=>({uid:RealArtistId.create({seq:i+1,name:'a'+i}),name:'a'+i,works:[]}))};
+ let processed=0,firstSave=null,saves=0;
+ ctx.ArtistTestImages.init({getData:()=>stored,getBusy:()=>false,
+  readImage:async()=>{processed++;if(processed===22)throw Error('坏图片');return 'data:image/png;base64,AAAA';},
+  thumbnail:async()=>'data:image/png;base64,AAAA',save:async update=>{firstSave??=processed;saves++;stored=update(structuredClone(stored));return true;}});
+ ctx.ArtistTestImages.files=Array.from({length:30},(_,i)=>({name:i+'.png',type:'image/png',size:10}));
+ getEl(elements,'test-start').value='1';getEl(elements,'test-seq').value='1';
+ await ctx.ArtistTestImages.runImport();
+ assert.ok(firstSave>0&&firstSave<=10,'不能等所有图片解码完才首次保存');
+ assert.ok(saves>=2);assert.equal(stored.artists.filter(a=>a.works.length).length,20);
+ assert.match(getEl(elements,'test-message').textContent,/已保存 20/,'失败时说明前面哪些已经保存');
+});
+
+test('批量性能：导入缺少标识的旧备份时按最大序号继续分配，不逐位重扫',async()=>{
+ const {elements,ctx,dir}=await connectedApp();let scans=0;
+ const issue=ctx.ArtistId.issue;ctx.ArtistId.issue=(artists,...args)=>{scans+=artists.length;return issue(artists,...args);};
+ const artists=[{uid:'0100-kept-manual',name:'kept',works:[]},...Array.from({length:100},(_,i)=>({name:'restored'+i,works:[]}))];
+ const input=getEl(elements,'import-file');input.files=[new Blob([JSON.stringify({version:1,artists})])];
+ await input.onchange({target:input});
+ const saved=await ctx.FolderStore.read(dir);
+ assert.equal(saved.artists.length,101);assert.equal(RealArtistId.parse(saved.artists.at(-1).uid).seq,200);
+ assert.ok(scans<=101,'旧备份补标识不应重复扫描已经处理的所有画师，实际 '+scans+' 次');
+});
+
+test('批量采集：批次保存失败立即停止，保留本页结果且不覆盖成成功提示',async()=>{
+ const {elements,state,ctx,dir}=await connectedApp();ctx.ArtistGallery.render=(_,rows)=>{state.rows=rows;};
+ let queried=0,writes=0;const original=ctx.FolderStore.write;
+ ctx.FolderStore.write=async(...args)=>{if(++writes===2)throw Error('测试磁盘不可写');return original(...args);};
+ stub(ctx,{lookup:async()=>[],details:async()=>{queried++;return {counts:{total:9,checkedAt:'now'},works:[post('1')]};}});
+ await runBatch(elements,Array.from({length:25},(_,i)=>'a'+i).join('\n'));
+ assert.equal(queried,10,'第一批写失败后不能继续请求下一批');
+ assert.equal(state.rows.filter(a=>a.counts.total===9).length,10,'失败批次仍保留在本页');
+ assert.equal((await ctx.FolderStore.read(dir)).artists.filter(a=>a.counts.total===9).length,0,'不能假装失败批次已写到磁盘');
+ assert.match(getEl(elements,'storage-status').textContent,/保存失败/);
+});
+
+test('测试图导入读图期间阻止切换资料库和无提示关闭页面',async()=>{
+ const {elements,ctx}=await connectedApp();await runBatch(elements,'a',false);
+ const started=gate(),release=gate();
+ ctx.FileReader=class{readAsDataURL(){started.resolve();release.promise.then(()=>this.onerror());}};
+ ctx.ArtistTestImages.files=[{name:'a.png',type:'image/png',size:10}];
+ getEl(elements,'test-start').value='1';getEl(elements,'test-seq').value='1';
+ const running=ctx.ArtistTestImages.runImport();await started.promise;
+ let opened=0,prevented=false;ctx.window.showDirectoryPicker=async()=>{opened++;return new FakeDir();};
+ try{
+  await getEl(elements,'choose-folder').onclick();
+  for(const listener of ctx.window.listeners.beforeunload)listener({preventDefault(){prevented=true;}});
+  assert.equal(opened,0);assert.equal(prevented,true);
+ }finally{release.resolve();await running;}
+});
+
+test('测试图写入失败后续选不重复追加已留在内存的批次，也不重新分配多余图片',async()=>{
+ const {elements,ctx}=await boot();
+ let stored={artists:Array.from({length:12},(_,i)=>({uid:RealArtistId.create({seq:i+1,name:'a'+i}),name:'a'+i,works:[]}))},saves=0;
+ ctx.ArtistTestImages.init({getData:()=>stored,getBusy:()=>false,
+  readImage:async()=>'data:image/png;base64,AAAA',thumbnail:async()=>'data:image/png;base64,AAAA',
+  save:async update=>{stored=update(structuredClone(stored));return ++saves>1;}});
+ ctx.ArtistTestImages.files=Array.from({length:20},(_,i)=>({name:i+'.png',type:'image/png',size:10}));
+ getEl(elements,'test-start').value='1';getEl(elements,'test-seq').value='1';
+ await ctx.ArtistTestImages.runImport();
+ assert.equal(ctx.ArtistTestImages.files.length,2,'只剩尚未处理且有对应画师的图片');
+ assert.equal(getEl(elements,'test-start').value,'11');
+ await ctx.ArtistTestImages.runImport();
+ assert.ok(stored.artists.every(a=>a.works.length===1),'写失败的图片已在内存，后续不能重复追加');
+});
 test('点击「添加画师」能进入内联编辑态，渲染过程不应抛错',async()=>{
   const {elements,state}=await boot();
   const add=elements.get('add-artist');
@@ -1321,7 +1417,7 @@ test('生图排队接进了页面：公用一条队列，间隔取 5±3 秒的�
   assert.match(app,/ArtistGenerateQueue\.create\(\{gap:\(\)=>ArtistImageGen\.genGapDelay\(\)/,'队列的间隔必须来自那个 5±3 秒的函数');
   assert.match(app,/function enqueueGenerate\(/,'生成走排队入口');
   assert.equal(app.includes('function generateTest('),false,'旧的直发函数要撤掉，免得绕过队列');
-  assert.match(app,/if\(volatile\|\|busy\|\|generating\|\|syncingAll\|\|batchRunning\|\|!genQueue\.idle\)/,'还没跑完就关页面要拦一下（排队、刷新全库、采集都算）');
+  assert.match(app,/if\(volatile\|\|busy\|\|uploading\|\|generating\|\|syncingAll\|\|batchRunning\|\|!genQueue\.idle\)/,'还没跑完就关页面要拦一下（读图、排队、刷新全库、采集都算）');
   const {ctx}=await boot();
   assert.equal(typeof ctx.ArtistGenerateQueue.create,'function','队列模块在页面里可用');
 });
@@ -1688,20 +1784,21 @@ test('批量采集：认不出正式名时，仍然用输入的名字去查',asy
   assert.deepEqual(asked,['mikazukimo_4780'],'认不出人时行为要和以前一样');
   assert.equal(state.rows[0].works.length,1);
 });
-test('批量采集：每位画师采完就刷新对应卡片，不用等整批结束',async()=>{
-  const {elements,state,ctx}=await boot();
-  const asked=[];
-  stub(ctx,{lookup:async()=>[],posts:async()=>[],
-    details:async name=>{asked.push(name);return {counts:name==='甲'?{total:11,beforeTotal:5}:{total:22,beforeTotal:7},works:[post(name==='甲'?'1':'2')]};}});
-  await runBatch(elements,'甲\n乙',true);
-  assert.deepEqual(asked,['甲','乙'],'一位一位按名单顺序采');
-  const cardOf=(render,name)=>render.find(card=>card.dataset.artist===name);
-  const showsCount=(render,name,text)=>{const card=cardOf(render,name);return !!card&&String(findByClass(card,'artist-site-count').textContent)===text;};
-  const at=state.renders.findIndex(render=>showsCount(render,'甲','作品数量：11'));
-  assert.ok(at>0,'甲采完就该有一次渲染把他的数量与缩略图补上');
-  assert.ok(at<state.renders.length-1,'这次渲染要发生在整批结束之前，而不是最后统一刷新');
-  assert.equal(showsCount(state.renders[at],'乙','作品数量：22'),false,'那一刻乙还没采到');
-  assert.equal(showsCount(state.renders[state.renders.length-1],'乙','作品数量：22'),true,'乙采完同样补上');
+test('批量采集：小批次已显示并落盘时，后续画师可以仍在请求中',async()=>{
+  const {elements,state,ctx,dir}=await connectedApp(),started=gate(),release=gate();
+  let asked=0;
+  stub(ctx,{lookup:async()=>[],details:async()=>{
+    if(++asked===11){started.resolve();await release.promise;}
+    return {counts:{total:11,checkedAt:'now'},works:[post('1')]};
+  }});
+  const running=runBatch(elements,Array.from({length:12},(_,i)=>'a'+i).join('\n'));
+  await started.promise;
+  try{
+    assert.equal(state.rows.filter(a=>a.counts.total===11).length,10,'不用等整个名单结束才展示');
+    assert.equal((await ctx.FolderStore.read(dir)).artists.filter(a=>a.counts.total===11).length,10,'显示的这一批确实已落盘');
+    elements.get('batch-stop').onclick();
+  }finally{release.resolve();await running;}
+  assert.equal((await ctx.FolderStore.read(dir)).artists.filter(a=>a.counts.total===11).length,11,'停止时仍须保存不足一批的最后一位');
 });
 test('批量采集：采完自动清空筛选，并把分类切到「待判断」',async()=>{
   const {elements,state,ctx}=await boot();

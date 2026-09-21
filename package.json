@@ -11,7 +11,8 @@
     "test:ui": "node browser-ui.mjs",
     "test:edit-performance": "node browser-edit-performance.mjs",
     "test:work-performance": "node browser-work-performance.mjs",
-    "test:density-performance": "node browser-density-performance.mjs"
+    "test:density-performance": "node browser-density-performance.mjs",
+    "test:bulk-performance": "node browser-bulk-performance.mjs"
   },
   "engines": {
     "node": ">=20"
