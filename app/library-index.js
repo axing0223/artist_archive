@@ -36,12 +36,15 @@
     /* 特殊筛选：按「缺什么」找，而不是按有什么找。
        站点作品少于 50——「没读到」在数据里是 null 而不是缺字段，Number(null)===0，
        写成数字判断会把没读到的当成 0 张；不知道不等于少。
-       没有测试风格图——一个 kind==='test' 的格子都没有（空占位、待生成都不算有）。 */
+       测试风格图不是 2 张——固定格留的就是测试风格 1、2 两格，所以这个筛选问的是
+       「两张齐了没有」：0 张、1 张、3 张都算没齐（缺一张和缺两张一样要补，
+       只报 0 张会漏掉「只有 1 张」这种最常见的半成品）。
+       kind==='test' 只在真的把作品放进预留格时才打上，空预留格不算，所以按它计数就是真实张数。 */
     const fewWorks=special.has('low-works'),noTest=special.has('no-test');
     const knownCount=value=>value!==null&&value!==undefined&&value!=='';
     const hasFewWorks=a=>knownCount(a.counts?.total)&&Number(a.counts.total)<50;
-    const noTestWork=a=>!(a.works||[]).some(w=>w.kind==='test');
-    return sorted.get(key).filter(({artist:a,search})=>(category==='全部'||(category==='待判断'?!a.category:a.category===category))&&activeTags.every(t=>a.tags.includes(t))&&(!scores.size||scores.has(a.score||0))&&(!fewWorks||hasFewWorks(a))&&(!noTest||noTestWork(a))&&words.every(word=>search.includes(word))).map(entry=>entry.artist);
+    const notTwoTests=a=>(a.works||[]).filter(w=>w.kind==='test').length!==2;
+    return sorted.get(key).filter(({artist:a,search})=>(category==='全部'||(category==='待判断'?!a.category:a.category===category))&&activeTags.every(t=>a.tags.includes(t))&&(!scores.size||scores.has(a.score||0))&&(!fewWorks||hasFewWorks(a))&&(!noTest||notTwoTests(a))&&words.every(word=>search.includes(word))).map(entry=>entry.artist);
    },
    clear(){source=null;length=0;entries=[];stats=null;sorted.clear();}
   };

@@ -24,7 +24,7 @@
   const reservedOf=()=>data&&data.fixedTestSlots?RESERVED_SLOTS:0;
   const state={category:'全部',tags:new Set(),scores:new Set(),special:new Set(),query:'',sort:'order',desc:false};
   /* 特殊筛选：按「缺什么」找画师。键名会进筛选键与 aria，保持英文短横线。 */
-  const SPECIAL_FILTERS=[['low-works','作品少于 50'],['no-test','没有测试风格图']];
+  const SPECIAL_FILTERS=[['low-works','作品少于 50'],['no-test','测试风格图不是 2 张']];
   /* 「没读到」在数据里是 null 而不是缺字段，而 Number(null)===0：不能直接拿数字判断。 */
   const knownCount=value=>value!==null&&value!==undefined&&value!=='';
   /* 排序方向按钮：升序 ↑ / 降序 ↓，当前方向写在按钮自己身上。 */
