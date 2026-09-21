@@ -350,7 +350,7 @@ async function browserChecks(){
  $('filter-toggle').click();await delay(320);
  const specialButtons=()=>[...$('special').querySelectorAll('button')];
  check(specialButtons().length===2,'特殊筛选要有两个选项');
- check(specialButtons().map(node=>node.textContent).join('/')==='作品少于 50/无作品图','特殊筛选的选项文案：'+specialButtons().map(node=>node.textContent).join('/'));
+ check(specialButtons().map(node=>node.textContent).join('/')==='作品少于 50/例图空缺','特殊筛选的选项文案：'+specialButtons().map(node=>node.textContent).join('/'));
  const beforeSpecial=$('gallery').children.length;
  specialButtons()[0].click();await delay(140);
  check($('gallery').children.length===0,'演示库里没有站点作品少于 50 的画师，应当筛空，实际 '+$('gallery').children.length);

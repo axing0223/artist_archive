@@ -8,14 +8,13 @@ test('排序稳定，不修改持久化画师序号或原始数组',()=>{const r
 test('排序支持倒序，整份反过来且同分时仍然稳定',()=>{const rows=[artist('z',{score:4}),artist('b',{score:4,works:[{id:'1'}]}),artist('a',{score:5})],index=create();assert.deepEqual(names(index.select(rows,{sort:'score',desc:true})),['b','z','a'],'降序时同分的仍按序号稳定排列');assert.deepEqual(names(index.select(rows,{sort:'works',desc:true})),['a','z','b']);assert.deepEqual(names(index.select(rows,{sort:'name',desc:true})),['z','b','a']);assert.deepEqual(names(index.select(rows,{sort:'order',desc:true})),['a','b','z']);assert.deepEqual(names(index.select(rows,{sort:'score'})),['a','z','b'],'升序不受影响');assert.deepEqual(names(rows),['z','b','a'],'原始数组不能被 reverse 动到');});
 test('统计明确区分作品参考与测试图，替换快照时不沿用旧搜索缓存',()=>{const index=create(),rows=[artist('a',{works:[{id:'1'},{id:'2',kind:'test'}]})];const summary=index.summary(rows);assert.equal(summary.images,2);assert.equal(summary.works,1);assert.equal(summary.tests,1);assert.equal(summary.counts.get('待判断'),1);index.select(rows,{query:'a'});const next=[artist('b')];assert.equal(index.select(next,{query:'a'}).length,0);assert.equal(index.summary(next).images,0);});
 test('20,000 位画师连续输入时不反复扫描图片与重新生成搜索文本',()=>{let reads=0;const rows=Array.from({length:20000},(_,i)=>artist('artist_'+i,{get works(){reads++;return [{id:'1'}];}})),index=create();index.summary(rows);const built=reads;for(const query of ['art','artist','artist_19','artist_19999'])index.select(rows,{query});index.summary(rows);assert.equal(reads,built,'检索过程复用资料快照索引');assert.deepEqual(names(index.select(rows,{query:'artist_19999'})),['artist_19999']);});
-test('特殊筛选：作品少于 50、无作品图，两者可同时生效且与其他筛选是交集',()=>{
- const index=create(),works=n=>Array.from({length:n},(_,i)=>({id:String(i+1)}));
- const rows=[artist('few',{counts:{total:49},score:4,works:works(2)}),artist('edge',{counts:{total:50},works:works(5)}),artist('unknown',{counts:{total:null},works:works(5)}),artist('empty',{}),artist('gap',{counts:{total:120},works:works(2)}),artist('full',{counts:{total:120},works:works(5)}),artist('testOnly',{counts:{total:120},works:[{id:'1',kind:'test'}]})];
+test('特殊筛选：作品少于 50、例图空缺，两者可同时生效且与其他筛选是交集',()=>{
+ const index=create(),works=n=>Array.from({length:n},(_,i)=>({id:String(i+1)})),tests=n=>Array.from({length:n},(_,i)=>({id:'t'+i,kind:'test'}));
+ const rows=[artist('few',{counts:{total:49},score:4,works:works(2)}),artist('edge',{counts:{total:50},works:works(5)}),artist('unknown',{counts:{total:null},works:works(5)}),artist('empty',{}),artist('gap',{counts:{total:120},works:works(2)}),artist('full',{counts:{total:120},works:works(5)}),artist('testOnly',{counts:{total:120},works:tests(1)}),artist('mixedFull',{counts:{total:120},works:[...works(3),...tests(2)]}),artist('mixedGap',{counts:{total:120},works:[...works(3),...tests(1)]})];
  assert.deepEqual(names(index.select(rows,{special:new Set(['low-works'])})),['few'],'「没读到」是 null 而不是缺字段，不能被当成 0 张；正好 50 也不算');
- assert.deepEqual(names(index.select(rows,{special:new Set(['no-works'])})),['few','empty','gap','testOnly'],'作品栏位有空位的都算：2 张、0 张、只有测试风格图的都算，正好填满 5 格的不算');
- assert.deepEqual(names(index.select(rows,{special:new Set(['low-works','no-works'])})),['few'],'两个特殊筛选同时生效（既要少、作品栏位又空着）');
- assert.deepEqual(names(index.select(rows,{special:new Set(['no-works']),workSlots:3})),['few','empty','gap','testOnly'],'栏位跟着「固定测试风格图」走：作品只剩 3 格时，2 张也算有缺口');
- assert.deepEqual(names(index.select(rows,{special:new Set(['no-works']),workSlots:2})),['empty','testOnly'],'只剩 2 格时 2 张正好填满，不算缺');
+ assert.deepEqual(names(index.select(rows,{special:new Set(['no-works'])})),['few','empty','gap','testOnly','mixedGap'],'格子里有空位就算：3 张作品 + 2 张测试图正好填满 5 格不算，测试图少一张那格空着就算');
+ assert.deepEqual(names(index.select(rows,{special:new Set(['low-works','no-works'])})),['few'],'两个特殊筛选同时生效（既要少、格子又有空位）');
+ assert.deepEqual(names(index.select(rows,{special:new Set(['no-works']),slots:2})),['empty','testOnly'],'格数可传：2 格时 2 张正好填满，不算缺');
  assert.deepEqual(names(index.select(rows,{special:new Set(['no-works']),scores:new Set([4])})),['few'],'与评分等筛选是交集');
  assert.deepEqual(names(index.select(rows,{special:new Set(['no-works']),scores:new Set([5])})),[],'交集为空就是空');
 });
