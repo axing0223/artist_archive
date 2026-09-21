@@ -22,7 +22,9 @@
   /* 卡片固定 5 格。开了「固定测试风格图」后最右 2 格归测试风格 1、2，作品图不能占用。 */
   const PREVIEW_SLOTS=5,RESERVED_SLOTS=2,UPLOAD_TYPES=['image/jpeg','image/png','image/webp','image/gif','image/avif'];
   const reservedOf=()=>data&&data.fixedTestSlots?RESERVED_SLOTS:0;
-  const state={category:'全部',tags:new Set(),scores:new Set(),special:new Set(),query:'',sort:'order',desc:false};
+  /* 每组筛选都是「不选 → 正选 → 反选 → 不选」三态循环：xxx 是正选（只看这些），
+     notXxx 是反选（排除这些），两边都不在就是不选。第三态以前不存在，所以按钮只会在开/关之间跳。 */
+  const state={category:'全部',notCategory:null,tags:new Set(),notTags:new Set(),scores:new Set(),notScores:new Set(),special:new Set(),notSpecial:new Set(),query:'',sort:'order',desc:false};
   /* 特殊筛选：按「缺什么」找画师。键名会进筛选键与 aria，保持英文短横线。 */
   const SPECIAL_FILTERS=[['low-works','作品少于 50'],['no-works','例图空缺']];
   /* 「没读到」在数据里是 null 而不是缺字段，而 Number(null)===0：不能直接拿数字判断。 */
@@ -229,7 +231,10 @@
     });
     saveTail=operation.catch(()=>{});return operation;
   }
-  function reset(){state.category='全部';state.tags.clear();state.scores.clear();state.special.clear();state.query='';$('search').value='';}
+  function reset(){state.category='全部';state.notCategory=null;state.tags.clear();state.notTags.clear();state.scores.clear();state.notScores.clear();state.special.clear();state.notSpecial.clear();state.query='';$('search').value='';}
+  /* 三态循环：正选 → 反选 → 不选。分类是单选，单独一套（点「全部」永远是回到不选）。 */
+  function cycleFilter(key,on,off){if(on.has(key)){on.delete(key);off.add(key);}else if(off.has(key))off.delete(key);else on.add(key);}
+  function cycleCategory(value){if(value==='全部'){state.category='全部';state.notCategory=null;return;}if(state.category===value){state.category='全部';state.notCategory=value;}else if(state.notCategory===value)state.notCategory=null;else{state.category=value;state.notCategory=null;}}
   /* 只有拿到正式标识的画师才谈得上「保存原图」：草稿态放行会在数据目录里写下一个
      没人认领的 draft- 目录（不在索引里，扫描与清理都够不到）。 */
   function showImage(a,w){const items=a.works?FolderStore.previewWorks(a,PREVIEW_SLOTS,reservedOf()).filter(Boolean):(draft?.uid===a.uid?draft.works:null);ArtistViewer.open({title:a.name,uid:a.uid,work:w,caption:w.caption,persist:ArtistId.parse(a.uid)!==null,items});}
@@ -611,25 +616,29 @@
     const restoreFocus=window.ArtistWorkspace?.captureFilterFocus();
     $('history-date').value=data.cutoffDate;$('save-large').checked=data.saveLargeImages===true;$('work-order').value=data.workOrder;
     const summary=libraryIndex.summary(data.artists),counts=summary.counts;
-    const signature=JSON.stringify([data.categories,data.tags,[...counts],state.category,[...state.tags],[...state.scores],[...state.special]]);
+    const signature=JSON.stringify([data.categories,data.tags,[...counts],state.category,state.notCategory,[...state.tags],[...state.notTags],[...state.scores],[...state.notScores],[...state.special],[...state.notSpecial]]);
     // 任务进度或搜索变化不重新创建筛选按钮；选择变化时恢复到同一个按钮。
     if(signature!==filterSignature){
       filterSignature=signature;
       $('categories').replaceChildren(...['全部',...data.categories,'待判断'].map(c=>{
-        const b=btn(c,()=>{state.category=c;render();focusFirstArtist();},c===state.category?'active':'');b.dataset.filterKey='category:'+c;b.setAttribute('aria-pressed',String(c===state.category));b.append(el('span','n',counts.get(c)||0));return b;
+        const on=c===state.category,off=c===state.notCategory;
+        const b=btn(c,()=>{cycleCategory(c);render();focusFirstArtist();},on?'active':off?'is-excluded':'');b.dataset.filterKey='category:'+c;b.setAttribute('aria-pressed',on?'true':off?'mixed':'false');b.title=off?'排除这一类':'只显示这一类';b.append(el('span','n',counts.get(c)||0));return b;
       }));
-      $('tags').replaceChildren(...data.tags.map(t=>{const b=btn(t,()=>{state.tags.has(t)?state.tags.delete(t):state.tags.add(t);render();},state.tags.has(t)?'active':'');b.dataset.filterKey='tag:'+t;b.setAttribute('aria-pressed',String(state.tags.has(t)));return b;}));
-      const toggleScore=value=>{state.scores.has(value)?state.scores.delete(value):state.scores.add(value);render();};
-      $('scores').replaceChildren(...[1,2,3,4,5,0].map(n=>{const on=state.scores.has(n),label=n?n+' 分':'未评分',b=btn(n?String(n):label,()=>toggleScore(n),(n?'score-pick score-'+n:'score-any')+(on?' active':''));b.dataset.filterKey='score:'+n;b.setAttribute('aria-pressed',String(on));b.setAttribute('aria-label',label);b.title=label;return b;}));
-      const toggleSpecial=key=>{state.special.has(key)?state.special.delete(key):state.special.add(key);render();};
-      $('special').replaceChildren(...SPECIAL_FILTERS.map(([key,label])=>{const on=state.special.has(key),b=btn(label,()=>toggleSpecial(key),'special-pick'+(on?' active':''));b.dataset.filterKey='special:'+key;b.setAttribute('aria-pressed',String(on));return b;}));
+      $('tags').replaceChildren(...data.tags.map(t=>{const on=state.tags.has(t),off=state.notTags.has(t),b=btn(t,()=>{cycleFilter(t,state.tags,state.notTags);render();},on?'active':off?'is-excluded':'');b.dataset.filterKey='tag:'+t;b.setAttribute('aria-pressed',on?'true':off?'mixed':'false');b.title=off?'排除这个标签':'只看这个标签';return b;}));
+      const toggleScore=value=>{cycleFilter(value,state.scores,state.notScores);render();};
+      $('scores').replaceChildren(...[1,2,3,4,5,0].map(n=>{const on=state.scores.has(n),off=state.notScores.has(n),label=n?n+' 分':'未评分',b=btn(n?String(n):label,()=>toggleScore(n),(n?'score-pick score-'+n:'score-any')+(on?' active':off?' is-excluded':''));b.dataset.filterKey='score:'+n;b.setAttribute('aria-pressed',on?'true':off?'mixed':'false');b.setAttribute('aria-label',label);b.title=off?'排除 '+label:label;return b;}));
+      $('special').replaceChildren(...SPECIAL_FILTERS.map(([key,label])=>{const on=state.special.has(key),off=state.notSpecial.has(key),b=btn(label,()=>{cycleFilter(key,state.special,state.notSpecial);render();},'special-pick'+(on?' active':off?' is-excluded':''));b.dataset.filterKey='special:'+key;b.setAttribute('aria-pressed',on?'true':off?'mixed':'false');b.title=off?'排除：'+label:label;return b;}));
     }
     const chips=[];
     const chip=(key,label,remove)=>{const b=btn(label+' ×',()=>{remove();render();},'filter-chip');b.dataset.filterKey=key;b.setAttribute('aria-label','移除筛选：'+label);chips.push(b);};
     if(state.category!=='全部')chip('category',state.category,()=>state.category='全部');
+    if(state.notCategory)chip('not-category','排除：'+state.notCategory,()=>state.notCategory=null);
     for(const tag of state.tags)chip('tag:'+tag,tag,()=>state.tags.delete(tag));
+    for(const tag of state.notTags)chip('not-tag:'+tag,'排除：'+tag,()=>state.notTags.delete(tag));
     for(const score of state.scores)chip('score:'+score,score?score+' 分':'未评分',()=>state.scores.delete(score));
+    for(const score of state.notScores)chip('not-score:'+score,'排除：'+(score?score+' 分':'未评分'),()=>state.notScores.delete(score));
     for(const [key,label] of SPECIAL_FILTERS)if(state.special.has(key))chip('special:'+key,label,()=>state.special.delete(key));
+    for(const [key,label] of SPECIAL_FILTERS)if(state.notSpecial.has(key))chip('not-special:'+key,'排除：'+label,()=>state.notSpecial.delete(key));
     if(state.query)chip('query','搜索：'+state.query,()=>{state.query='';$('search').value='';});
     $('active-filters').replaceChildren(...chips);$('active-filters').hidden=!chips.length;
     const rows=currentRows();

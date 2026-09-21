@@ -18,7 +18,7 @@
   }
   return {
    summary(artists){prepare(artists);return stats;},
-   select(artists,{category='全部',tags=new Set(),scores=new Set(),special=new Set(),query='',sort='order',desc=false,slots=5}={}){
+   select(artists,{category='全部',notCategory=null,tags=new Set(),notTags=new Set(),scores=new Set(),notScores=new Set(),special=new Set(),notSpecial=new Set(),query='',sort='order',desc=false,slots=5}={}){
     prepare(artists);const mode=['name','score','works'].includes(sort)?sort:'order';
     /* 方向进缓存键：升序与降序各排一份，来回切换不用反复排。 */
     const key=mode+(desc?'~desc':'');
@@ -43,7 +43,10 @@
     const knownCount=value=>value!==null&&value!==undefined&&value!=='';
     const hasFewWorks=a=>knownCount(a.counts?.total)&&Number(a.counts.total)<50;
     const hasEmptySlot=a=>(a.works||[]).length<slots;
-    return sorted.get(key).filter(({artist:a,search})=>(category==='全部'||(category==='待判断'?!a.category:a.category===category))&&activeTags.every(t=>a.tags.includes(t))&&(!scores.size||scores.has(a.score||0))&&(!fewWorks||hasFewWorks(a))&&(!noWorks||hasEmptySlot(a))&&words.every(word=>search.includes(word))).map(entry=>entry.artist);
+    /* 每组筛选都有正选与反选两面：notXxx 是「排除这些」。未知的特殊筛选 key 不排除任何人。 */
+    const SPECIAL_PREDICATES={'low-works':hasFewWorks,'no-works':hasEmptySlot};
+    const excluded=(set,hit)=>[...set].every(key=>!hit(key));
+    return sorted.get(key).filter(({artist:a,search})=>(category==='全部'||(category==='待判断'?!a.category:a.category===category))&&(!notCategory||(notCategory==='待判断'?!!a.category:a.category!==notCategory))&&activeTags.every(t=>a.tags.includes(t))&&excluded(notTags,t=>a.tags.includes(t))&&(!scores.size||scores.has(a.score||0))&&(!notScores.size||!notScores.has(a.score||0))&&(!fewWorks||hasFewWorks(a))&&(!noWorks||hasEmptySlot(a))&&excluded(notSpecial,key=>SPECIAL_PREDICATES[key]?.(a)===true)&&words.every(word=>search.includes(word))).map(entry=>entry.artist);
    },
    clear(){source=null;length=0;entries=[];stats=null;sorted.clear();}
   };

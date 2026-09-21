@@ -553,7 +553,9 @@ test('筛选列表：分数精确匹配、可多选，未评分单独一项',asy
   picks[5].onclick();
   assert.equal(visible(),1,'取消未评分，只剩 5 分那位');
   picks[4].onclick();
-  assert.equal(visible(),2,'全部取消后不按分数筛');
+  assert.equal(visible(),0,'第二次点击进的是反选：既排除未评分、又排除 5 分');
+  picks[4].onclick();picks[5].onclick();
+  assert.equal(visible(),2,'各自点第三次回到不选，不再按分数筛');
 });
 test('清除筛选会把分数也一起清掉',async()=>{
   const {elements,state}=await boot();

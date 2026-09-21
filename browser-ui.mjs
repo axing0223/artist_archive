@@ -357,6 +357,9 @@ async function browserChecks(){
  check(!$('empty').hidden,'筛空后要显示空状态');
  check(specialButtons()[0].getAttribute('aria-pressed')==='true','选项要记住选中态');
  check($('active-filters').textContent.includes('作品少于 50'),'已选条件里要出现它');
+ /* 三态：第一次点是正选，第二次是反选（排除），第三次才回到不选。 */
+ specialButtons()[0].click();await delay(140);
+ check(specialButtons()[0].getAttribute('aria-pressed')==='mixed','第二次点击进入反选态');
  specialButtons()[0].click();await delay(140);
  check($('gallery').children.length===beforeSpecial,'取消特殊筛选后恢复完整列表，实际 '+$('gallery').children.length);
  $('filter-toggle').click();await delay(320);

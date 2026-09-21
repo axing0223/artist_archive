@@ -54,6 +54,10 @@ h3{font-size:16px}
 /* 页头左上角用应用图标本身：图标自带圆角与底色，所以这里只负责尺寸、圆角和裁切，
    底色留着当图片加载前的占位。 */
 .brand-symbol{display:block;object-fit:cover;background:var(--accent-soft);border:1px solid var(--line);border-radius:10px;width:34px;height:34px}
+/* 反选态（排除）要和正选态（实心高亮）一眼分得开：危险色描边 + 文字前一个减号。
+   标记用 ::before 加，不动按钮文字，免得对着文案的断言失效。 */
+.is-excluded{border-color:var(--danger);color:var(--danger);background:var(--danger-bg)}
+.is-excluded::before{content:'−';margin-right:3px;font-weight:700}
 .brand small{display:block;font:10px ui-monospace,monospace;letter-spacing:.16em;color:var(--faint);margin-top:3px}
 .connection{display:flex;align-items:center;gap:7px;min-width:0;flex:1;color:var(--muted);font-size:13px}
 #connection-dot,.status-indicator{width:5px;height:5px;border-radius:50%;background:var(--faint);flex-shrink:0}
