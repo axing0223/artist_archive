@@ -109,14 +109,19 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
   if(message.type==='ready'){drainActions().then(actions=>respond({actions}));return true;}
   if(message.type==='created'){finish(message.result);}
 });
-/* 点漂浮提示：打开（或切到）画师库，让它定位到新卡片；失败的那种就把文字送回「添加下一位画师」。 */
+/* 点漂浮提示：打开（或切到）画师库，让它定位到新卡片。
+   只有「已添加」「已收下」这类真的建好卡的提示才带 uid，才谈得上定位；
+   排队/失败那两朵提示没有 uid，它们的意思只是「把页面打开」——建卡由页面领 create 待办自己完成。
+   这种情况要是再排一条 uid 为空的定位待办，那段文字就会落进页面里「识别画师」的旧流程。 */
 chrome.runtime.onMessage.addListener((message,sender,respond)=>{
   if(message?.type!=='artist-library.toast-click')return;
   (async()=>{
     try{await chrome.action.setBadgeText({text:''});}catch{}
-    const payload={type:'artist-library.focus',uid:String(message.uid||''),text:String(message.text||''),ok:message.ok===true};
     /* 点提示是用户主动要看页面，这时候开页面/切前台都是应该的。 */
     const found=await showLibrary();
+    const uid=String(message.uid||'');
+    if(!uid)return;
+    const payload={type:'artist-library.focus',uid,text:String(message.text||''),ok:message.ok===true};
     if(found?.existed){try{await chrome.runtime.sendMessage(payload);return;}catch{}}
     /* 页面是刚开的（或者刚才没接住）：排进待办，它加载完成后自己来领。 */
     await queueAction({kind:'focus',...payload});

@@ -3421,21 +3421,7 @@ to{opacity:1;transform:none}
     const value=$('quick-input').value.trim();$('quick-status').textContent=value?'等待输入完成…':'输入标签或链接，识别后点击候选画师添加。';
     if(value.length>=2||/^\d$/.test(value))lookupTimer=setTimeout(detectArtist,800);
   }
-  /* 扩展右键菜单「添加到画师库」：把选中的文字送进「添加下一位画师」这条路——
-     填进输入框、滚到那一块、直接开始识别，接下来和手动输入完全一样。 */
-  function addFromSelection(text){
-    const value=String(text||'').replace(/\s+/g,' ').trim().slice(0,200);
-    if(!value){status('选中的文字是空的，没有可识别的画师。',true);return;}
-    cancelLookup();clearCandidates();
-    const input=$('quick-input');input.value=value;
-    window.ArtistWorkspace?.openQuick();
-    const section=$('quick-add');
-    if(section?.scrollIntoView)section.scrollIntoView({block:'center'});
-    if(input.focus)input.focus();
-    status(`已从右键菜单收到「${value}」，正在识别画师…`);
-    detectArtist();
-  }
-  /* 右键菜单「添加到画师库」：把选中的文字收进库里。
+  /* 扩展右键菜单「添加到画师库」：把选中的文字收进库里。
      识别（找正式名、编号、作品）只当成「尽量补全」——认不出来也照样建卡，卡名就用选中的文字，
      资料留给你自己在编辑态里补。右键的意图是「收下这段文字」，不该因为站点上查不到就落空。
      只有三种情况真的不建：没选数据文件夹（写不了盘）、正忙、这位画师已经在库里了。 */
@@ -3481,10 +3467,13 @@ to{opacity:1;transform:none}
      页面在后台时滚动是没用的（浏览器不做布局、IntersectionObserver 也不触发），
      所以先记下来，等这一页真的可见了再滚。 */
   let focusPending=null;
-  function focusArtist(uid,text){
-    if(!uid){if(text)addFromSelection(text);return;}
+  /* 定位只认 uid。没有 uid（排队/失败那朵提示的旧待办）或者那张卡已经不在库里，都只当没这回事：
+     绝不退回「识别画师」——那是强制建卡之前的旧流程，会把同一段文字又变成一次手动识别，
+     而建卡本来由 create 待办负责，不该在这里再来一遍。 */
+  function focusArtist(uid){
+    if(!uid)return;
     const artist=data.artists.find(item=>item.uid===uid);
-    if(!artist){if(text)addFromSelection(text);else status('这张卡片已经不在库里了。',true);return;}
+    if(!artist){status('这张卡片已经不在库里了。',true);return;}
     focusPending={uid,name:artist.name};
     applyFocus();
   }
@@ -3523,7 +3512,7 @@ to{opacity:1;transform:none}
         createArtistFromSelection(message.text).then(done,error=>done({ok:false,reason:'内部错误：'+(error?.message||error),text:message.text}));
         return true;
       }
-      if(message?.type==='artist-library.focus'){focusArtist(message.uid,message.text);return;}
+      if(message?.type==='artist-library.focus'){focusArtist(message.uid);return;}
     });
     try{
       runtime.sendMessage({channel:'artist-library-page',type:'ready'}).then(answer=>{
@@ -3558,7 +3547,7 @@ to{opacity:1;transform:none}
   }
   function handleAction(action,send){
     if(action?.kind==='create'){createQueue.push({action,send});pumpCreate();return;}
-    if(action?.kind==='focus')focusArtist(action.uid,action.text);
+    if(action?.kind==='focus')focusArtist(action.uid);
   }
   /* ---- 生图参数：只存在本机浏览器里，绝不写进画师库数据文件，导出备份也就不会带 token ---- */
   const GEN_LISTS=[['gen-model',()=>ArtistNovelAI.MODELS],['gen-size',()=>ArtistNovelAI.SIZES],['gen-sampler',()=>ArtistNovelAI.SAMPLERS],['gen-uc',()=>ArtistNovelAI.UC_PRESETS]];

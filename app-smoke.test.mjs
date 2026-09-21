@@ -1158,10 +1158,25 @@ test('点漂浮提示回到页面：清掉筛选、滚到新卡片并让它闪�
   assert.equal(state.mounted.includes(uid),true,'要主动把那一段挂载出来');
   assert.equal(state.scrolled.some(selector=>selector.includes(uid)),true,'要滚到那张卡片');
   assert.match(String(getEl(elements,'storage-status').textContent),/已定位/);
-  /* 找不到那张卡（比如已被删）时退回「添加下一位画师」，把文字填进识别框 */
+  /* 卡片不在了（比如已被删）时只报一句状态：绝不再把人送回「识别画师」——
+     那是强制建卡之前的旧流程，会把同一段文字又变成一次手动识别。 */
   const gone=await boot();
+  const goneOpened=[];
+  getEl(gone.elements,'quick-dialog').showModal=()=>goneOpened.push('quick');
   gone.state.pageListeners[0]({type:'artist-library.focus',uid:'不存在',text:'modare'});
-  assert.equal(getEl(gone.elements,'quick-input').value,'modare');
+  assert.equal(getEl(gone.elements,'quick-input').value,'','不该把文字填进识别框');
+  assert.deepEqual(goneOpened,[],'卡片不在了也不该弹出识别画师');
+  assert.match(String(getEl(gone.elements,'storage-status').textContent),/不在库里/);
+  /* 排队/失败那朵漂浮提示没有 uid：点它只该把页面打开，建卡交给 create 待办。
+     旧版本这里会落到 addFromSelection，于是「右键 → 点提示打开页面」会自己弹出识别界面——
+     页面一边建卡一边把人拽回手动识别。 */
+  const blank=await boot();
+  const blankOpened=[];
+  getEl(blank.elements,'quick-dialog').showModal=()=>blankOpened.push('quick');
+  blank.state.pageListeners[0]({type:'artist-library.focus',uid:'',text:'yotte615'});
+  assert.equal(getEl(blank.elements,'quick-input').value,'','没有 uid 的定位请求不该填识别框');
+  assert.deepEqual(blankOpened,[],'没有 uid 的定位请求不该弹出识别画师');
+  assert.equal(blank.state.rows.length,0,'没有 uid 的定位请求不该建卡');
 });
 test('快捷识别：勾选候选作品后点「添加此画师」，只有勾上的才保存',async()=>{
   const {elements,state,ctx}=await boot();

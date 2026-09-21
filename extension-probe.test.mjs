@@ -228,6 +228,17 @@ test('右键菜单：静默建卡（后台标签页）→ 结果画在当前页�
   warmClick.receive({type:'artist-library.toast-click',uid:'0001-modare-105704',text:'modare',ok:true});
   await until(()=>warmClick.messages.some(message=>message.type==='artist-library.focus'),'页面开着时直接推定位消息');
   assert.equal(warmClick.messages.find(message=>message.type==='artist-library.focus').uid,'0001-modare-105704');
+  /* 排队/失败那朵提示没有 uid：点它只该把页面打开。
+     旧版本这时还会排一条 uid 为空的定位待办，页面收到就落进「识别画师」的旧流程，
+     于是「右键 → 点提示打开页面」会自己弹出识别界面。 */
+  const queuedClick=await run({pageOpen:false});
+  queuedClick.receive({type:'artist-library.toast-click',uid:'',text:'yotte615',ok:false});
+  await until(()=>queuedClick.createdTabs.length,'点排队提示仍要把页面打开');
+  /* 多等几个宏任务：后台那段 async 处理要跑完才能断言「没排待办」，
+     否则旧实现还没走到 queueAction，这条负向断言会假通过。 */
+  for(let i=0;i<5;i++)await new Promise(resolve=>setTimeout(resolve,0));
+  assert.equal(queuedClick.stored.has('pendingArtistActions'),false,'没有 uid 的提示点击不该排定位待办');
+  assert.deepEqual(queuedClick.messages.filter(item=>item.type==='artist-library.focus'),[],'没有 uid 就不该推定位消息');
 });
 test('漂浮提示：画在右上角、点一下把结果交回后台',async()=>{
   const code=await fs.readFile('图片取图扩展/toast.js','utf8');
