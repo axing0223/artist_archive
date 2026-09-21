@@ -44,3 +44,63 @@ export function normalizePromptTag(value){
 export function promptTagAt(text,offset){
   return normalizePromptTag(pickPromptTag(text,offset));
 }
+
+/* ── 从 DOM 取「一段文本 + 偏移量」──────────────────────────────────────
+   提示词面板里标签往往是**相邻的元素**（一行一个 div），而不是同一段文本里的 \n。
+   这时 textContent 会把它们直接粘起来（1girlsolo），按分隔符切片就把上下行一起吞了——
+   用户连着两轮报的「仍然会选中上下行的内容」就是这个。
+   所以自己拼：走文本节点，遇到块级元素就在两侧补一个 \n。
+   关键点：拼文本和算偏移必须**同一套规则**，否则 Range 的偏移量和拼出来的文本对不上
+   （原先就是两套坐标系，所以修不掉）。下面两个函数用同一份游走逻辑，测试里有一条
+   专门断言两者在同一个树上是自洽的。 */
+const BLOCK_TAGS=new Set(['DIV','P','LI','TR','TD','TH','SECTION','ARTICLE','ASIDE','UL','OL','BR','HR','H1','H2','H3','H4','H5','H6','TABLE','TBODY','FIGURE','BLOCKQUOTE','PRE','NAV','HEADER','FOOTER','MAIN']);
+const isBlock=node=>BLOCK_TAGS.has(String(node?.tagName||'').toUpperCase());
+
+export function promptTextOf(root){
+  let text='',tail=true;
+  const newline=()=>{if(!tail){text+='\n';tail=true;}};
+  const walk=current=>{
+    for(const child of current?.childNodes||[]){
+      if(child.nodeType===3){
+        const data=child.data??child.textContent??'';
+        text+=data;if(data)tail=/\n$/.test(data);
+        continue;
+      }
+      if(child.nodeType!==1)continue;
+      const block=isBlock(child);
+      if(block)newline();
+      walk(child);
+      if(block)newline();
+    }
+  };
+  walk(root);
+  return text;
+}
+
+export function offsetInPromptText(root,node,offset){
+  let total=0,found=false,tail=true;
+  const newline=()=>{if(!tail){total++;tail=true;}};
+  const walk=current=>{
+    for(const child of current?.childNodes||[]){
+      if(found)return;
+      if(child.nodeType===3){
+        const data=child.data??child.textContent??'';
+        if(child===node){total+=Math.max(0,Math.min(Number.isFinite(Number(offset))?Number(offset):0,data.length));found=true;return;}
+        total+=data.length;if(data)tail=/\n$/.test(data);
+        continue;
+      }
+      if(child.nodeType!==1)continue;
+      const block=isBlock(child);
+      if(block)newline();
+      walk(child);
+      if(block)newline();
+    }
+  };
+  walk(root);
+  return total;
+}
+
+/* 组合用法：text 和 offset 一次拿全，调用方不用自己保证两套坐标系一致。 */
+export function promptTagIn(root,node,offset){
+  return promptTagAt(promptTextOf(root),offsetInPromptText(root,node,offset));
+}

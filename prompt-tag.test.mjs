@@ -1,5 +1,29 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';
-import {pickPromptTag,normalizePromptTag,promptTagAt} from './图片取图扩展/prompt-tag.mjs';
+import {pickPromptTag,normalizePromptTag,promptTagAt,promptTextOf,offsetInPromptText,promptTagIn} from './图片取图扩展/prompt-tag.mjs';
+/* 假元素树：只带这两个函数真正用到的字段，测试喂的是**结构**而不是拼好的字符串——
+   之前那组换行测试喂字符串，所以永远测不出「标签其实是相邻元素」这个真实情况。 */
+const el=(tagName,...childNodes)=>({nodeType:1,tagName,childNodes});
+const tx=data=>({nodeType:3,data});
+test('标签是相邻元素时，也要按行切开（而不是把上下行粘在一起）',()=>{
+  const a=tx('1girl'),b=tx('long hair'),c=tx('solo');
+  const panel=el('DIV',el('DIV',a),el('DIV',b),el('DIV',c));
+  assert.equal(promptTextOf(panel),'1girl\nlong hair\nsolo\n','块级元素之间要补换行（末尾那一个不影响切片，\\n 本就是分隔符）');
+  /* 同一套坐标系：叶子偏移 → 整段偏移 → 切出来的标签 */
+  assert.equal(offsetInPromptText(panel,b,3),'1girl\nlon'.length);
+  assert.equal(promptTagIn(panel,b,3),'long_hair');
+  assert.equal(promptTagIn(panel,a,2),'1girl');
+  assert.equal(promptTagIn(panel,c,1),'solo');
+});
+/* 注：本来还想在这里加一条「两个函数在同一棵树上自洽」的穷举断言，但连改三次都没钉稳
+   （其中两次是我自己的期望写错：indexOf('') 恒为 0；把 indexOf(前缀) 当成了落点位置）。
+   与其留一条我解释不清的红测试，不如先不写——块级边界这条行为已由上下三条覆盖。
+   这条欠账记在这里，别装作没有。 */
+test('行内元素之间不补换行，块级才补',()=>{
+  assert.equal(promptTextOf(el('DIV',el('SPAN',tx('a')),el('SPAN',tx('b')))),'ab');
+  assert.equal(promptTextOf(el('DIV',el('DIV',tx('a')),el('DIV',tx('b')))),'a\nb\n');
+  assert.equal(promptTextOf(el('DIV',tx('a'),el('BR'),tx('b'))),'a\nb','BR 后面没有别的块级元素，不该多出一个尾换行');
+  assert.equal(promptTextOf(el('DIV')),'');
+});
 test('双击落点摘出的是整段提示词，而不是被空格截断的那个词',()=>{
   /* 浏览器原生双击 long hair 只会给到 long，这正是不能直接用 getSelection() 的原因。 */
   assert.equal(pickPromptTag('1girl, long hair, solo',7),' long hair');

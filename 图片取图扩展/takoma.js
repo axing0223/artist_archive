@@ -15,12 +15,11 @@
   const LARGE_URL = 'https://danbooru.donmai.us/posts?tags=';
   let lastTag = '';
 
-  const promptTag = async (text, offset) => {
-    const mod = await import(chrome.runtime.getURL('prompt-tag.mjs'));
-    return mod.promptTagAt(text, offset);
-  };
-  /* 选区可能在 input/textarea（取 value），也可能在普通节点里（取 textContent）。
-     两边都按同一个分隔符规则切，落点用选区的起点。 */
+  const promptModule = () => import(chrome.runtime.getURL('prompt-tag.mjs'));
+  /* 选区可能在 input/textarea（取 value + 光标位置），也可能在普通节点里。
+     普通节点这一路**不再自己拼 textContent + Range**（两套坐标系在块级元素边界上对不上，
+     标签又是相邻元素，于是切片把上下行一起吞了）；改成把「容器 + 落点」交给
+     prompt-tag.mjs 里同一套拼接规则去算。 */
   const readSelection = () => {
     const selection = document.getSelection?.();
     if (!selection || selection.isCollapsed || !selection.rangeCount) return null;
@@ -28,23 +27,9 @@
     if (!node) return null;
     const element = node.nodeType === 1 ? node : node.parentElement;
     const field = element?.closest?.('input, textarea');
-    if (field?.value != null) return { text: field.value, offset: selection.anchorOffset };
+    if (field?.value != null) return { field, text: field.value, offset: selection.anchorOffset };
     const container = element?.closest?.('[contenteditable=""], [contenteditable="true"], .prompt, [class*=prompt]') || element;
-    const text = container?.textContent || '';
-    /* 偏移量必须用 Range 实量。先前是 text.indexOf(选区内已读过的前缀) 反推的：
-       提示词里同一个词出现两次时（下一行又出现同样的词），indexOf 给的是第一次出现的位置，
-       于是切出来的是别的那一段——表现就是「检索的不是当前选中的内容」。
-       Range 从容器开头量到落点，重复文字也不会错。 */
-    let offset = 0;
-    try {
-      const range = document.createRange();
-      range.selectNodeContents(container);
-      range.setEnd(node, selection.anchorOffset);
-      offset = range.toString().length;
-    } catch {
-      offset = Math.max(0, text.indexOf(node.textContent?.slice(0, selection.anchorOffset) ?? ''));
-    }
-    return { text, offset };
+    return { container, node, offset: selection.anchorOffset };
   };
   const close = () => document.getElementById(HOST_ID)?.remove();
   const ask = (type, tag) => chrome.runtime.sendMessage({ type, tag }).catch(error => ({ ok: false, reason: '扩展没有回应：' + (error?.message || error) }));
@@ -119,9 +104,12 @@
   document.addEventListener('dblclick', async event => {
     if (event.target?.closest?.(`#${HOST_ID}`)) return;
     const picked = readSelection();
-    if (!picked || !picked.text) return;
+    if (!picked) return;
     let tag = '';
-    try { tag = await promptTag(picked.text, picked.offset); } catch { return; }
+    try {
+      const mod = await promptModule();
+      tag = picked.field ? mod.promptTagAt(picked.text, picked.offset) : mod.promptTagIn(picked.container, picked.node, picked.offset);
+    } catch { return; }
     if (!tag || tag === lastTag) return; /* 同一个标签连着双击不重复弹 */
     lastTag = tag;
     render(tag);
