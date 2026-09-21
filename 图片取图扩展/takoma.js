@@ -33,27 +33,39 @@
   };
   const close = () => document.getElementById(HOST_ID)?.remove();
   const ask = (type, tag) => chrome.runtime.sendMessage({ type, tag }).catch(error => ({ ok: false, reason: '扩展没有回应：' + (error?.message || error) }));
+  /* 浮窗的位置/尺寸/缩略图大小记在 chrome.storage.local（manifest 里本来就有 storage 权限）。
+     内容脚本存自己的东西，不碰画师库的数据。 */
+  const LAYOUT_KEY = 'takoma-helper.layout';
+  const loadLayout = async () => { try { return (await chrome.storage.local.get(LAYOUT_KEY))?.[LAYOUT_KEY] || {}; } catch { return {}; } };
+  const saveLayout = layout => { try { chrome.storage.local.set({ [LAYOUT_KEY]: layout }); } catch {} };
 
   /* 缩略图高度：默认 250px，右上角滑杆可调。5 列铺满一行，不足 5 张用空占位补齐，
      行高才不会被撑得忽大忽小。 */
   let cellHeight = 250;
-  const row = items => `<div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;margin-top:6px">`
+  /* 列数不写死：按缩略图大小自动适配——图越大一行放得越少。
+     自然宽度按 0.75 倍估（object-fit:contain 的常见比例），minmax 的下限就用它。 */
+  const row = items => `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(${Math.round(cellHeight * 0.75)}px,1fr));gap:6px;margin-top:6px">`
     + items.map(item => `<img src="${item.thumb}" alt=""${item.uid != null ? ` data-uid="${item.uid}" data-index="${item.index}"` : ` data-large="${item.large || item.thumb}"`} title="点击看大图" style="width:100%;height:${cellHeight}px;object-fit:contain;background:#141b1d;border:1px solid #2a3538;border-radius:6px;cursor:zoom-in">`).join('')
-    + Array.from({ length: Math.max(0, 5 - items.length) }, () => '<span></span>').join('')
     + `</div>`;
 
   const render = async tag => {
     close();
+    const layout = await loadLayout();
     const host = document.createElement('div');
     host.id = HOST_ID;
-    Object.assign(host.style, { position: 'fixed', right: '24px', bottom: '24px', zIndex: '2147483647' });
     const root = host.attachShadow?.({ mode: 'open' }) || host;
-    /* 宽度跟着画布走（takoma 的画布是 .tkCanvasPane），量不到就用 640 兜底，再夹进视口。
-       要放得下 5 列，所以下限给到 420。 */
+    /* 位置和尺寸优先用上次的（用户拖过就按用户的来）；没存过就贴着右下角，
+       宽度跟着画布走（takoma 的画布是 .tkCanvasPane），量不到用 640 兜底，再夹进视口。 */
     const paneWidth = Math.round(document.querySelector('.tkCanvasPane')?.getBoundingClientRect?.().width || 0);
-    const width = Math.max(420, Math.min(paneWidth || 640, Math.round(innerWidth * 0.94)));
+    const width = Math.max(360, Math.min(Number(layout.width) || paneWidth || 640, Math.round(innerWidth * 0.94)));
+    const height = Math.max(240, Math.min(Number(layout.height) || 460, Math.round(innerHeight * 0.9)));
+    const left = Number.isFinite(layout.left) ? Math.max(0, Math.min(layout.left, innerWidth - 120)) : Math.max(0, innerWidth - 24 - width);
+    const top = Number.isFinite(layout.top) ? Math.max(0, Math.min(layout.top, innerHeight - 80)) : Math.max(0, Math.round(innerHeight / 2 - height / 2));
+    if (Number.isFinite(layout.cell)) cellHeight = Math.max(120, Math.min(420, layout.cell));
+    Object.assign(host.style, { position: 'fixed', left: left + 'px', top: top + 'px', zIndex: '2147483647' });
     const box = document.createElement('div');
-    Object.assign(box.style, { width: width + 'px', maxHeight: '80vh', overflow: 'auto', background: '#1b2224', color: '#e9efee', border: '1px solid #364346', borderRadius: '12px', boxShadow: '0 16px 50px #0008', font: '13px/1.6 "Segoe UI","Microsoft YaHei",sans-serif', padding: '12px' });
+    /* resize:both 用浏览器原生的缩放手柄，不必自己写拖拽角；overflow 不是 visible 才生效。 */
+    Object.assign(box.style, { width: width + 'px', height: height + 'px', maxHeight: '90vh', overflow: 'auto', resize: 'both', background: '#1b2224', color: '#e9efee', border: '1px solid #364346', borderRadius: '12px', boxShadow: '0 16px 50px #0008', font: '13px/1.6 "Segoe UI","Microsoft YaHei",sans-serif', padding: '12px' });
     box.textContent = `正在查「${tag}」…`;
     box.addEventListener('dblclick', event => event.stopPropagation());
     /* 点图看大图：就地换内容，再点一下回到列表。还原时要把滑杆重新接上——
@@ -99,7 +111,7 @@
         + `<div style="color:#abbcb9">作品数量 ${countText(hit.artist)}</div></div>`
         + (hit.thumbs?.length ? row(hit.thumbs.map((src, index) => ({ thumb: src, uid: hit.artist.uid, index }))) : '')
       : `<div style="color:#abbcb9;margin-top:4px">本机画师库里没有「${tag}」</div>`;
-    box.innerHTML = `<div style="font-size:15px;font-weight:600">${tag}</div>`
+    box.innerHTML = `<div data-drag style="font-size:15px;font-weight:600;cursor:move;user-select:none">${tag}</div>`
       + library
       + `<div style="color:#8d9e9c;font-size:11px;margin-top:10px">Danbooru${posts.length ? ` 前 ${posts.length} 张` : ''}</div>`
       + (posts.length ? row(posts) : '<div style="color:#8d9e9c">站点没有返回图片</div>')
@@ -109,6 +121,23 @@
       + `</div>`
       + `<div style="color:#8d9e9c;font-size:11px;margin-top:6px">双击别处或按 Esc 关闭</div>`;
     wireSlider();
+    /* 拖动：按标题条移动（图片区域留给点开看大图，不抢手势）。
+       位置取 style.left/top 而不是 offsetLeft——fixed 元素没有 offsetParent，offsetLeft 会是 0。 */
+    const position = () => ({ left: parseFloat(host.style.left) || 0, top: parseFloat(host.style.top) || 0 });
+    const remember = () => { const { left: x, top: y } = position(); saveLayout({ left: x, top: y, width: box.offsetWidth, height: box.offsetHeight, cell: cellHeight }); };
+    box.querySelector('[data-drag]')?.addEventListener('pointerdown', event => {
+      const start = position(), offsetX = event.clientX - start.left, offsetY = event.clientY - start.top;
+      const move = moveEvent => {
+        host.style.left = Math.max(0, Math.min(moveEvent.clientX - offsetX, innerWidth - 60)) + 'px';
+        host.style.top = Math.max(0, Math.min(moveEvent.clientY - offsetY, innerHeight - 40)) + 'px';
+      };
+      const done = () => { document.removeEventListener('pointermove', move); remember(); };
+      document.addEventListener('pointermove', move);
+      document.addEventListener('pointerup', done, { once: true });
+      event.preventDefault();
+    });
+    /* 原生缩放手柄没有回调，松手时记一次；滑杆拖完也会冒 pointerup，一并记住。 */
+    box.addEventListener('pointerup', remember);
   };
 
   document.addEventListener('dblclick', async event => {
