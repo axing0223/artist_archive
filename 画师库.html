@@ -320,7 +320,11 @@ body:has(dialog[open]){overflow:hidden}
 .manage-tag-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px;margin:8px 0;border:1px solid var(--line);border-radius:7px}
 .manage-tag-row input{flex:1;min-width:140px}
 .manage-tag-row .action{font-size:13px;padding:5px 10px}
-.manage-name{flex:1;min-width:100px;font-size:14px;overflow-wrap:anywhere}
+/* 名字与数量成一组：名字吃掉剩余宽度，数量紧挨着它。行本身是 flex-wrap 的，
+   窄屏时这一组整体换行，不会让数量单独掉下去跟右边的按钮挤在一起。 */
+.manage-label{display:flex;align-items:baseline;gap:7px;flex:1;min-width:100px}
+.manage-name{flex:1;min-width:60px;font-size:14px;overflow-wrap:anywhere}
+.manage-count{font:12px ui-monospace,monospace;font-variant-numeric:tabular-nums;padding:1px 6px;background:var(--raised);color:var(--muted);border-radius:4px;white-space:nowrap}
 .manage-handle{border:0;background:none;color:var(--faint);padding:5px;cursor:grab}
 .manage-tag-row.is-dragging{opacity:.5}
 .drop-before{box-shadow:inset 0 2px var(--accent)}
@@ -3540,9 +3544,11 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
   let dragging=null;
   const clearDropMarks=()=>{for(const node of document.querySelectorAll('.drop-before,.drop-after'))node.classList.remove('drop-before','drop-after');};
   const moveItem=(list,from,to)=>{if(from===to||from<0||to<0||from>=list.length||to>=list.length)return list;const next=[...list],[item]=next.splice(from,1);next.splice(to,0,item);return next;};
-  /* 列表行平时只显示名字，点「重命名」才就地把这一行换成输入框；
-     传入 onMove 时额外给一个拖动把手，只有未筛选时才提供，避免顺序歧义 */
-  function manageRow(name,{onRename,onRemove,relist,onMove,index}={}){
+  /* 列表行平时只显示名字与「有多少位画师在用」，点「重命名」才就地把这一行换成输入框；
+     传入 onMove 时额外给一个拖动把手，只有未筛选时才提供，避免顺序歧义。
+     count 的口径与顶部筛选按钮上的数字一致：**直接属于**这个分类 / **直接带**这个标签的画师数。
+     分类不做连带计入——一位画师只属于一个分类，若把「待判断」之类也算进来，各行相加会超过总人数。 */
+  function manageRow(name,{onRename,onRemove,relist,onMove,index,count}={}){
     const row=el('div','manage-tag-row');
     const edit=()=>{
       const input=el('input');input.value=name;input.maxLength=40;input.setAttribute('aria-label','重命名 '+name);
@@ -3563,9 +3569,28 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
       row.ondrop=event=>{if(!dragging||dragging.name===name)return;event.preventDefault();const from=dragging.index;clearDropMarks();dragging=null;onMove(from,index);};
       parts.push(handle);
     }
-    parts.push(el('span','manage-name',name),btn('重命名',edit),confirmButton('删除','确认删除？',()=>onRemove(name)));
+    /* 名字与数量要贴着显示，所以两者先合成一组：行是 flex-wrap 的，
+       窄屏时数量会跟着名字一起换行，不会孤零零掉下去跟右边的按钮挤在一起。 */
+    const label=el('span','manage-label');
+    label.append(el('span','manage-name',name));
+    if(Number.isFinite(count)){
+      const badge=el('span','manage-count',String(count));
+      badge.title=`${count} 位画师直接${onMove?'属于这个分类':'带这个标签'}`;
+      label.append(badge);
+    }
+    parts.push(label,btn('重命名',edit),confirmButton('删除','确认删除？',()=>onRemove(name)));
     row.append(...parts);
     return row;
+  }
+  /* 数「直接用这个分类 / 带这个标签」的画师。一次遍历同时算出两边的表：
+     每次重命名、删除、编辑画师之后都会重新列一遍，没必要各扫一次。 */
+  function usageCounts(){
+    const byCategory=new Map(),byTag=new Map();
+    for(const artist of data.artists){
+      if(artist.category)byCategory.set(artist.category,(byCategory.get(artist.category)||0)+1);
+      for(const tag of artist.tags)byTag.set(tag,(byTag.get(tag)||0)+1);
+    }
+    return {byCategory,byTag};
   }
   const manageMatch=(value,filter)=>!filter||String(value).toLowerCase().includes(filter);
   function fillManageEmpty(id,filter,count,what){
@@ -3583,8 +3608,9 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
   }
   function listCategories(){
     const filter=manageFilter.category,sortable=!filter,visible=data.categories.filter(c=>manageMatch(c,filter));
+    const {byCategory}=usageCounts();
     $('category-list').replaceChildren(...visible.map((c,index)=>manageRow(c,{
-      relist:listCategories,index,
+      relist:listCategories,index,count:byCategory.get(c)||0,
       onMove:sortable?async(from,to)=>{
         if(busy||from===to)return;
         const next=clone(data);next.categories=moveItem(next.categories,from,to);
@@ -3608,8 +3634,9 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
   }
   function listTags(){
     const filter=manageFilter.tag,sortable=!filter,visible=data.tags.filter(t=>manageMatch(t,filter));
+    const {byTag}=usageCounts();
     $('tag-list').replaceChildren(...visible.map((t,index)=>manageRow(t,{
-      relist:listTags,index,
+      relist:listTags,index,count:byTag.get(t)||0,
       onMove:sortable?async(from,to)=>{
         if(busy||from===to)return;
         const next=clone(data);next.tags=moveItem(next.tags,from,to);

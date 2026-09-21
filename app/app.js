@@ -955,9 +955,11 @@
   let dragging=null;
   const clearDropMarks=()=>{for(const node of document.querySelectorAll('.drop-before,.drop-after'))node.classList.remove('drop-before','drop-after');};
   const moveItem=(list,from,to)=>{if(from===to||from<0||to<0||from>=list.length||to>=list.length)return list;const next=[...list],[item]=next.splice(from,1);next.splice(to,0,item);return next;};
-  /* 列表行平时只显示名字，点「重命名」才就地把这一行换成输入框；
-     传入 onMove 时额外给一个拖动把手，只有未筛选时才提供，避免顺序歧义 */
-  function manageRow(name,{onRename,onRemove,relist,onMove,index}={}){
+  /* 列表行平时只显示名字与「有多少位画师在用」，点「重命名」才就地把这一行换成输入框；
+     传入 onMove 时额外给一个拖动把手，只有未筛选时才提供，避免顺序歧义。
+     count 的口径与顶部筛选按钮上的数字一致：**直接属于**这个分类 / **直接带**这个标签的画师数。
+     分类不做连带计入——一位画师只属于一个分类，若把「待判断」之类也算进来，各行相加会超过总人数。 */
+  function manageRow(name,{onRename,onRemove,relist,onMove,index,count}={}){
     const row=el('div','manage-tag-row');
     const edit=()=>{
       const input=el('input');input.value=name;input.maxLength=40;input.setAttribute('aria-label','重命名 '+name);
@@ -978,9 +980,28 @@
       row.ondrop=event=>{if(!dragging||dragging.name===name)return;event.preventDefault();const from=dragging.index;clearDropMarks();dragging=null;onMove(from,index);};
       parts.push(handle);
     }
-    parts.push(el('span','manage-name',name),btn('重命名',edit),confirmButton('删除','确认删除？',()=>onRemove(name)));
+    /* 名字与数量要贴着显示，所以两者先合成一组：行是 flex-wrap 的，
+       窄屏时数量会跟着名字一起换行，不会孤零零掉下去跟右边的按钮挤在一起。 */
+    const label=el('span','manage-label');
+    label.append(el('span','manage-name',name));
+    if(Number.isFinite(count)){
+      const badge=el('span','manage-count',String(count));
+      badge.title=`${count} 位画师直接${onMove?'属于这个分类':'带这个标签'}`;
+      label.append(badge);
+    }
+    parts.push(label,btn('重命名',edit),confirmButton('删除','确认删除？',()=>onRemove(name)));
     row.append(...parts);
     return row;
+  }
+  /* 数「直接用这个分类 / 带这个标签」的画师。一次遍历同时算出两边的表：
+     每次重命名、删除、编辑画师之后都会重新列一遍，没必要各扫一次。 */
+  function usageCounts(){
+    const byCategory=new Map(),byTag=new Map();
+    for(const artist of data.artists){
+      if(artist.category)byCategory.set(artist.category,(byCategory.get(artist.category)||0)+1);
+      for(const tag of artist.tags)byTag.set(tag,(byTag.get(tag)||0)+1);
+    }
+    return {byCategory,byTag};
   }
   const manageMatch=(value,filter)=>!filter||String(value).toLowerCase().includes(filter);
   function fillManageEmpty(id,filter,count,what){
@@ -998,8 +1019,9 @@
   }
   function listCategories(){
     const filter=manageFilter.category,sortable=!filter,visible=data.categories.filter(c=>manageMatch(c,filter));
+    const {byCategory}=usageCounts();
     $('category-list').replaceChildren(...visible.map((c,index)=>manageRow(c,{
-      relist:listCategories,index,
+      relist:listCategories,index,count:byCategory.get(c)||0,
       onMove:sortable?async(from,to)=>{
         if(busy||from===to)return;
         const next=clone(data);next.categories=moveItem(next.categories,from,to);
@@ -1023,8 +1045,9 @@
   }
   function listTags(){
     const filter=manageFilter.tag,sortable=!filter,visible=data.tags.filter(t=>manageMatch(t,filter));
+    const {byTag}=usageCounts();
     $('tag-list').replaceChildren(...visible.map((t,index)=>manageRow(t,{
-      relist:listTags,index,
+      relist:listTags,index,count:byTag.get(t)||0,
       onMove:sortable?async(from,to)=>{
         if(busy||from===to)return;
         const next=clone(data);next.tags=moveItem(next.tags,from,to);

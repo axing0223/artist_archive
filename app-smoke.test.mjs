@@ -209,6 +209,8 @@ test('删除画师改为按钮二次确认，不再调用系统对话框',async(
 });
 const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const findByPlaceholder=(node,placeholder)=>{if(node.placeholder===placeholder)return node;for(const child of node.children||[]){const hit=findByPlaceholder(child,placeholder);if(hit)return hit;}return null;};
+/* 按标签名找节点：编辑态里的主分类是个真实 <select>，按 class 找不稳。 */
+const findByTag=(node,tag)=>{if(String(node.tagName)===tag)return node;for(const child of node.children||[]){const hit=findByTag(child,tag);if(hit)return hit;}return null;};
 const findText=(node,label)=>{if(node._text===label)return node;for(const child of node.children||[]){const hit=findText(child,label);if(hit)return hit;}return null;};
 test('takoma 助手：按标签查库，下划线写法也能命中空格写法',async()=>{
   const {elements,state,ctx}=await boot();
@@ -671,6 +673,66 @@ test('管理标签：平时只显示名字，点「重命名」才就地把该�
   const rebuilt=elements.get('tag-list').children[0];
   assert.notEqual(rebuilt,row,'取消后列表重建回显示态');
   assert.equal(rebuilt.children.some(child=>child.tagName==='input'),false,'回到文字显示');
+});
+test('管理分类与标签：每行显示有多少位画师直接在用，口径与顶部筛选按钮一致',async()=>{
+  const {elements,state,ctx}=await connectedApp();
+  /* 沙箱里没有 alert：把它改成会抛错，这样「已经有这个标签/分类」之类的意外拒绝会立刻显形，
+     而不是被一句静默吞掉。 */
+  ctx.alert=message=>{throw Error('界面弹出了 alert：'+message);};
+  /* 每次点完按钮都要等这次操作真的结束：写盘 / 改标签走的是串行队列，
+     busy 没放开时下一次点击会被直接忽略（界面上就是"点了没反应"）。
+     写盘期间 #gallery 是 inert，所以拿它当「忙不忙」的判据，比数固定毫秒稳。 */
+  const settle=async()=>{
+   for(let i=0;i<200;i++){
+    await wait(0);
+    if(!getEl(elements,'gallery').inert&&!elements.get('save-large').classList?.contains?.('is-saving-locked'))return;
+   }
+  };
+  /* 表单提交路径（#new-category / #new-tag）是加分类与标签的真实入口，测试也走它。 */
+  const submit=async(id,value)=>{getEl(elements,id).value=value;await getEl(elements,id==='new-category'?'category-form':'tag-form').onsubmit({preventDefault(){}});await settle();};
+  /* 别用「可爱 / 暗黑」这类名字：它们是 app.js 里的默认标签，会直接被判成「已存在」。 */
+  await submit('new-category','水彩向');
+  await submit('new-tag','古典');
+  await submit('new-tag','赛博');
+  /* 建画师、勾标签、选分类，全在**同一次编辑**里做完——
+     这既是最省事的写法，也正好是用户的真实操作顺序。 */
+  const assignments={'甲':{tags:['古典','赛博'],category:'水彩向'},'乙':{tags:['古典'],category:null},'丙':{tags:['赛博'],category:'水彩向'}};
+  for(const name of ['甲','乙','丙']){
+   const spec=assignments[name];
+   elements.get('add-artist').onclick();
+   await settle();
+   const editing=lastRender(state).find(node=>String(node.className).includes('is-editing'));
+   assert.ok(editing,'点「添加画师」后应进入编辑态');
+   const nameInput=findByPlaceholder(editing,'画师名字（必填）');
+   assert.ok(nameInput,'编辑态应有名字输入框');
+   nameInput.value=name;nameInput.oninput();
+   for(const tag of spec.tags)findText(editing,tag).onclick();
+   /* 主分类是个真实的 <select>：选中它、再触发 onchange，和用户操作一致。 */
+   const select=findByTag(editing,'select');
+   assert.ok(select,'编辑态应有主分类下拉框');
+   select.value=spec.category||'';select.onchange();
+   await findText(editing,'保存').onclick();
+   await settle();
+  }
+  const app=elements;
+  const countIn=listId=>Object.fromEntries(findAllByClass(getEl(app,listId),'manage-tag-row').map(row=>[findByClass(row,'manage-name').textContent,String(findByClass(row,'manage-count')?.textContent)]));
+  getEl(app,'manage-tags').onclick();
+  const tagCounts=countIn('tag-list'),categoryCounts=countIn('category-list');
+  assert.equal(tagCounts['古典'],'2','标签行要显示直接用它的画师数');
+  assert.equal(tagCounts['赛博'],'2','另一位标签也要各算各的');
+  /* 应用自带的默认标签一个画师都没用上，它们必须显示 0 并照样留在列表里——
+     这正是「没人用的标签」这个场景，用户要靠它决定删哪些。 */
+  assert.equal(tagCounts['唯美'],'0','没人用的标签显示 0 而不是消失');
+  assert.ok(findText(getEl(app,'tag-list'),'唯美'),'数量为 0 的标签仍要在列表里，能改名、能删除');
+  assert.equal(categoryCounts['水彩向'],'2','分类行要显示直接用它的画师数');
+  /* 与顶部筛选按钮同源：两边都是「数一遍 data.artists」，而筛选状态只影响显示、不影响计数。
+     这里不去拼按钮的复合文本，而是回到源头上确认一次：刚打开、什么都没点的时候，
+     六个默认标签一个画师都没用上，必须每个都带一枚 0 徽章（而不是没有徽章）。 */
+  const fresh=await connectedApp();
+  getEl(fresh.elements,'manage-tags').onclick();
+  const freshRows=findAllByClass(getEl(fresh.elements,'tag-list'),'manage-tag-row');
+  assert.equal(freshRows.length,6,'刚建库时应是六个默认标签');
+  assert.deepEqual(freshRows.map(row=>String(findByClass(row,'manage-count')?.textContent)),Array(6).fill('0'),'每个默认标签都要显示 0');
 });
 test('管理标签：搜索框只保留匹配的行，无匹配时给出提示',async()=>{
   const {elements}=await boot();
