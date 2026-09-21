@@ -86,6 +86,12 @@ main{max-width:1440px;margin:0 auto;padding:30px 28px 12px;min-width:0;overflow-
 .filter-panel h2{font-size:14px;margin:0 0 12px;font-weight:550}
 /* 筛选后的画师数量：跟着筛选栏一起走，用来说明「现在还剩几位」。 */
 .result-count{font-size:13px;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+/* 会「挤出/让出位置」的行，出现和消失都要走高度过渡，否则下面的卡片会被顶一下 ——
+   已选条件那一行就是用户报的「点筛选时卡片被瞬间挤压」。
+   和 filter-panel 那处同一套：hidden 时高度/内外边距一起收到 0，display 用 allow-discrete 陪着走完。 */
+.active-filters,#task-controls{interpolate-size:allow-keywords;overflow:clip;transition:height var(--motion-base) var(--ease-out),margin-block var(--motion-base) var(--ease-out),padding-block var(--motion-base) var(--ease-out),opacity var(--motion-fast) ease,display var(--motion-base) allow-discrete}
+.active-filters[hidden],#task-controls[hidden]{height:0;margin-block:0;padding-block:0;opacity:0}
+@starting-style{.active-filters:not([hidden]),#task-controls:not([hidden]){height:0;margin-block:0;padding-block:0;opacity:0}}
 .filter-panel h2 small{font-size:12px;color:var(--faint);font-weight:400;margin-left:9px}
 .filter-panel>.reset{grid-column:1/-1;justify-self:end;margin-top:-8px}
 .tags,.tag-choices{display:flex;flex-wrap:wrap;gap:7px;max-height:170px;overflow:auto}
