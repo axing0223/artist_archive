@@ -77,9 +77,11 @@
     for(const uid of mounted.keys())before.set(uid,slots.get(uid).getBoundingClientRect().top-top);
     return before;
   }
-  /* 一张卡片里所有随视图变尺寸的格子：预览图、空格、生图格，连同它们当前的宽高。 */
+  /* 一张卡片里所有随视图变尺寸的格子：预览图、空格、生图格，连同它们当前的宽高。
+     另外记下预览整块的横向起点——两套视图之间它是从卡片左边挪到右列的。 */
   function previewGeometry(slot){
-    return [...slot.querySelectorAll('.thumb,.work-empty,.work-generate')].map(node=>{const rect=node.getBoundingClientRect();return {node,width:rect.width,height:rect.height};});
+    const works=slot.querySelector('.works'),box=works?.getBoundingClientRect();
+    return {left:box?box.left:null,thumbs:[...slot.querySelectorAll('.thumb,.work-empty,.work-generate')].map(node=>{const rect=node.getBoundingClientRect();return {node,width:rect.width,height:rect.height};})};
   }
   /* 换布局（舒适 ↔ 紧凑）时，把每张可见卡片的预览从旧尺寸补间到新尺寸：
      两套视图之间预览换的不只是高度，宽度也换了——舒适视图五格铺满整卡，紧凑视图只占右列。
@@ -103,11 +105,22 @@
       /* 身份信息从「整行」变成「一列」，几何是跳过去的：让它淡一下，
          才看得出是同一张卡换了排法，而不是两块内容互不相干地闪了一下。 */
       card?.querySelector('.artist-info')?.animate?.([{opacity:.45},{opacity:1}],{duration:220,easing:'ease-out'});
-      /* 预览整块从卡片左边挪到右列，横向落点不能插值（插值会让图片从身份信息上横穿过去），
-         所以这一步用一次淡入交代；真正能插值的宽高交给下面的格子补间。 */
-      card?.querySelector('.works')?.animate?.([{opacity:.3},{opacity:1}],{duration:320,easing:'ease-out'});
-      for(const [index,preview] of previewGeometry(slot).entries()){
-        const from=was[index];
+      /* 预览整块在两套视图之间左右换位，这里要的是实打实的位移，不是淡入：
+         网格已经把它瞬移到新位置了，用 transform 把它拉回旧位置再滑过去。
+         滑动期间它会从身份信息上面压过去，所以临时抬到上层——
+         position/zIndex 不参与布局，动画结束就撤掉，不会留下副作用。 */
+      const now=previewGeometry(slot),works=card?.querySelector('.works');
+      if(works&&was.left!==null&&now.left!==null&&typeof works.animate==='function'){
+        const dx=was.left-now.left;
+        if(Math.abs(dx)>1){
+          works.style.position='relative';works.style.zIndex='1';
+          const slide=works.animate([{transform:'translateX('+dx+'px)'},{transform:'none'}],{duration:320,easing:'cubic-bezier(.22,.61,.36,1)'});
+          const settle=()=>{works.style.position='';works.style.zIndex='';};
+          slide.onfinish=settle;slide.oncancel=settle;
+        }
+      }
+      for(const [index,preview] of now.thumbs.entries()){
+        const from=was.thumbs[index];
         if(!from||typeof preview.node.animate!=='function')continue;
         const first={},last={};
         if(Math.abs(from.height-preview.height)>1){first.height=from.height+'px';last.height=preview.height+'px';}
