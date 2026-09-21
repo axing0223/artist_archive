@@ -28,8 +28,20 @@
     if (field?.value != null) return { text: field.value, offset: selection.anchorOffset };
     const container = element?.closest?.('[contenteditable=""], [contenteditable="true"], .prompt, [class*=prompt]') || element;
     const text = container?.textContent || '';
-    const prefix = node.textContent?.slice(0, selection.anchorOffset) ?? '';
-    return { text, offset: Math.max(0, text.indexOf(prefix) + prefix.length) };
+    /* 偏移量必须用 Range 实量。先前是 text.indexOf(选区内已读过的前缀) 反推的：
+       提示词里同一个词出现两次时（下一行又出现同样的词），indexOf 给的是第一次出现的位置，
+       于是切出来的是别的那一段——表现就是「检索的不是当前选中的内容」。
+       Range 从容器开头量到落点，重复文字也不会错。 */
+    let offset = 0;
+    try {
+      const range = document.createRange();
+      range.selectNodeContents(container);
+      range.setEnd(node, selection.anchorOffset);
+      offset = range.toString().length;
+    } catch {
+      offset = Math.max(0, text.indexOf(node.textContent?.slice(0, selection.anchorOffset) ?? ''));
+    }
+    return { text, offset };
   };
   const close = () => document.getElementById(HOST_ID)?.remove();
   const render = async tag => {
