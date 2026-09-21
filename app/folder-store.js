@@ -23,6 +23,10 @@
      把它算进指纹的话，删掉中间一位画师（后面所有人序号前移）会让后面每位画师都「看起来变了」，
      于是每一位的 信息.json 连同三个图片目录都要重新走一遍磁盘——两百多位就是上千次往返，界面卡两秒。 */
   const signature=value=>JSON.stringify(value,(key,v)=>key==='order'?undefined:v&&typeof v==='object'&&!Array.isArray(v)?Object.fromEntries(Object.keys(v).sort().map(k=>[k,v[k]])):v);
+  /* 试过在这里按对象身份做一层 WeakMap 缓存，实测没有收益，已撤掉。原因值得记下来：
+     页面每次保存前都会 clone(data)（app.js 的 save），于是「没变的画师」每次都是**新对象**，
+     按身份缓存必然 0 命中。要真省下这笔整库 JSON.stringify，得让应用不再整库克隆，
+     那是 app 侧的改动，不是这里的缓存能解决的。 */
   function remember(dir,data){snapshots.set(dir,new Map(data.artists.map(a=>[a.uid,signature(a)])));}
   /* 登记一次 uid 变更（改名、补编号）。下一次 write 会把旧目录里的图片搬到新目录再删旧目录；
      不登记的话新目录是空的，而旧目录照样会被清理，图片就丢了。 */
