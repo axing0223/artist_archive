@@ -26,9 +26,20 @@
   let lastTag = '';
 
   /* 用户主动关闭 = 也允许同一个词再弹一次；渲染内部换标签用 removePanel，不动 lastTag。 */
-  const removePanel = () => document.getElementById(HOST_ID)?.remove();
-  const close = () => { lastTag = ''; removePanel(); };
-  const closeViewer = () => document.getElementById(VIEWER_ID)?.remove();
+  const canAnimate = () => { try { return !matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return true; } };
+  /* 淡出：先摘掉 id 再播动画，最后才 remove。这一步是有意的——
+     getElementById 是「这个面板还是不是当前那一个」的唯一判据（陈旧结果作废、Esc 该关谁、
+     点面板外都靠它）。要是让正在淡出的那个继续占着 id，迟到的查询结果就会认错面板。 */
+  const fadeOut = (host, ms) => {
+    if (!host) return;
+    host.removeAttribute('id');
+    if (!canAnimate()) { host.remove(); return; }
+    host.classList.add('tk-leaving');
+    setTimeout(() => host.remove(), ms);
+  };
+  const removePanel = (animate = false) => { const host = document.getElementById(HOST_ID); animate ? fadeOut(host, 220) : host?.remove(); };
+  const close = () => { lastTag = ''; removePanel(true); };
+  const closeViewer = (animate = false) => { const host = document.getElementById(VIEWER_ID); animate ? fadeOut(host, 200) : host?.remove(); };
   const loadLayout = async () => { try { return (await chrome.storage.local.get(LAYOUT_KEY))?.[LAYOUT_KEY] || {}; } catch { return {}; } };
   const saveLayout = layout => { try { chrome.storage.local.set({ [LAYOUT_KEY]: layout }); } catch {} };
   const ask = (type, tag, page) => chrome.runtime.sendMessage({ type, tag, page }).catch(error => ({ ok: false, reason: '扩展没有回应：' + (error?.message || error) }));
@@ -130,7 +141,27 @@
 :host(.tk-viewer) .tk-note{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);color:rgba(255,255,255,.6);letter-spacing:.05em;
   font:11px/1.6 "Segoe UI","Microsoft YaHei",system-ui,sans-serif}
 @keyframes tk-fade{from{opacity:0}to{opacity:1}}
-@media (prefers-reduced-motion:reduce){.tk *,:host(.tk-viewer),:host(.tk-viewer) *{animation:none!important;transition:none!important}}
+/* 动态过渡：面板弹出/关闭、原图打开/关闭、换页时作品的进场，都走这几支。
+   「关闭」那几支能看得见，是因为 JS 里 fadeOut 先摘掉 id 再等动画播完才 remove——
+   动画只是表现，身份判断在摘 id 那一刻就已经生效了，不会因为动画拖着而认错面板。 */
+@keyframes tk-panel-in{from{opacity:0;transform:translateY(14px) scale(.985)}to{opacity:1;transform:none}}
+@keyframes tk-panel-out{from{opacity:1;transform:none}to{opacity:0;transform:translateY(10px) scale(.985)}}
+@keyframes tk-body-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes tk-thumb-in{from{opacity:0;transform:translateY(10px) scale(.97)}to{opacity:1;transform:none}}
+@keyframes tk-pop{0%{opacity:0;transform:scale(.86)}60%{transform:scale(1.04)}100%{opacity:1;transform:none}}
+@keyframes tk-viewer-in{from{opacity:0;transform:scale(.94)}to{opacity:1;transform:none}}
+@keyframes tk-viewer-out{from{opacity:1;transform:none}to{opacity:0;transform:scale(.96)}}
+.tk{animation:tk-panel-in .24s cubic-bezier(.2,.9,.25,1)}
+.tk-body{animation:tk-body-in .22s ease}
+.tk-badge{animation:tk-pop .3s cubic-bezier(.2,.9,.25,1)}
+.tk-card{animation:tk-body-in .24s ease}
+/* 缩略图逐张进场；每张的延迟由 JS 按序号写在行内 animation-delay 上。 */
+.tk-thumb{animation:tk-thumb-in .32s cubic-bezier(.2,.9,.25,1) backwards}
+:host(.tk-leaving){pointer-events:none}
+:host(.tk-leaving) .tk{animation:tk-panel-out .2s ease forwards}
+:host(.tk-viewer) img{animation:tk-viewer-in .22s cubic-bezier(.2,.9,.25,1)}
+:host(.tk-viewer.tk-leaving){animation:tk-viewer-out .18s ease forwards;pointer-events:none}
+@media (prefers-reduced-motion:reduce){.tk,.tk *,:host(.tk-viewer),:host(.tk-viewer) *{animation:none!important;transition:none!important}}
 `;
 
   /* 每个浮层各挂一份样式表到自己的 shadow root：站点的 CSS 进不来，我们的也漏不出去。 */
@@ -164,7 +195,7 @@
   const columns = () => `repeat(auto-fill,minmax(${cellWidth}px,1fr))`;
   const gridStyle = () => ` style="grid-template-columns:${columns()}"`;
   const row = items => `<div class="tk-grid"${gridStyle()}>`
-    + items.map(item => `<img class="tk-thumb" src="${esc(item.thumb)}" alt="" loading="lazy" title="点击看原图"`
+    + items.map((item, index) => `<img class="tk-thumb" style="animation-delay:${Math.min(index, 11) * 24}ms" src="${esc(item.thumb)}" alt="" loading="lazy" title="点击看原图"`
       + (item.uid != null ? ` data-uid="${esc(item.uid)}" data-index="${esc(item.index)}"` : ` data-large="${esc(item.large || item.thumb)}"`) + `>`).join('')
     + `</div>`;
 
@@ -184,7 +215,7 @@
     note.className = 'tk-note';
     note.textContent = '点击图片以外任何位置，或按 Esc 关闭';
     root.append(image, note);
-    host.addEventListener('click', closeViewer);
+    host.addEventListener('click', () => closeViewer(true));
     document.documentElement.append(host);
   };
 
@@ -325,6 +356,9 @@
         const next = Number(button.dataset.page) || 1;
         if (next < 1 || next === at) return;
         button.disabled = true;
+        /* 换页先在这一格铺骨架屏：等待期间有东西在动，高度也不跳；回来时缩略图再逐张进场。 */
+        const grid = holder.querySelector('.tk-grid');
+        if (grid) grid.innerHTML = '<div class="tk-skel"></div>'.repeat(10);
         const answer = await ask('takoma.danbooru', tag, next);
         if (document.getElementById(HOST_ID) !== host) return;
         const list = answer?.ok && Array.isArray(answer.posts) ? answer.posts : [];
@@ -359,7 +393,7 @@
   }, true);
   document.addEventListener('keydown', event => {
     if (event.key === 'Escape') {
-      if (document.getElementById(VIEWER_ID)) closeViewer(); /* 先关二级界面，再关面板 */
+      if (document.getElementById(VIEWER_ID)) closeViewer(true); /* 先关二级界面，再关面板 */
       else close();
       return;
     }
