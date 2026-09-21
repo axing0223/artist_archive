@@ -82,8 +82,10 @@ main{max-width:1440px;margin:0 auto;padding:30px 28px 12px;min-width:0;overflow-
 .categories button.active{color:var(--accent);border-bottom-color:var(--accent);background:var(--accent-soft)}
 .categories .n{font:12px ui-monospace,monospace;padding:1px 5px;background:var(--raised);color:var(--faint);border-radius:4px}
 .categories button.active .n{background:var(--accent-soft);color:var(--accent)}
-.filter-panel{display:grid;grid-template-columns:1fr 210px;gap:24px;padding:20px 0;border-top:1px solid var(--line-soft);opacity:1;transform:none;height:auto;overflow:clip;interpolate-size:allow-keywords;transition:opacity .18s,transform .18s,height .26s ease,padding-block .26s ease,border-top-width .26s ease,display .18s allow-discrete}
+.filter-panel{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:24px;padding:20px 0;border-top:1px solid var(--line-soft);opacity:1;transform:none;height:auto;overflow:clip;interpolate-size:allow-keywords;transition:opacity .18s,transform .18s,height .26s ease,padding-block .26s ease,border-top-width .26s ease,display .18s allow-discrete}
 .filter-panel h2{font-size:14px;margin:0 0 12px;font-weight:550}
+/* 筛选后的画师数量：跟着筛选栏一起走，用来说明「现在还剩几位」。 */
+.result-count{font-size:13px;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
 .filter-panel h2 small{font-size:12px;color:var(--faint);font-weight:400;margin-left:9px}
 .filter-panel>.reset{grid-column:1/-1;justify-self:end;margin-top:-8px}
 .tags,.tag-choices{display:flex;flex-wrap:wrap;gap:7px;max-height:170px;overflow:auto}

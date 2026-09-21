@@ -29,6 +29,9 @@
  function update({connected:hasFolder,total:count,rows,category,editing,tasks,filterCount=0}){
   connected=hasFolder;total=count;
   $('filter-number').textContent=String(filterCount);$('filter-number').hidden=!filterCount;
+  /* 当前筛选之后还剩多少位：搜索、标签、评分、特殊筛选都会走到这里，
+     所以它总是和屏幕上真正摆出来的卡片数一致（草稿也算，因为它确实在屏幕上）。 */
+  $('result-count').textContent='共 '+(rows||0)+' 位';
   $('connection-dot').classList.toggle('connected',connected);$('choose-folder').textContent=connected?'切换资料库':'打开资料库';
   $('task-controls').hidden=!tasks;$('task-label').textContent=tasks||'后台任务进行中';
   if(rows||editing)return;

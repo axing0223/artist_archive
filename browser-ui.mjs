@@ -293,7 +293,7 @@ try{
 }
 async function browserChecks(){
  const $=id=>document.getElementById(id),check=(value,message)=>{if(!value)throw Error(message);},delay=ms=>new Promise(r=>setTimeout(r,ms));
- const until=async fn=>{for(let i=0;i<120;i++){if(await fn())return;await delay(25);}throw Error('等待状态超时：'+JSON.stringify({status:$('storage-status').textContent,query:$('search').value,count:$('count').textContent,rows:$('gallery').children.length}));};
+ const until=async fn=>{for(let i=0;i<120;i++){if(await fn())return;await delay(25);}throw Error('等待状态超时：'+JSON.stringify({status:$('storage-status').textContent,query:$('search').value,count:$('result-count').textContent,rows:$('gallery').children.length}));};
  const {folder,data,thumbnails}=await ArtistDemo.seed(24);window.scrollTo(0,0);await until(()=>document.querySelectorAll('.artist').length>1);
  const input=(id,value)=>{$(id).value=value;$(id).dispatchEvent(new Event('input',{bubbles:true}));};
  input('search','空野 春日');await until(()=>$('gallery').children.length===1);check($('gallery').firstElementChild.dataset.uid===data.artists[0].uid,'搜索必须同时匹配笔名和备注');
