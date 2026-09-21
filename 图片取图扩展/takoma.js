@@ -22,6 +22,10 @@
   const loadLayout = async () => { try { return (await chrome.storage.local.get(LAYOUT_KEY))?.[LAYOUT_KEY] || {}; } catch { return {}; } };
   const saveLayout = layout => { try { chrome.storage.local.set({ [LAYOUT_KEY]: layout }); } catch {} };
   const ask = (type, tag, page) => chrome.runtime.sendMessage({ type, tag, page }).catch(error => ({ ok: false, reason: '扩展没有回应：' + (error?.message || error) }));
+  /* 切片规则从 prompt-tag.mjs 动态 import：被单测覆盖的就是这里跑的那一份，不复制第二份。
+     （上一版整段重写时漏了这个定义，dblclick 里 await 它抛 ReferenceError，
+       又被 try/catch 静静吞掉——表现就是「双击完全没反应」。） */
+  const promptModule = () => import(chrome.runtime.getURL('prompt-tag.mjs'));
 
   /* 选区可能在 input/textarea（取 value + 光标位置），也可能在普通节点里。
      普通节点这一路把「容器 + 落点」交给 prompt-tag.mjs 里同一套拼接规则去算：
