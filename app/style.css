@@ -136,8 +136,11 @@ main{max-width:1440px;margin:0 auto;padding:30px 28px 12px;min-width:0;overflow-
    max-height + overflow 是给收缩用的：副本比正在变矮的占位高，不裁就会盖住下面的卡片。 */
 .artist.card-ghost{position:absolute;top:0;left:0;right:0;z-index:1;max-height:100%;overflow:hidden;pointer-events:none}
 .artist-slot:empty{border:1px solid var(--line-soft);border-radius:12px;background:var(--panel)}
-.artist{min-width:0;position:relative;background:var(--panel);border:1px solid var(--line-soft);border-radius:10px;padding:13px 12px 8px;transition:border-color .18s}
-.artist:hover{border-color:var(--line)}
+.artist{min-width:0;position:relative;background:var(--panel);border:1px solid var(--line-soft);border-radius:10px;padding:13px 12px 8px;transition:border-color .18s,background .18s,box-shadow .18s}
+/* 鼠标停在哪张卡片，哪张卡片才亮起来：底色抬一档 + 强调色描边 + 一层外阴影。
+   只影响指针真正压着的那一张，其它卡片一动不动。 */
+.artist:hover{border-color:var(--accent);background:var(--raised);box-shadow:0 10px 28px #0000005c}
+html[data-theme=light] .artist:hover{box-shadow:0 10px 28px #203b2920}
 .artist-info{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:6px;min-width:0}
 .artist-identity{min-width:0;flex:1}
 .name-row{display:flex;align-items:center;flex-wrap:wrap;gap:4px 9px;min-width:0}
@@ -200,12 +203,17 @@ img:not([src]){opacity:0}
 .gen-progress{font-size:12px;text-align:center;padding:0 6px;color:var(--muted)}
 .work.is-drop-target{outline:2px dashed var(--accent);outline-offset:3px;border-radius:7px}
 .work.is-drop-target .thumb{background:var(--accent-soft)}
-/* 悬停那张预览抬起来，左右相邻的按距离衰减跟着抬一点（转场库的 avatar group hover）。
-   纯视觉位移、不参与布局；prefers-reduced-motion 的全局开关会自动把过渡关掉。 */
+/* 悬停那一格才抬起来。原来这里还有两条"左右相邻跟着抬"的规则：
+     .works:has(.work:hover) .work{translateY(-2px)}  ← 只要有一格被悬停，**整排所有作品**都被抬起
+     .work:hover+.work, .work:has(+ .work:hover){translateY(-4px)}
+   第一句的效果是"鼠标停在任意一格，当前画师的全部作品一起动"，看着像整排错位；已经删掉。
+   现在只有指针真正压着的那一格有反应，位移也加大一点、配一层阴影，反馈更明确。 */
 .work{transition:transform var(--motion-base) var(--ease-spring)}
-.works:has(.work:hover) .work{transform:translateY(-2px)}
-.work:hover+.work,.work:has(+ .work:hover){transform:translateY(-4px)}
-.work:hover{transform:translateY(-6px)}
+.work:hover{transform:translateY(-8px)}
+.work:hover .thumb{border-color:var(--accent);box-shadow:0 12px 26px #0009,0 0 0 1px var(--accent)}
+html[data-theme=light] .work:hover .thumb{box-shadow:0 12px 26px #203b2926,0 0 0 1px var(--accent)}
+/* 开了「减少动效」就别位移：高亮与阴影照旧，反馈还在，只是不再有东西动起来。 */
+@media(prefers-reduced-motion:reduce){.work:hover,.artist:hover{transform:none}}
 .artist-footer{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:4px 12px;margin-top:4px;padding-top:4px;border-top:1px solid var(--line-soft)}
 .work-count{font-size:12px;color:var(--faint)}
 .artist-notes{font-size:13px;color:var(--muted);text-align:left;max-width:65%}
