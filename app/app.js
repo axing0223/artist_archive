@@ -292,7 +292,12 @@
     editorPicker.syncRemoved?.(id);
   }
   const workStamp=(a,w)=>JSON.stringify([a.uid,w.id||'',w.kind||'',w.testSeq||0,FolderStore.imageOf(w,'thumb')]);
-  function workFigure(a,w,slot,editing=false){
+  /* 图片绑定组。**列表卡片与书钉浮动区的卡片必须用不同的组名**：
+     同一个 uid 的同一组只该有一份绑定，而浮动区卸载时会 dispose 自己那一组——
+     组名相同就等于把列表那张卡片的图片一起解绑，回到列表的作品全都没了 src（"作品没重新加载"）。
+     pinned=true 时用 pinned-card: 前缀。 */
+  const imageGroup=(uid,pinned)=>pinned?'pinned-card:'+uid:'card:'+uid;
+  function workFigure(a,w,slot,editing=false,pinView=false){
     const figure=el('figure','work'),img=el('img'),caption=el('figcaption');
     const record={artist:a,work:w,index:slot,editing,img,caption,stamp:workStamp(a,w)};workRecords.set(figure,record);
     const open=btn('',()=>showImage(record.editing?{uid:record.artist.uid,name:record.artist.name}:record.artist,record.work),'thumb');record.open=open;
@@ -301,7 +306,7 @@
       const settle=rememberWorkSlots(draft.uid);draft.works.splice(index,1);paintEditorWorks();markEditorPainted();settle();
       syncPickerAfterWorkRemoved(record.work);
     },'danger-link'):confirmButton('删除','再点一次删除',()=>deleteSlotWork(record.artist,record.work),'slot-delete');
-    record.remove=remove;ArtistImages.bind(img,a.uid,w,editing?'editor':'card:'+a.uid,'thumb');open.append(img);figure.append(open,caption);
+    record.remove=remove;ArtistImages.bind(img,a.uid,w,editing?'editor':imageGroup(a.uid,pinView),'thumb');open.append(img);figure.append(open,caption);
     updateWorkFigure(figure,a,w,slot);return figure;
   }
   function updateWorkFigure(figure,a,w,slot){
@@ -314,8 +319,20 @@
   function workPool(container){
     const pool=new Map();for(const node of container.children){const record=workRecords.get(node);if(!record)continue;const bucket=pool.get(record.stamp)||[];bucket.push(node);pool.set(record.stamp,bucket);}return pool;
   }
-  function takeWork(pool,a,w,i,editing=false){
-    const kept=pool.get(workStamp(a,w))?.shift();if(kept){updateWorkFigure(kept,a,w,i);return kept;}return workFigure(a,w,i,editing);
+  function takeWork(pool,a,w,i,editing=false,pinned=false){
+    const kept=pool.get(workStamp(a,w))?.shift();
+    if(kept){updateWorkFigure(kept,a,w,i);rebindWork(kept,a,w,editing,pinned);return kept;}
+    return workFigure(a,w,i,editing,pinned);
+  }
+  /* 作品格是**复用节点**的：同一件作品换到另一张卡片上时，连里面的 <img> 一起搬过去。
+     搬过去的 <img> 可能已经被解绑过（占位被回收时 virtual-gallery 会逐个 unbind，
+     清掉 src），那时图片绑定表里已经没有它，IntersectionObserver 也不会再为它回调——
+     结果就是卡片回来了、图却永远空着。这里按当前这张卡片的绑定组重新绑一次：
+     组名与 workFigure 保持一致（编辑态是 editor，书钉浮动区是 pinned-card: 前缀，
+     列表是 card:），所以图会重新走一遍"进入视野才取图"的正常流程。 */
+  function rebindWork(figure,a,w,editing,pinView){
+    const record=workRecords.get(figure);if(!record)return;
+    ArtistImages.bind(record.img,a.uid,w,editing?'editor':imageGroup(a.uid,pinView),'thumb');
   }
   function reconcileWorks(container,nodes){
     const wanted=new Set(nodes);for(const node of container.children){const record=workRecords.get(node);if(record&&!wanted.has(node))ArtistImages.unbind(record.img);}
@@ -518,9 +535,26 @@
       bar.replaceChildren(el('span','pinned-head','书钉'),host);
       pinnedArea=host;
     }
-    pinnedGallery.render(host,list,card,a=>'pin/'+cardKey(a),()=>false);
+    /* 浮动区的卡片用 pinned=true 走另一套图片绑定组名（见 imageGroup）：
+       否则两边共用 card:uid 这一组，浮动区卸载时会把列表那张卡片的图片一起解绑。
+       内容仍然走 card()：正在编辑的那位要渲染成编辑器。以前这里写死用 artistCard，
+       于是书钉里的卡片点「编辑」只会重建出一张浏览态卡片——编辑器永远不出现。 */
+    pinnedGallery.render(host,list,pinnedCard,a=>'pin/'+cardKey(a),()=>false);
+    /* 还要把「这张正在编辑」告诉浮动区自己那个画廊实例。画廊的 patchCard 里有一条判断：
+       包含正在编辑的那张卡片时不许就地改（否则会把输入框连表单一起抹掉）。而标出"正在编辑"
+       靠的是 ArtistGallery.pin(uid,true)——startEdit 只对**列表那个实例**调了它。
+       浮动区的实例不知道，于是 patchCard 返回 true、把这张书钉卡片判成「没变化」，
+       编辑器根本不会出现在浮动区里（点编辑没反应，正是这个原因）。 */
+    const 编辑中=draft?(editingId||draft.uid):null;
+    for(const a of list)pinnedGallery.pin?.(a.uid,a.uid===编辑中);
+    /* 浮动区里正在编辑的那张要完整露出来：编辑器有一屏多高，容器只要限高就会把下半截裁掉、
+       滚轮也够不到。所以编辑期间让浮动区取消吸附与限高（见 .pinned-bar.is-editing），
+       编辑结束后自动恢复。 */
+    bar.classList.toggle('is-editing',!!draft&&list.some(a=>a===draft||a.uid===editingId));
   }
-  function artistCard(a,previous){
+  /* 卡片渲染。pinView 只影响图片绑定组名（列表与浮动区各一份，见 imageGroup）——
+     不要叫 pinned，那个名字在下面表示"这位画师有没有被钉住"。 */
+  function artistCard(a,previous,pinView=false){
     const article=previous||el('article','artist'),info=el('div','artist-info'),identity=el('div','artist-identity'),row=el('div','name-row');
     article.dataset.artist=a.name;article.setAttribute('aria-label','画师 '+a.name);
     const heading=el('h2'),name=btn(a.name,()=>copyText(a.name,'画师 tag'),'artist-name');name.title='点击复制画师 tag';name.setAttribute('aria-label','复制画师 tag：'+a.name);heading.append(name);
@@ -569,7 +603,7 @@
     actions.append(pin);
     actions.append(btn('编辑',()=>startEdit(a),'edit-button'));info.append(identity,actions);
     const works=previous?[...previous.children].find(node=>node.className==='works'):el('div','works'),pool=workPool(works),reserve=reservedOf(),slots=FolderStore.previewWorks(a,PREVIEW_SLOTS,reserve);
-    const workNodes=slots.map((w,i)=>{const reused=w&&pool.get(workStamp(a,w))?.length;const node=w?takeWork(pool,a,w,i):i>=PREVIEW_SLOTS-reserve?generateSlot(a,PREVIEW_SLOTS-i):btn('添加图片',()=>chooseSlotImage(a,i),'work work-empty');
+    const workNodes=slots.map((w,i)=>{const reused=w&&pool.get(workStamp(a,w))?.length;const node=w?takeWork(pool,a,w,i,false,pinView):i>=PREVIEW_SLOTS-reserve?generateSlot(a,PREVIEW_SLOTS-i):btn('添加图片',()=>chooseSlotImage(a,i),'work work-empty');
       if(!w&&i<PREVIEW_SLOTS-reserve){node.setAttribute('aria-label','为 '+a.name+' 的第 '+(i+1)+' 格添加图片');node.title='选择图片或拖入此格';}if(!reused)attachDrop(node,a,i);return node;
     });
     reconcileWorks(works,workNodes);
@@ -594,7 +628,10 @@
     for(const child of node.querySelectorAll?.('[data-uid]')||[])if(child.dataset.uid===uid)return true;
     return false;
   }
-  function card(a){return draft&&(a===draft||(editingId&&a.uid===editingId))?editingCard(a):artistCard(a);}
+  function card(a,pinView=false){return draft&&(a===draft||(editingId&&a.uid===editingId))?editingCard(a):artistCard(a,null,pinView);}
+  /* 书钉浮动区要的卡片内容：和列表共用同一套判断（正在编辑的那位渲染成编辑器），
+     只是把 pinView 固定为 true，好让图片走浮动区那一组绑定（见 imageGroup）。 */
+  const pinnedCard=a=>card(a,true);
   /* 这张卡片要不要重画：画师数据、是不是编辑态、生图队列状态、固定测试格数量，全一样就别动它。     不重画 = 图片不重新取、不重新淡入。以前只要 render() 一次，屏幕上每张卡片的图都要重新淡入一遍，
      看着就是「整屏闪一下」——保存、生图状态变化、搜索框敲字、加载更多都会踩到。 */
   function cardKey(a){

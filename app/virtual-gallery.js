@@ -7,29 +7,47 @@
    /* 下面的函数体保持原来的两格缩进没重排：这次只是把它整体挪进 create() 里，
       重排三百行会把 diff 撑爆、也容易改错；本项目没有格式化工具，缩进不是门禁。 */
    let observer,resize,current=[],make=null,keyOf=null,patch=null,uids=[];
+   const 实例名=(window.__画廊数=(window.__画廊数||0)+1)===1?"列表":"书钉";
    const mounted=new Map(),heights=new Map(),pinned=new Set(),slots=new Map(),painted=new Map(),near=new Set();
   /* 系统里关了动效就一个都不放，宁可少点花活也别让人难受。 */
   const calm=()=>typeof matchMedia==='function'&&matchMedia('(prefers-reduced-motion: reduce)').matches;
   /* 一张卡片的「指纹」：指纹没变就不重画。重画会连图片一起重新取、重新淡入，
      那正是「随便动一下就整屏闪一下」的来源——保存、生图状态变化、搜索框敲字都会走到这里。 */
   const keyFor=artist=>keyOf?keyOf(artist):JSON.stringify(artist);
+  /* 占位被清空、图片被解绑之后留在 painted 里的记号：它和任何真实指纹都不相等，
+     所以下一次 render 一定会为这张卡片跑一遍 paint（见 releaseSlot 里的说明）。 */
+  const STALE='__released__';
   function clear(){observer?.disconnect();resize?.disconnect();for(const id of mounted.keys())ArtistImages.dispose('card:'+id);for(const slot of slots.values())slot.remove();mounted.clear();slots.clear();painted.clear();heights.clear();pinned.clear();near.clear();uids=[];current=[];make=null;keyOf=null;patch=null;observer=null;resize=null;}
   /* 需要的时候才重画这一张。 */
   function paint(slot){
     const uid=slot.dataset.uid,artist=current[Number(slot.dataset.index)];
     if(!artist||!make)return false;
     const key=keyFor(artist);
-    if(painted.get(uid)===key)return false;
+    /* 指纹没变、卡片也还在，就跳过重画——但**不能连通报可见性一起跳过**：
+       releaseSlot 清空卡片时图片是逐个解绑的，卡片还可能被工作池搬走再搬回来，
+       这些都绕过了 IntersectionObserver（元素离开文档它不报"离开"，同一批 img 再插回来
+       它也不报"进入"）。少了末尾那次通报，卡片回来了却一直是空的——
+       用户报的正是"取消书钉之后作品都没有被重新加载"。 */
+    const previous=slot.children[0];
+    if(painted.get(uid)===key&&previous)return false;
     /* 卡片高度会变（进出编辑态就是典型）：先按住旧高度，再动画到新高度。
        下面的卡片顺着文档流被一起推开，而不是整块瞬间跳上去。 */
     const before=mounted.has(uid)?slot.getBoundingClientRect().height:0;
-    const previous=slot.children[0];
     /* 整块换内容时（浏览态 ↔ 编辑态）给旧内容留一份静态副本渐隐，新内容同时渐显：
        直接换掉是「啪」地一下，看不出是同一张卡在变。副本必须在 dispose 之前克隆，
        否则图片绑定已经释放。patch 成功（就地微调）不走这条路——那种变化本来就很轻。 */
-    const replaced=!patch?.(previous,artist);
+    /* 占位里已经没有卡片了（releaseSlot 清空过、而 render 还认为它是挂载状态），
+       这时候绝不能走 patch：patch 是对着"手上这张卡片"就地改，没有卡片可改它只会返回 true，
+       于是一整张卡片被跳过——卡片回到视野里也没有内容。卡片不在就老实重画一张。 */
+    const replaced=!previous||!patch?.(previous,artist);
+    /* 卡片是复用节点拼出来的（app.js 的 workPool/takeWork 会把旧 figure 连同里面的 img 搬回来），
+       这批 img 之前可能被 releaseSlot 搬出过文档、还被清掉了 src。它们仍在图片绑定表里，
+       但 IntersectionObserver 不会再为它们报「进入视野」，所以这里主动通报一次，
+       否则卡片回来了、图却是空的。必须在 patch() 之后：patch 走的就是「复用节点」这条路。
+       可见性按当前几何重新算（别照观察者记的 near 抄：near 是上一次回调时的判断，可能已经过期）。 */
     const ghost=replaced&&previous&&!calm()&&typeof previous.cloneNode==='function'&&typeof slot.animate==='function'?previous.cloneNode(true):null;
     if(replaced){ArtistImages.dispose('card:'+uid);slot.replaceChildren(make(artist));}
+    ArtistImages.announce?.(slot,nearViewport(slot));
     mounted.set(uid,artist);painted.set(uid,key);
     const fresh=slot.children[0];
     if(ghost&&fresh){
@@ -49,6 +67,16 @@
     }
     return true;
   }
+  /* 这一块现在到底在不在视野附近？口径和上面那条 IntersectionObserver 完全一致（650px 余量）：
+     两边标准不一致会出现夹缝——观察者认为这块还在范围内、于是不再回调，而我们又不肯替它
+     通报「可见」，卡片就停在没有图的状态，滚过去也不会自己好（实测正是取消书钉之后那几张）。
+     这个余量比图片加载器那条 300px 宽松，多读的只是马上要滚到的位置，属于正常预读。 */
+  const nearViewport=slot=>{
+    if(typeof slot.getBoundingClientRect!=='function')return true;
+    const margin=650,top=window.innerHeight||0;
+    try{const rect=slot.getBoundingClientRect();return rect.bottom>-margin&&rect.top<top+margin;}
+    catch{return true;}
+  };
   /* 立刻按卡片真实高度挂载。render() 重建占位用的是上一次量到的高度，
      刚加完作品会比旧高度高，照着旧占位滚动会落到错的位置。 */
   function mountSlot(slot){
@@ -57,7 +85,7 @@
     if(mounted.has(id))return true;
     const artist=current[Number(slot.dataset.index)];
     if(!artist||!make)return false;
-    slot.style.height='';slot.append(make(artist));mounted.set(id,artist);painted.set(id,keyFor(artist));resize.observe(slot);return true;
+    slot.style.height='';slot.append(make(artist));ArtistImages.announce?.(slot,nearViewport(slot));mounted.set(id,artist);painted.set(id,keyFor(artist));resize.observe(slot);return true;
   }
   /* 列表本身变了以后，用「移动」把这次变化交代清楚：活下来的卡片从旧位置滑到新位置，
      刚出现的在它该在的地方淡入、轻轻上浮一下。只有视口附近的才动——看不见的动画只是白花钱。 */
@@ -289,7 +317,21 @@
     if(!slot)return;
     const id=slot.dataset.uid;
     if(!slots.has(id)||!mounted.has(id)||pinned.has(id)||layoutSlots.has(id)||slot.contains?.(document.activeElement))return;
-    const h=slot.getBoundingClientRect().height;heights.set(id,h);resize.unobserve(slot);ArtistImages.dispose('card:'+id);slot.replaceChildren();slot.style.height=h+'px';mounted.delete(id);painted.delete(id);
+    const h=slot.getBoundingClientRect().height;heights.set(id,h);resize.unobserve(slot);
+    /* 解绑要**逐个 img** 做，不能只按组 dispose。原因：卡片里的 <figure> 和 <img> 属于
+       app.js 的工作池，这块占位被清空之后，那些节点还会被下一张卡片按"同一件作品"复用回去。
+       只按组解绑的话，这些 <img> 元素仍留在图片绑定表里，而 IntersectionObserver 对
+       "元素离开文档"和"同一批元素再插回来"都不回调，它们就永远停在"有绑定、没 src"的状态——
+       卡片回来了、图是空的（用户报的"取消书钉之后作品都没有被重新加载"）。
+       逐个 unbind 之后，复用它们的新卡片会重新 bind 一批全新的 <img>，观察者自然会照常触发。 */
+    for(const img of slot.querySelectorAll?.('img')||[])ArtistImages.unbind?.(img);
+    ArtistImages.dispose('card:'+id);ArtistImages.announce?.(slot,false);slot.replaceChildren();slot.style.height=h+'px';mounted.delete(id);
+    /* 这里必须留一个「指纹作废」的记号，不能直接删掉。
+       卡片被清空、图片也被解绑了，可指纹还和现在一样的话，下一次 render 会把这张卡片判成
+       「没变化」直接跳过 paint —— 那批 <img> 就再也没人通知「你可见了」，也不会有新的 bind，
+       于是卡片回到视野里时是空的（用户报的"取消书钉之后作品都没有被重新加载"）。
+       留着记号，下一次 paint 一定会跑，并在里面把可见性重新通报一遍。 */
+    painted.set(id,STALE);
   }
   // 密度或窗口尺寸变化后，修正离屏占位；不重建可见卡片和编辑表单。
   function remeasure(){

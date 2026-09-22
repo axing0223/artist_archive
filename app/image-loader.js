@@ -77,7 +77,17 @@
     }
   }
   function unbind(img){const r=bindings.get(img);if(r){observer.unobserve(img);release(r);bindings.delete(img);}}
+  /* 卡片离开文档时由画廊明确通报「这一整块不可见」，重新插回文档时再通报「可见」。
+     不能指望 IntersectionObserver 兜底：元素被移出文档时它并不报「离开」，同一批 img
+     被卡片复用、又插回文档时它也不会报「进入」，那几张图就永远停在「有绑定、没 src」的状态——
+     用户看到的正是"取消书钉之后作品都没有被重新加载"：卡片回来了，图是空的。 */
+  function announce(root,visible){
+    if(!root)return;
+    const nodes=[...(root.querySelectorAll?.('img')||[])];
+    if(root.tagName==='IMG')nodes.push(root);
+    for(const img of nodes){const record=bindings.get(img);if(!record)continue;record.visible=visible;if(visible)show(record);else release(record);}
+  }
   function dispose(group){for(const [img,r] of bindings)if(r.group===group)unbind(img);bursts.delete(group);}
   function clear(){cache.clear();failures.clear();for(const r of bindings.values()){release(r);observer.unobserve(r.img);observer.observe(r.img);}}
-  window.ArtistImages={bind,unbind,adoptPersisted,dispose,fetch:fetchBlob,clear,invalidate,setFolder(value){for(const img of [...bindings.keys()])unbind(img);cache.clear();failures.clear();revisions.clear();bursts.clear();epoch++;folder=value;},stats(){return {bytes:cache.bytes,entries:cache.items.size,active:queue.active,queued:queue.waiting.length,bound:bindings.size};},async dataUrl(uid,w,size='thumb',signal){const blob=await fetchBlob(uid,w,size,signal);return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(blob);});}};
+  window.ArtistImages={bind,unbind,announce,adoptPersisted,dispose,fetch:fetchBlob,clear,invalidate,setFolder(value){for(const img of [...bindings.keys()])unbind(img);cache.clear();failures.clear();revisions.clear();bursts.clear();epoch++;folder=value;},stats(){return {bytes:cache.bytes,entries:cache.items.size,active:queue.active,queued:queue.waiting.length,bound:bindings.size};},async dataUrl(uid,w,size='thumb',signal){const blob=await fetchBlob(uid,w,size,signal);return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(blob);});}};
 })();
