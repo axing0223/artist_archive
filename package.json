@@ -12,7 +12,8 @@
     "test:edit-performance": "node browser-edit-performance.mjs",
     "test:work-performance": "node browser-work-performance.mjs",
     "test:density-performance": "node browser-density-performance.mjs",
-    "test:bulk-performance": "node browser-bulk-performance.mjs"
+    "test:bulk-performance": "node browser-bulk-performance.mjs",
+    "test:pin-performance": "node browser-pin-performance.mjs"
   },
   "engines": {
     "node": ">=20"

@@ -134,7 +134,7 @@
         const entries=byArtist.get(artist.uid)||[];entries.push(entry);byArtist.set(artist.uid,entries);
       }
     }
-    if(persisted.size)for(const figure of document.querySelectorAll('#gallery .work[data-work]')){
+    if(persisted.size)for(const figure of document.querySelectorAll('#gallery .work[data-work],#pinned-bar .work[data-work]')){
       const record=workRecords.get(figure);if(!record)continue;
       // 失败后重试或排队保存可能克隆数据，但卡片指纹未变，仍持有上一份等值对象。
       const next=persisted.get(record.work)||(byArtist.get(record.artist.uid)||[]).find(({before})=>
@@ -153,6 +153,7 @@
     folder=chosen;data=loaded;FolderStore.remember(chosen,loaded);ArtistImages.setFolder(chosen);
     /* 换了文件夹就是另一批卡片：告诉画廊把旧占位全忘掉，别把上一位画师的卡片接着用。 */
     ArtistGallery.clear();
+    pinnedGallery.clear();
     reset();render();
     document.querySelectorAll('button,input,textarea,select').forEach(e=>e.disabled=false);
     $('folder-name').textContent='当前文件夹：'+folder.name;
@@ -507,20 +508,36 @@
     if(pinned)target.pinned=true;else delete target.pinned;
     await save(next,pinned?`已把「${a.name}」钉在顶部。`:`已取消「${a.name}」的书钉。`);
   }
+  function configurePinButton(button,a,count=pinnedArtists().length,limit=pinLimit()){
+    const pinned=a.pinned===true,full=!pinned&&count>=limit;
+    button.classList.toggle('active',pinned);button.setAttribute('aria-pressed',String(pinned));
+    button.setAttribute('aria-label',(pinned?'取消书钉：':'钉住画师：')+a.name);
+    button.title=pinned?'取消书钉':full?`书钉已满（最多 ${limit} 个）：先取消一个，或到「设置」里调大上限`:'钉在页面顶部，滚动时一直看得见';
+    button.disabled=full;
+    // 写盘期间更新实际可用状态，解锁时不能把过期的「未满」状态恢复回来。
+    if(saveControls.has(button))saveControls.set(button,full);
+    if(full)button.classList.remove('is-saving-locked');
+  }
+  function syncPinButtons(){
+    const count=pinnedArtists().length,limit=pinLimit(),byId=new Map(data.artists.map(a=>[a.uid,a]));
+    for(const button of document.querySelectorAll('.pin-button')){
+      const artist=byId.get(button.dataset.artistUid);if(artist)configurePinButton(button,artist,count,limit);
+    }
+  }
   /* 书钉浮动区专用的画廊实例。必须单独一个：ArtistGallery 的渲染状态是按实例的，
      列表与浮动区共用同一个实例的话，浮动区一渲染就会把列表的状态（uids/slots/mounted）覆盖掉。 */
-  const pinnedGallery=ArtistGallery.create?ArtistGallery.create():ArtistGallery;
+  const pinnedGallery=ArtistGallery.create?ArtistGallery.create({imageGroupPrefix:'pinned-card:'}):ArtistGallery;
   /* 顶部浮动的那一条书钉。里面放的是**完整卡片**而不是简化的一小块：
      用户要求"用原有的完整卡片显示在列表顶端，并且保留卡片的完整功能"。 */
-  let pinnedArea=null;
+  let pinnedArea=null,pinnedCollapsed=false;
   function paintPinnedBar(){
     const bar=$('pinned-bar');if(!bar)return;
     const list=pinnedArtists();
     bar.hidden=!list.length;
     if(!list.length){
-      pinnedArea=null;
+      pinnedGallery.clear();
+      pinnedArea=null;pinnedCollapsed=false;
       bar.replaceChildren();
-      ArtistImages.dispose('pinned');
       return;
     }
     /* 浮动区里放的是**完整卡片**：和列表里长得一样、按钮一样、功能一样
@@ -532,14 +549,19 @@
        那会每轮都抛异常、浮动区永远空着（测试替身是数组，所以骗过了单测）。用 parentNode 判断。 */
     if(!host||host.parentNode!==bar){
       host=el('div','pinned-area');host.setAttribute('aria-label','钉住的画师卡片');
-      bar.replaceChildren(el('span','pinned-head','书钉'),host);
+      host.id='pinned-artists';
+      const head=el('div','pinned-toolbar'),label=el('span','pinned-head'),toggle=btn('收起',()=>{
+        pinnedCollapsed=!pinnedCollapsed;paintPinnedPresentation();
+      },'reset pinned-toggle');
+      toggle.setAttribute('aria-controls','pinned-artists');head.append(label,toggle);
+      bar.replaceChildren(head,host);
       pinnedArea=host;
     }
     /* 浮动区的卡片用 pinned=true 走另一套图片绑定组名（见 imageGroup）：
        否则两边共用 card:uid 这一组，浮动区卸载时会把列表那张卡片的图片一起解绑。
        内容仍然走 card()：正在编辑的那位要渲染成编辑器。以前这里写死用 artistCard，
        于是书钉里的卡片点「编辑」只会重建出一张浏览态卡片——编辑器永远不出现。 */
-    pinnedGallery.render(host,list,pinnedCard,a=>'pin/'+cardKey(a),()=>false);
+    pinnedGallery.render(host,list,pinnedCard,a=>'pin/'+cardKey(a),(node,a)=>patchCard(node,a,true));
     /* 还要把「这张正在编辑」告诉浮动区自己那个画廊实例。画廊的 patchCard 里有一条判断：
        包含正在编辑的那张卡片时不许就地改（否则会把输入框连表单一起抹掉）。而标出"正在编辑"
        靠的是 ArtistGallery.pin(uid,true)——startEdit 只对**列表那个实例**调了它。
@@ -551,6 +573,16 @@
        滚轮也够不到。所以编辑期间让浮动区取消吸附与限高（见 .pinned-bar.is-editing），
        编辑结束后自动恢复。 */
     bar.classList.toggle('is-editing',!!draft&&list.some(a=>a===draft||a.uid===editingId));
+    paintPinnedPresentation();
+  }
+  function paintPinnedPresentation(){
+    const bar=$('pinned-bar'),head=bar?.querySelector?.('.pinned-head'),toggle=bar?.querySelector?.('.pinned-toggle');
+    if(!head||!toggle)return;
+    const editing=bar.classList.contains('is-editing'),collapsed=pinnedCollapsed&&!editing;
+    head.textContent=`书钉 · ${pinnedArtists().length} / ${pinLimit()}`;
+    toggle.textContent=collapsed?'展开':'收起';toggle.setAttribute('aria-expanded',String(!collapsed));
+    toggle.setAttribute('aria-label',collapsed?'展开书钉卡片':'收起书钉卡片');toggle.disabled=editing;
+    bar.classList.toggle('is-collapsed',collapsed);if(pinnedArea)pinnedArea.inert=collapsed;
   }
   /* 卡片渲染。pinView 只影响图片绑定组名（列表与浮动区各一份，见 imageGroup）——
      不要叫 pinned，那个名字在下面表示"这位画师有没有被钉住"。 */
@@ -595,11 +627,8 @@
     fit.title=a.styleFit?'已标注画风拟合，点一下取消':'标注为画风拟合（可用上方「特殊筛选 → 画风拟合」挑出来）';
     actions.append(fit);
     /* 书钉：钉住之后这张卡片会浮动在页面顶部，滚到哪儿都看得见。上限在设置里调。 */
-    const pinned=a.pinned===true,limit=pinLimit(),full=!pinned&&pinnedArtists().length>=limit;
-    const pin=btn('书钉',()=>togglePinArtist(a),'edit-button pin-button'+(pinned?' active':''));
-    pin.disabled=full;
-    pin.setAttribute('aria-pressed',String(pinned));
-    pin.title=pinned?'取消书钉':full?`书钉已满（最多 ${limit} 个）：先取消一个，或到「设置」里调大上限`:'钉在页面顶部，滚动时一直看得见';
+    const pin=btn('书钉',()=>{const current=data.artists.find(item=>item.uid===a.uid);if(current)return togglePinArtist(current);},'edit-button pin-button');
+    pin.dataset.artistUid=a.uid;configurePinButton(pin,a);
     actions.append(pin);
     actions.append(btn('编辑',()=>startEdit(a),'edit-button'));info.append(identity,actions);
     const works=previous?[...previous.children].find(node=>node.className==='works'):el('div','works'),pool=workPool(works),reserve=reservedOf(),slots=FolderStore.previewWorks(a,PREVIEW_SLOTS,reserve);
@@ -615,13 +644,13 @@
   }
   /* 认草稿有两种情况：新建时 rows 里放的就是 draft 本身；编辑已有画师时按 editingId 认，
      不能按 draft.uid——刷新同步到正式名之后 draft.uid 会和库里存的那条不一样。 */
-  function patchCard(node,a){
+  function patchCard(node,a,pinView=false){
     if(!node||node.classList.contains('is-editing')||(draft&&(a===draft||a.uid===editingId)))return false;
     /* 这一条不能省：浮动书钉里可能是**同一个对象**，而它没有编辑表单。
        被就地更新成浏览态，就会把正在编辑的那张卡连输入框一起抹掉。
        判据用 DOM 包含关系：「正在编辑的那张卡」就在这个节点里面。 */
     if(draft&&containsNode(node,draft.uid))return false;
-    artistCard(a,node);return true;
+    artistCard(a,node,pinView);return true;
   }
   function containsNode(node,uid){
     if(node.dataset?.uid===uid)return true;
@@ -640,12 +669,9 @@
     // 编辑器有自己的草稿生命周期：后台任务与筛选不能重建输入框或选图器。
     if(editing)return 'edit/'+editorRevision;
     const queue=waiting?`run${genQueue.waiting?1:0}`:`q${genQueue.positionOf(item=>item.uid===a.uid)||0}`;
-    /* 删除导致 order 连续重排，但卡片显示稳定 uid 序号，不必让相邻作品重载。
-       末尾带上书钉状态：书钉按钮的置灰取决于「已钉几位 / 上限」，钉满或取消的那一刻，
-       **其他卡片上的那个按钮也要跟着变**。不带进来的话，只有内容真的变过的那张会重画，
-       屏上其余卡片会一直显示旧的可点状态（进出一次编辑态才碰巧同步）。
-       屏外的卡片不在 DOM 里，挂载时才按指纹画，所以这里改了它们也不会白画。 */
-    return `show/${reservedOf()}/${PREVIEW_SLOTS}/${queue}/${collectingUid===a.uid?'collecting':''}/${a.pinned===true?'pin':'--'}/${pinnedArtists().length}/${pinLimit()}/${JSON.stringify({...a,order:seqOf(a)})}`;
+    // 书钉只改变按钮状态和浮动区成员，不应使所有卡片内容指纹一起失效。
+    const {pinned,...content}=a;
+    return `show/${reservedOf()}/${PREVIEW_SLOTS}/${queue}/${collectingUid===a.uid?'collecting':''}/${JSON.stringify({...content,order:seqOf(a)})}`;
   }
   /* 卡片内容就地更新完了（编辑态里那一排作品格），同步一下指纹。 */
   const markEditorPainted=()=>{if(draft)ArtistGallery.markPainted(editingId||draft.uid);};
@@ -817,6 +843,7 @@
     else if(draft&&editingId&&!rows.some(a=>a.uid===editingId)){const editing=data.artists.find(a=>a.uid===editingId);if(editing)rows.unshift(editing);}
     ArtistGallery.render($('gallery'),rows,card,cardKey,patchCard);
     paintPinnedBar();
+    syncPinButtons();
     /* 编辑态收起后，作品格的图片到这里才释放：上面那次重画已经拿旧内容克隆过渐隐副本了。 */
     if(editorImagesPending&&!draft){editorImagesPending=false;ArtistImages.dispose('editor');}
     $('empty').hidden=rows.length!==0;
@@ -928,6 +955,8 @@
   }
   function startEdit(a){
     if(busy)return;
+    // 书钉状态就地同步，不重建列表卡片；编辑必须读取当前数据，不能把旧闭包里的状态写回。
+    if(a)a=data.artists.find(item=>item.uid===a.uid)||a;
     $('quick-dialog').close();
     closeEditor();
     editingId=a?.uid||null;

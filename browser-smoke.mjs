@@ -76,7 +76,7 @@ async function browserChecks(){
  // 真实 FileSystemDirectoryHandle，但位于全新浏览器配置的 OPFS；不选择电脑上的数据文件夹。
  const folder=await navigator.storage.getDirectory();window.showDirectoryPicker=async()=>folder;
  const canvas=document.createElement('canvas');canvas.width=canvas.height=16;const context=canvas.getContext('2d');context.fillStyle='red';context.fillRect(0,0,16,16);
- const uid='0001-browser-manual',seed=FolderStore.empty();
+ const uid='0001-browser-manual',seed=FolderStore.empty();seed.showTestSlots=true; // 本用例专门检查测试图的同路径覆盖。
  seed.artists=[{uid,name:'browser',tags:[],works:[{id:'',kind:'test',testSeq:1,caption:'',thumb:canvas.toDataURL('image/jpeg'),large:canvas.toDataURL('image/png')}]}];
  await FolderStore.write(folder,seed);await $('choose-folder').onclick();$('gallery').scrollIntoView({block:'center'});
  await until(()=>document.querySelector('.work.is-test img')?.src);

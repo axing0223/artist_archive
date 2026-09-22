@@ -412,7 +412,7 @@ html[data-density=comfortable] .artist-footer{margin-top:6px;padding-top:6px}
 /* 紧凑：左列按《使用说明》那句与参考图重排——序号与数量一行、名字单独一行、笔名做成小 chip，
    画风描述与备注跟在下面；分类与标签浮到上边框之上；操作按钮停在右上角。 */
 html[data-density=compact] #gallery{gap:18px}
-html[data-density=compact] .artist:not(.is-editing){--compact-col:220px;--compact-gap:14px;--compact-pad:11px;--compact-actions:200px;display:grid;grid-template-columns:var(--compact-col) minmax(0,1fr);grid-template-areas:"info works" "notes works";align-items:start;column-gap:var(--compact-gap);padding:9px var(--compact-pad) 7px;background:linear-gradient(90deg,var(--identity) 0 calc(var(--compact-pad) + var(--compact-col) + 6px),var(--panel) calc(var(--compact-pad) + var(--compact-col) + 6px))}
+html[data-density=compact] .artist:not(.is-editing){--compact-col:220px;--compact-gap:14px;--compact-pad:11px;--compact-actions:390px;display:grid;grid-template-columns:var(--compact-col) minmax(0,1fr);grid-template-areas:"info works" "notes works";align-items:start;column-gap:var(--compact-gap);padding:9px var(--compact-pad) 7px;background:linear-gradient(90deg,var(--identity) 0 calc(var(--compact-pad) + var(--compact-col) + 6px),var(--panel) calc(var(--compact-pad) + var(--compact-col) + 6px))}
 html[data-density=compact] .artist:not(.is-editing) .artist-info{grid-area:info;flex-direction:column;align-items:stretch;justify-content:flex-start;gap:7px;margin-bottom:0}
 /* 左列四行：①序号 + 作品数量 ②名字 ③笔名 ④采集中（有才出现）。 */
 html[data-density=compact] .artist:not(.is-editing) .name-row{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:baseline;gap:4px 8px}
@@ -684,21 +684,24 @@ input:focus-visible,textarea:focus-visible,select:focus-visible{outline-offset:1
 /* 已经标注「画风拟合」/ 已经钉上书钉的按钮：用强调色描边+浅底，一眼看出这一位是标过的。 */
 .artist-actions>.fit-button.active,.artist-actions>.pin-button.active{color:var(--accent);border-color:var(--accent);background:var(--accent-soft)}
 .artist-actions>.pin-button:disabled{opacity:.45;cursor:not-allowed}
-/* 书钉浮动区：**占据 gallery 的位置**（同一个容器宽度、同一条左边线），吸附在筛选栏下方。
-   一条只放一张卡片、多张就往下叠成多行，所以横向不会挤。
-   它比筛选栏(z-index 25)低一层：往上滚时会自然滑到筛选栏后面，不会盖住筛选控件。
-   编辑态那一张要完整露出来，见下面的 is-editing 规则。 */
-.pinned-bar{position:sticky;top:calc(var(--header) + 60px);z-index:24;margin-top:18px;display:flex;flex-direction:column;gap:10px;padding:10px 12px;background:color-mix(in srgb,var(--bg) 92%,transparent);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);backdrop-filter:blur(8px)}
-.pinned-bar[hidden]{display:none}
-/* 正在编辑时不再吸附、也不再限高：编辑器有一屏多高，限高会把下半截裁掉、滚轮也够不到。
-   这时候它随页面正常滚动，卡片本身留在原处，视线不会跑。 */
-.pinned-bar.is-editing{position:static;max-height:none;overflow:visible}
-.pinned-head{font:11px ui-monospace,monospace;color:var(--faint);letter-spacing:2px}
-.pinned-area{display:flex;flex-direction:column;gap:10px;max-height:calc(100vh - var(--header) - 96px);overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}
+/* 书钉跟随真实工具栏高度吸附，滚动区域预留评分徽章的外伸空间。 */
+.pinned-bar{--pinned-top:calc(var(--header) + 122px);--status-height:34px;position:sticky;top:var(--pinned-top);z-index:24;margin-top:18px;display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:0 0 0 10px var(--bg),0 12px 28px #0003;opacity:1;transform:none;transition:opacity .18s,transform .18s,display .18s allow-discrete}
+.pinned-bar[hidden]{display:none;opacity:0;transform:translateY(-5px)}
+@starting-style{.pinned-bar:not([hidden]){opacity:0;transform:translateY(-5px)}}
+.pinned-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 12px;border-bottom:1px solid var(--line-soft)}
+.pinned-head{font-size:12px;font-weight:600;color:var(--accent);letter-spacing:.06em;font-variant-numeric:tabular-nums}
+.pinned-toggle{font-size:12px;padding:3px 8px;border-radius:5px}
+.pinned-toggle:hover{background:var(--raised)}
+.pinned-area{display:grid;gap:18px;min-height:0;padding:18px 10px 8px;max-height:max(100px,calc(100dvh - var(--pinned-top) - var(--status-height) - 62px));overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-gutter:stable;opacity:1;transition:max-height .22s ease,padding-block .22s ease,opacity .16s}
+.pinned-area .artist-slot{min-width:0;scroll-margin-top:18px}
+.pinned-area .artist{width:100%}
+.pinned-bar.is-collapsed .pinned-area{max-height:0;padding-block:0;opacity:0;overflow:hidden}
+.pinned-bar.is-collapsed .pinned-toolbar{border-bottom-color:transparent}
+/* 编辑表单恢复普通文档流，避免被浮动区域的可用高度裁掉。 */
+.pinned-bar.is-editing{position:static}
 .pinned-bar.is-editing .pinned-area{max-height:none;overflow:visible}
-/* 一行一张：卡片占满浮动区宽度，与列表里的卡片同宽同观感。 */
-.pinned-area>article.artist{width:100%;flex:0 0 auto}
-@media(max-width:760px){.pinned-bar{top:calc(var(--header) + 52px);padding:8px 9px}.pinned-area{max-height:calc(100vh - var(--header) - 84px)}}
+@media(max-width:760px){.pinned-toolbar{padding:7px 10px}.pinned-area{padding-inline:10px}}
+@media(prefers-reduced-motion:reduce){.pinned-bar,.pinned-area{transition:none}}
 .artist-actions>.danger:not(.is-armed){background:transparent}
 .artist-actions>.danger:not(.is-armed):hover{background:var(--danger-bg)}
 .work figcaption{font-variant-numeric:tabular-nums}

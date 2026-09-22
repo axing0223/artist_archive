@@ -307,7 +307,7 @@ async function browserChecks(){
  $('search').value='mizu_no_oto';$('search').dispatchEvent(new CompositionEvent('compositionend',{bubbles:true}));await until(()=>$('gallery').children.length===4);$('reset').click();
  document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'/',bubbles:true}));check(document.activeElement===$('search'),'斜杠聚焦搜索');
  $('command-open').click();check($('command-dialog').open,'快捷操作应打开');input('command-search','资料库设置');check($('command-results').querySelectorAll('button').length===1,'快捷操作支持搜索');$('command-search').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));check(!$('command-dialog').open&&$('settings').open,'回车执行所选操作');$('settings').close();
- const actions=document.querySelector('.artist-actions');check([...actions.children].map(node=>node.textContent).join('/')==='删除/画师页面/编辑','卡片按钮顺序');const remove=actions.firstElementChild;remove.click();check(remove.classList.contains('is-armed'),'删除第一次点击进入确认态');await delay(200);check(getComputedStyle(remove).color==='rgb(255, 255, 255)','二次确认删除文字为白色');check($('gallery').children.length===24,'第一次确认不能删除画师');check($('back-top').closest('.status-bar'),'回到顶部固定在状态栏');
+ const actions=document.querySelector('.artist-actions');check([...actions.children].map(node=>node.textContent).join('/')==='删除/画师页面/刷新/画风拟合/书钉/编辑','卡片按钮顺序');const remove=actions.firstElementChild;remove.click();check(remove.classList.contains('is-armed'),'删除第一次点击进入确认态');await delay(200);check(getComputedStyle(remove).color==='rgb(255, 255, 255)','二次确认删除文字为白色');check($('gallery').children.length===24,'第一次确认不能删除画师');check($('back-top').closest('.status-bar'),'回到顶部固定在状态栏');
  $('quick-open').click();check($('quick-dialog').open&&document.activeElement===$('quick-input'),'识别添加直接聚焦输入');$('quick-dialog').querySelector('[data-close-dialog]').click();
  document.querySelector('.thumb').click();await until(()=>$('viewer').open);check($('viewer-position').textContent==='1 / 5','预览显示完整图片序号');$('viewer-next').click();check($('viewer-position').textContent==='2 / 5','可切到下一张');$('viewer').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true}));check($('viewer-position').textContent==='1 / 5','方向键可切回上一张');$('viewer').close();
 
@@ -349,8 +349,8 @@ async function browserChecks(){
  /* 特殊筛选：按「缺什么」找。演示库里站点作品都远超 50，所以点亮它应当筛空，并且能再点回来。 */
  $('filter-toggle').click();await delay(320);
  const specialButtons=()=>[...$('special').querySelectorAll('button')];
- check(specialButtons().length===2,'特殊筛选要有两个选项');
- check(specialButtons().map(node=>node.textContent).join('/')==='作品少于 50/例图空缺','特殊筛选的选项文案：'+specialButtons().map(node=>node.textContent).join('/'));
+ check(specialButtons().length===3,'特殊筛选要有三个选项');
+ check(specialButtons().map(node=>node.textContent).join('/')==='作品少于 50/例图空缺/画风拟合','特殊筛选的选项文案：'+specialButtons().map(node=>node.textContent).join('/'));
  const beforeSpecial=$('gallery').children.length;
  specialButtons()[0].click();await delay(140);
  check($('gallery').children.length===0,'演示库里没有站点作品少于 50 的画师，应当筛空，实际 '+$('gallery').children.length);
@@ -377,7 +377,7 @@ async function browserChecks(){
  await until(()=>$('quota-images').textContent==='约 1038 张');check($('quota-percent').textContent==='60%'&&$('quota-points').textContent==='10000 点','顶部额度三项展示');check($('opus-status').closest('.header-actions'),'额度位于顶部操作区');
  const openEditor=async()=>{[...document.querySelector('.artist-actions').children].find(n=>n.textContent==='编辑').click();await until(()=>document.querySelector('.is-editing'));await delay(500);};
  const closeEditor=async()=>{[...document.querySelector('.is-editing .artist-actions').children].find(n=>n.textContent==='取消').click();await until(()=>!document.querySelector('.is-editing'));await delay(200);};
- await openEditor();const editorActions=document.querySelector('.is-editing .artist-actions');check([...editorActions.children].map(n=>n.textContent).join('/')==='删除画师/刷新/取消/保存','编辑按钮顺序');check(editorActions.getBoundingClientRect().top<document.querySelector('.is-editing .edit-grid').getBoundingClientRect().top,'编辑按钮放在表单上方右侧');
+ await openEditor();const editorActions=document.querySelector('.is-editing .artist-actions');check([...editorActions.children].map(n=>n.textContent).join('/')==='删除画师/取消/保存','编辑按钮顺序');check(editorActions.getBoundingClientRect().top<document.querySelector('.is-editing .edit-grid').getBoundingClientRect().top,'编辑按钮放在表单上方右侧');
  document.querySelector('.artist-expand button').click();await until(()=>document.querySelectorAll('.work-picker .pick').length===21);await delay(500);
  const picker=document.querySelector('.work-picker'),pickerGrid=picker.querySelector('.candidate-previews'),page=()=>picker.querySelector('.picker-page').textContent;
  check(document.activeElement===pickerGrid,'手动展开后键盘焦点进入作品');const rects=[...pickerGrid.querySelectorAll('.pick')].map(n=>n.getBoundingClientRect());check(new Set(rects.map(r=>Math.round(r.top))).size===3&&new Set(rects.map(r=>Math.round(r.left))).size===7,'候选作品三行七列');

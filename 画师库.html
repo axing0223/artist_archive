@@ -420,7 +420,7 @@ html[data-density=comfortable] .artist-footer{margin-top:6px;padding-top:6px}
 /* 紧凑：左列按《使用说明》那句与参考图重排——序号与数量一行、名字单独一行、笔名做成小 chip，
    画风描述与备注跟在下面；分类与标签浮到上边框之上；操作按钮停在右上角。 */
 html[data-density=compact] #gallery{gap:18px}
-html[data-density=compact] .artist:not(.is-editing){--compact-col:220px;--compact-gap:14px;--compact-pad:11px;--compact-actions:200px;display:grid;grid-template-columns:var(--compact-col) minmax(0,1fr);grid-template-areas:"info works" "notes works";align-items:start;column-gap:var(--compact-gap);padding:9px var(--compact-pad) 7px;background:linear-gradient(90deg,var(--identity) 0 calc(var(--compact-pad) + var(--compact-col) + 6px),var(--panel) calc(var(--compact-pad) + var(--compact-col) + 6px))}
+html[data-density=compact] .artist:not(.is-editing){--compact-col:220px;--compact-gap:14px;--compact-pad:11px;--compact-actions:390px;display:grid;grid-template-columns:var(--compact-col) minmax(0,1fr);grid-template-areas:"info works" "notes works";align-items:start;column-gap:var(--compact-gap);padding:9px var(--compact-pad) 7px;background:linear-gradient(90deg,var(--identity) 0 calc(var(--compact-pad) + var(--compact-col) + 6px),var(--panel) calc(var(--compact-pad) + var(--compact-col) + 6px))}
 html[data-density=compact] .artist:not(.is-editing) .artist-info{grid-area:info;flex-direction:column;align-items:stretch;justify-content:flex-start;gap:7px;margin-bottom:0}
 /* 左列四行：①序号 + 作品数量 ②名字 ③笔名 ④采集中（有才出现）。 */
 html[data-density=compact] .artist:not(.is-editing) .name-row{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:baseline;gap:4px 8px}
@@ -692,21 +692,24 @@ input:focus-visible,textarea:focus-visible,select:focus-visible{outline-offset:1
 /* 已经标注「画风拟合」/ 已经钉上书钉的按钮：用强调色描边+浅底，一眼看出这一位是标过的。 */
 .artist-actions>.fit-button.active,.artist-actions>.pin-button.active{color:var(--accent);border-color:var(--accent);background:var(--accent-soft)}
 .artist-actions>.pin-button:disabled{opacity:.45;cursor:not-allowed}
-/* 书钉浮动区：**占据 gallery 的位置**（同一个容器宽度、同一条左边线），吸附在筛选栏下方。
-   一条只放一张卡片、多张就往下叠成多行，所以横向不会挤。
-   它比筛选栏(z-index 25)低一层：往上滚时会自然滑到筛选栏后面，不会盖住筛选控件。
-   编辑态那一张要完整露出来，见下面的 is-editing 规则。 */
-.pinned-bar{position:sticky;top:calc(var(--header) + 60px);z-index:24;margin-top:18px;display:flex;flex-direction:column;gap:10px;padding:10px 12px;background:color-mix(in srgb,var(--bg) 92%,transparent);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);backdrop-filter:blur(8px)}
-.pinned-bar[hidden]{display:none}
-/* 正在编辑时不再吸附、也不再限高：编辑器有一屏多高，限高会把下半截裁掉、滚轮也够不到。
-   这时候它随页面正常滚动，卡片本身留在原处，视线不会跑。 */
-.pinned-bar.is-editing{position:static;max-height:none;overflow:visible}
-.pinned-head{font:11px ui-monospace,monospace;color:var(--faint);letter-spacing:2px}
-.pinned-area{display:flex;flex-direction:column;gap:10px;max-height:calc(100vh - var(--header) - 96px);overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}
+/* 书钉跟随真实工具栏高度吸附，滚动区域预留评分徽章的外伸空间。 */
+.pinned-bar{--pinned-top:calc(var(--header) + 122px);--status-height:34px;position:sticky;top:var(--pinned-top);z-index:24;margin-top:18px;display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:0 0 0 10px var(--bg),0 12px 28px #0003;opacity:1;transform:none;transition:opacity .18s,transform .18s,display .18s allow-discrete}
+.pinned-bar[hidden]{display:none;opacity:0;transform:translateY(-5px)}
+@starting-style{.pinned-bar:not([hidden]){opacity:0;transform:translateY(-5px)}}
+.pinned-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 12px;border-bottom:1px solid var(--line-soft)}
+.pinned-head{font-size:12px;font-weight:600;color:var(--accent);letter-spacing:.06em;font-variant-numeric:tabular-nums}
+.pinned-toggle{font-size:12px;padding:3px 8px;border-radius:5px}
+.pinned-toggle:hover{background:var(--raised)}
+.pinned-area{display:grid;gap:18px;min-height:0;padding:18px 10px 8px;max-height:max(100px,calc(100dvh - var(--pinned-top) - var(--status-height) - 62px));overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-gutter:stable;opacity:1;transition:max-height .22s ease,padding-block .22s ease,opacity .16s}
+.pinned-area .artist-slot{min-width:0;scroll-margin-top:18px}
+.pinned-area .artist{width:100%}
+.pinned-bar.is-collapsed .pinned-area{max-height:0;padding-block:0;opacity:0;overflow:hidden}
+.pinned-bar.is-collapsed .pinned-toolbar{border-bottom-color:transparent}
+/* 编辑表单恢复普通文档流，避免被浮动区域的可用高度裁掉。 */
+.pinned-bar.is-editing{position:static}
 .pinned-bar.is-editing .pinned-area{max-height:none;overflow:visible}
-/* 一行一张：卡片占满浮动区宽度，与列表里的卡片同宽同观感。 */
-.pinned-area>article.artist{width:100%;flex:0 0 auto}
-@media(max-width:760px){.pinned-bar{top:calc(var(--header) + 52px);padding:8px 9px}.pinned-area{max-height:calc(100vh - var(--header) - 84px)}}
+@media(max-width:760px){.pinned-toolbar{padding:7px 10px}.pinned-area{padding-inline:10px}}
+@media(prefers-reduced-motion:reduce){.pinned-bar,.pinned-area{transition:none}}
 .artist-actions>.danger:not(.is-armed){background:transparent}
 .artist-actions>.danger:not(.is-armed):hover{background:var(--danger-bg)}
 .work figcaption{font-variant-numeric:tabular-nums}
@@ -1859,9 +1862,13 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
   const observer=new IntersectionObserver(entries=>{for(const entry of entries){const r=bindings.get(entry.target);if(!r)continue;r.visible=entry.isIntersecting;if(r.visible)show(r);else release(r);}},{rootMargin:'300px'});
   function bind(img,uid,work,group,size='thumb',error){
     if(typeof size==='function'){error=size;size='thumb';}
-    const existing=bindings.get(img);
+    const existing=bindings.get(img),sourceKey=key(uid,work,size);
+    // 同一图片节点在卡片局部更新时会再次申请绑定；引用和分组未变就保留 Blob 与加载任务。
+    if(existing&&existing.uid===uid&&existing.group===group&&existing.size===size&&existing.sourceKey===sourceKey){
+      existing.work=work;existing.error=error;return;
+    }
     if(existing){observer.unobserve(img);existing.controller?.abort();if(existing.objectUrl)URL.revokeObjectURL(existing.objectUrl);bindings.delete(img);}
-    const record={img,uid,work,group,size,error};bindings.set(img,record);img.decoding='async';img.onerror=()=>{if(record.objectUrl){img.classList.add('image-failed');img.title='图片内容无法解码';}};observer.observe(img);
+    const record={img,uid,work,group,size,error,sourceKey};bindings.set(img,record);img.decoding='async';img.onerror=()=>{if(record.objectUrl){img.classList.add('image-failed');img.title='图片内容无法解码';}};observer.observe(img);
   }
   // 仅由写盘成功的调用方传入同一作品的保存结果；更新引用而不撤销已显示的 Blob。
   function adoptPersisted(img,work){
@@ -1869,7 +1876,7 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
     const before=FolderStore.imageOf(record.work,record.size),after=FolderStore.imageOf(work,record.size);
     if(before?.kind!=='inline'||after?.kind!=='local')return false;
     const blob=cache.get(key(record.uid,record.work,record.size));
-    record.work=work;record.persisted=true;
+    record.work=work;record.persisted=true;record.sourceKey=key(record.uid,work,record.size);
     if(blob)cache.set(key(record.uid,work,record.size),blob);
     return true;
   }
@@ -1877,6 +1884,7 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
     const ref=uid+':'+path,version=revisions.get(ref)||0,id='local:'+epoch+':'+ref+':'+version;
     cache.delete(id);failures.delete(id);revisions.set(ref,version+1);
     for(const record of bindings.values())if(record.uid===uid&&FolderStore.imageOf(record.work,record.size)?.path===path){
+      record.sourceKey=key(record.uid,record.work,record.size);
       release(record);if(record.visible)show(record);
     }
   }
@@ -1900,7 +1908,7 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
      以前状态全在模块作用域里（单例），书钉区一调 render 就会把列表的状态覆盖掉——
      列表的 uids/current/slots 全被换成书钉那几张，列表随后的渲染就全乱了。
      所以这里做成工厂：每处自己 create() 一个，互不干扰。 */
-  function create(){
+  function create({imageGroupPrefix='card:'}={}){
    /* 下面的函数体保持原来的两格缩进没重排：这次只是把它整体挪进 create() 里，
       重排三百行会把 diff 撑爆、也容易改错；本项目没有格式化工具，缩进不是门禁。 */
    let observer,resize,current=[],make=null,keyOf=null,patch=null,uids=[];
@@ -1914,7 +1922,7 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
   /* 占位被清空、图片被解绑之后留在 painted 里的记号：它和任何真实指纹都不相等，
      所以下一次 render 一定会为这张卡片跑一遍 paint（见 releaseSlot 里的说明）。 */
   const STALE='__released__';
-  function clear(){observer?.disconnect();resize?.disconnect();for(const id of mounted.keys())ArtistImages.dispose('card:'+id);for(const slot of slots.values())slot.remove();mounted.clear();slots.clear();painted.clear();heights.clear();pinned.clear();near.clear();uids=[];current=[];make=null;keyOf=null;patch=null;observer=null;resize=null;}
+  function clear(){observer?.disconnect();resize?.disconnect();for(const id of mounted.keys())ArtistImages.dispose(imageGroupPrefix+id);for(const slot of slots.values())slot.remove();mounted.clear();slots.clear();painted.clear();heights.clear();pinned.clear();near.clear();uids=[];current=[];make=null;keyOf=null;patch=null;observer=null;resize=null;}
   /* 需要的时候才重画这一张。 */
   function paint(slot){
     const uid=slot.dataset.uid,artist=current[Number(slot.dataset.index)];
@@ -1943,7 +1951,7 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
        否则卡片回来了、图却是空的。必须在 patch() 之后：patch 走的就是「复用节点」这条路。
        可见性按当前几何重新算（别照观察者记的 near 抄：near 是上一次回调时的判断，可能已经过期）。 */
     const ghost=replaced&&previous&&!calm()&&typeof previous.cloneNode==='function'&&typeof slot.animate==='function'?previous.cloneNode(true):null;
-    if(replaced){ArtistImages.dispose('card:'+uid);slot.replaceChildren(make(artist));}
+    if(replaced){ArtistImages.dispose(imageGroupPrefix+uid);slot.replaceChildren(make(artist));}
     ArtistImages.announce?.(slot,nearViewport(slot));
     mounted.set(uid,artist);painted.set(uid,key);
     const fresh=slot.children[0];
@@ -2187,7 +2195,7 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
        空占位不记：那只是一块灰底，跳不跳没人看得出来。 */
     const before=positions(container);
     const wanted=new Set(next);
-    for(const [uid,slot] of slots)if(!wanted.has(uid)){if(mounted.has(uid)){ArtistImages.dispose('card:'+uid);mounted.delete(uid);}observer?.unobserve(slot);resize?.unobserve(slot);slot.remove();slots.delete(uid);painted.delete(uid);near.delete(uid);}
+    for(const [uid,slot] of slots)if(!wanted.has(uid)){if(mounted.has(uid)){ArtistImages.dispose(imageGroupPrefix+uid);mounted.delete(uid);}observer?.unobserve(slot);resize?.unobserve(slot);slot.remove();slots.delete(uid);painted.delete(uid);near.delete(uid);}
     uids=next;
     resize??=new ResizeObserver(entries=>{for(const entry of entries){const id=entry.target.dataset.uid;const h=entry.target.getBoundingClientRect().height;if(h>0)heights.set(id,h);}});
     observer??=new IntersectionObserver(entries=>{for(const entry of entries){const slot=entry.target,id=slot.dataset.uid;if(slots.get(id)!==slot)continue;
@@ -2222,7 +2230,7 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
        卡片回来了、图是空的（用户报的"取消书钉之后作品都没有被重新加载"）。
        逐个 unbind 之后，复用它们的新卡片会重新 bind 一批全新的 <img>，观察者自然会照常触发。 */
     for(const img of slot.querySelectorAll?.('img')||[])ArtistImages.unbind?.(img);
-    ArtistImages.dispose('card:'+id);ArtistImages.announce?.(slot,false);slot.replaceChildren();slot.style.height=h+'px';mounted.delete(id);
+    ArtistImages.dispose(imageGroupPrefix+id);ArtistImages.announce?.(slot,false);slot.replaceChildren();slot.style.height=h+'px';mounted.delete(id);
     /* 这里必须留一个「指纹作废」的记号，不能直接删掉。
        卡片被清空、图片也被解绑了，可指纹还和现在一样的话，下一次 render 会把这张卡片判成
        「没变化」直接跳过 paint —— 那批 <img> 就再也没人通知「你可见了」，也不会有新的 bind，
@@ -2706,6 +2714,15 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
   $('empty-action').textContent=!connected?'打开数据文件夹':total?'清除全部筛选':'识别添加画师';
  }
  function init({saveEditor}){
+  // 浮动书钉贴在实际筛选栏下方；筛选展开、换行、窗口缩放都可能改变它的高度。
+  const pinBar=$('pinned-bar'),header=document.querySelector('.app-header'),controls=document.querySelector('.library-controls'),statusBar=document.querySelector('.status-bar');
+  const placePins=()=>{
+   if(!pinBar)return;
+   pinBar.style.setProperty('--pinned-top',Math.ceil((header?.getBoundingClientRect().height||0)+(controls?.getBoundingClientRect().height||0)+8)+'px');
+   pinBar.style.setProperty('--status-height',Math.ceil(statusBar?.getBoundingClientRect().height||34)+'px');
+  };
+  if(typeof ResizeObserver==='function'){const observer=new ResizeObserver(placePins);for(const node of [header,controls,statusBar])if(node)observer.observe(node);}
+  window.addEventListener('resize',placePins);placePins();
   if(initialized)return;initialized=true;
   const motionPreference=matchMedia('(prefers-reduced-motion: reduce)');motionPreference.addEventListener('change',event=>{if(event.matches)document.getAnimations().forEach(animation=>animation.cancel());});
   const densityKey='artist-library.density';
@@ -2888,7 +2905,7 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
         const entries=byArtist.get(artist.uid)||[];entries.push(entry);byArtist.set(artist.uid,entries);
       }
     }
-    if(persisted.size)for(const figure of document.querySelectorAll('#gallery .work[data-work]')){
+    if(persisted.size)for(const figure of document.querySelectorAll('#gallery .work[data-work],#pinned-bar .work[data-work]')){
       const record=workRecords.get(figure);if(!record)continue;
       // 失败后重试或排队保存可能克隆数据，但卡片指纹未变，仍持有上一份等值对象。
       const next=persisted.get(record.work)||(byArtist.get(record.artist.uid)||[]).find(({before})=>
@@ -2907,6 +2924,7 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
     folder=chosen;data=loaded;FolderStore.remember(chosen,loaded);ArtistImages.setFolder(chosen);
     /* 换了文件夹就是另一批卡片：告诉画廊把旧占位全忘掉，别把上一位画师的卡片接着用。 */
     ArtistGallery.clear();
+    pinnedGallery.clear();
     reset();render();
     document.querySelectorAll('button,input,textarea,select').forEach(e=>e.disabled=false);
     $('folder-name').textContent='当前文件夹：'+folder.name;
@@ -3261,20 +3279,36 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
     if(pinned)target.pinned=true;else delete target.pinned;
     await save(next,pinned?`已把「${a.name}」钉在顶部。`:`已取消「${a.name}」的书钉。`);
   }
+  function configurePinButton(button,a,count=pinnedArtists().length,limit=pinLimit()){
+    const pinned=a.pinned===true,full=!pinned&&count>=limit;
+    button.classList.toggle('active',pinned);button.setAttribute('aria-pressed',String(pinned));
+    button.setAttribute('aria-label',(pinned?'取消书钉：':'钉住画师：')+a.name);
+    button.title=pinned?'取消书钉':full?`书钉已满（最多 ${limit} 个）：先取消一个，或到「设置」里调大上限`:'钉在页面顶部，滚动时一直看得见';
+    button.disabled=full;
+    // 写盘期间更新实际可用状态，解锁时不能把过期的「未满」状态恢复回来。
+    if(saveControls.has(button))saveControls.set(button,full);
+    if(full)button.classList.remove('is-saving-locked');
+  }
+  function syncPinButtons(){
+    const count=pinnedArtists().length,limit=pinLimit(),byId=new Map(data.artists.map(a=>[a.uid,a]));
+    for(const button of document.querySelectorAll('.pin-button')){
+      const artist=byId.get(button.dataset.artistUid);if(artist)configurePinButton(button,artist,count,limit);
+    }
+  }
   /* 书钉浮动区专用的画廊实例。必须单独一个：ArtistGallery 的渲染状态是按实例的，
      列表与浮动区共用同一个实例的话，浮动区一渲染就会把列表的状态（uids/slots/mounted）覆盖掉。 */
-  const pinnedGallery=ArtistGallery.create?ArtistGallery.create():ArtistGallery;
+  const pinnedGallery=ArtistGallery.create?ArtistGallery.create({imageGroupPrefix:'pinned-card:'}):ArtistGallery;
   /* 顶部浮动的那一条书钉。里面放的是**完整卡片**而不是简化的一小块：
      用户要求"用原有的完整卡片显示在列表顶端，并且保留卡片的完整功能"。 */
-  let pinnedArea=null;
+  let pinnedArea=null,pinnedCollapsed=false;
   function paintPinnedBar(){
     const bar=$('pinned-bar');if(!bar)return;
     const list=pinnedArtists();
     bar.hidden=!list.length;
     if(!list.length){
-      pinnedArea=null;
+      pinnedGallery.clear();
+      pinnedArea=null;pinnedCollapsed=false;
       bar.replaceChildren();
-      ArtistImages.dispose('pinned');
       return;
     }
     /* 浮动区里放的是**完整卡片**：和列表里长得一样、按钮一样、功能一样
@@ -3286,14 +3320,19 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
        那会每轮都抛异常、浮动区永远空着（测试替身是数组，所以骗过了单测）。用 parentNode 判断。 */
     if(!host||host.parentNode!==bar){
       host=el('div','pinned-area');host.setAttribute('aria-label','钉住的画师卡片');
-      bar.replaceChildren(el('span','pinned-head','书钉'),host);
+      host.id='pinned-artists';
+      const head=el('div','pinned-toolbar'),label=el('span','pinned-head'),toggle=btn('收起',()=>{
+        pinnedCollapsed=!pinnedCollapsed;paintPinnedPresentation();
+      },'reset pinned-toggle');
+      toggle.setAttribute('aria-controls','pinned-artists');head.append(label,toggle);
+      bar.replaceChildren(head,host);
       pinnedArea=host;
     }
     /* 浮动区的卡片用 pinned=true 走另一套图片绑定组名（见 imageGroup）：
        否则两边共用 card:uid 这一组，浮动区卸载时会把列表那张卡片的图片一起解绑。
        内容仍然走 card()：正在编辑的那位要渲染成编辑器。以前这里写死用 artistCard，
        于是书钉里的卡片点「编辑」只会重建出一张浏览态卡片——编辑器永远不出现。 */
-    pinnedGallery.render(host,list,pinnedCard,a=>'pin/'+cardKey(a),()=>false);
+    pinnedGallery.render(host,list,pinnedCard,a=>'pin/'+cardKey(a),(node,a)=>patchCard(node,a,true));
     /* 还要把「这张正在编辑」告诉浮动区自己那个画廊实例。画廊的 patchCard 里有一条判断：
        包含正在编辑的那张卡片时不许就地改（否则会把输入框连表单一起抹掉）。而标出"正在编辑"
        靠的是 ArtistGallery.pin(uid,true)——startEdit 只对**列表那个实例**调了它。
@@ -3305,6 +3344,16 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
        滚轮也够不到。所以编辑期间让浮动区取消吸附与限高（见 .pinned-bar.is-editing），
        编辑结束后自动恢复。 */
     bar.classList.toggle('is-editing',!!draft&&list.some(a=>a===draft||a.uid===editingId));
+    paintPinnedPresentation();
+  }
+  function paintPinnedPresentation(){
+    const bar=$('pinned-bar'),head=bar?.querySelector?.('.pinned-head'),toggle=bar?.querySelector?.('.pinned-toggle');
+    if(!head||!toggle)return;
+    const editing=bar.classList.contains('is-editing'),collapsed=pinnedCollapsed&&!editing;
+    head.textContent=`书钉 · ${pinnedArtists().length} / ${pinLimit()}`;
+    toggle.textContent=collapsed?'展开':'收起';toggle.setAttribute('aria-expanded',String(!collapsed));
+    toggle.setAttribute('aria-label',collapsed?'展开书钉卡片':'收起书钉卡片');toggle.disabled=editing;
+    bar.classList.toggle('is-collapsed',collapsed);if(pinnedArea)pinnedArea.inert=collapsed;
   }
   /* 卡片渲染。pinView 只影响图片绑定组名（列表与浮动区各一份，见 imageGroup）——
      不要叫 pinned，那个名字在下面表示"这位画师有没有被钉住"。 */
@@ -3349,11 +3398,8 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
     fit.title=a.styleFit?'已标注画风拟合，点一下取消':'标注为画风拟合（可用上方「特殊筛选 → 画风拟合」挑出来）';
     actions.append(fit);
     /* 书钉：钉住之后这张卡片会浮动在页面顶部，滚到哪儿都看得见。上限在设置里调。 */
-    const pinned=a.pinned===true,limit=pinLimit(),full=!pinned&&pinnedArtists().length>=limit;
-    const pin=btn('书钉',()=>togglePinArtist(a),'edit-button pin-button'+(pinned?' active':''));
-    pin.disabled=full;
-    pin.setAttribute('aria-pressed',String(pinned));
-    pin.title=pinned?'取消书钉':full?`书钉已满（最多 ${limit} 个）：先取消一个，或到「设置」里调大上限`:'钉在页面顶部，滚动时一直看得见';
+    const pin=btn('书钉',()=>{const current=data.artists.find(item=>item.uid===a.uid);if(current)return togglePinArtist(current);},'edit-button pin-button');
+    pin.dataset.artistUid=a.uid;configurePinButton(pin,a);
     actions.append(pin);
     actions.append(btn('编辑',()=>startEdit(a),'edit-button'));info.append(identity,actions);
     const works=previous?[...previous.children].find(node=>node.className==='works'):el('div','works'),pool=workPool(works),reserve=reservedOf(),slots=FolderStore.previewWorks(a,PREVIEW_SLOTS,reserve);
@@ -3369,13 +3415,13 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
   }
   /* 认草稿有两种情况：新建时 rows 里放的就是 draft 本身；编辑已有画师时按 editingId 认，
      不能按 draft.uid——刷新同步到正式名之后 draft.uid 会和库里存的那条不一样。 */
-  function patchCard(node,a){
+  function patchCard(node,a,pinView=false){
     if(!node||node.classList.contains('is-editing')||(draft&&(a===draft||a.uid===editingId)))return false;
     /* 这一条不能省：浮动书钉里可能是**同一个对象**，而它没有编辑表单。
        被就地更新成浏览态，就会把正在编辑的那张卡连输入框一起抹掉。
        判据用 DOM 包含关系：「正在编辑的那张卡」就在这个节点里面。 */
     if(draft&&containsNode(node,draft.uid))return false;
-    artistCard(a,node);return true;
+    artistCard(a,node,pinView);return true;
   }
   function containsNode(node,uid){
     if(node.dataset?.uid===uid)return true;
@@ -3394,12 +3440,9 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
     // 编辑器有自己的草稿生命周期：后台任务与筛选不能重建输入框或选图器。
     if(editing)return 'edit/'+editorRevision;
     const queue=waiting?`run${genQueue.waiting?1:0}`:`q${genQueue.positionOf(item=>item.uid===a.uid)||0}`;
-    /* 删除导致 order 连续重排，但卡片显示稳定 uid 序号，不必让相邻作品重载。
-       末尾带上书钉状态：书钉按钮的置灰取决于「已钉几位 / 上限」，钉满或取消的那一刻，
-       **其他卡片上的那个按钮也要跟着变**。不带进来的话，只有内容真的变过的那张会重画，
-       屏上其余卡片会一直显示旧的可点状态（进出一次编辑态才碰巧同步）。
-       屏外的卡片不在 DOM 里，挂载时才按指纹画，所以这里改了它们也不会白画。 */
-    return `show/${reservedOf()}/${PREVIEW_SLOTS}/${queue}/${collectingUid===a.uid?'collecting':''}/${a.pinned===true?'pin':'--'}/${pinnedArtists().length}/${pinLimit()}/${JSON.stringify({...a,order:seqOf(a)})}`;
+    // 书钉只改变按钮状态和浮动区成员，不应使所有卡片内容指纹一起失效。
+    const {pinned,...content}=a;
+    return `show/${reservedOf()}/${PREVIEW_SLOTS}/${queue}/${collectingUid===a.uid?'collecting':''}/${JSON.stringify({...content,order:seqOf(a)})}`;
   }
   /* 卡片内容就地更新完了（编辑态里那一排作品格），同步一下指纹。 */
   const markEditorPainted=()=>{if(draft)ArtistGallery.markPainted(editingId||draft.uid);};
@@ -3571,6 +3614,7 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
     else if(draft&&editingId&&!rows.some(a=>a.uid===editingId)){const editing=data.artists.find(a=>a.uid===editingId);if(editing)rows.unshift(editing);}
     ArtistGallery.render($('gallery'),rows,card,cardKey,patchCard);
     paintPinnedBar();
+    syncPinButtons();
     /* 编辑态收起后，作品格的图片到这里才释放：上面那次重画已经拿旧内容克隆过渐隐副本了。 */
     if(editorImagesPending&&!draft){editorImagesPending=false;ArtistImages.dispose('editor');}
     $('empty').hidden=rows.length!==0;
@@ -3682,6 +3726,8 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
   }
   function startEdit(a){
     if(busy)return;
+    // 书钉状态就地同步，不重建列表卡片；编辑必须读取当前数据，不能把旧闭包里的状态写回。
+    if(a)a=data.artists.find(item=>item.uid===a.uid)||a;
     $('quick-dialog').close();
     closeEditor();
     editingId=a?.uid||null;

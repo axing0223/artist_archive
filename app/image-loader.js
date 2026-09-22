@@ -55,9 +55,13 @@
   const observer=new IntersectionObserver(entries=>{for(const entry of entries){const r=bindings.get(entry.target);if(!r)continue;r.visible=entry.isIntersecting;if(r.visible)show(r);else release(r);}},{rootMargin:'300px'});
   function bind(img,uid,work,group,size='thumb',error){
     if(typeof size==='function'){error=size;size='thumb';}
-    const existing=bindings.get(img);
+    const existing=bindings.get(img),sourceKey=key(uid,work,size);
+    // 同一图片节点在卡片局部更新时会再次申请绑定；引用和分组未变就保留 Blob 与加载任务。
+    if(existing&&existing.uid===uid&&existing.group===group&&existing.size===size&&existing.sourceKey===sourceKey){
+      existing.work=work;existing.error=error;return;
+    }
     if(existing){observer.unobserve(img);existing.controller?.abort();if(existing.objectUrl)URL.revokeObjectURL(existing.objectUrl);bindings.delete(img);}
-    const record={img,uid,work,group,size,error};bindings.set(img,record);img.decoding='async';img.onerror=()=>{if(record.objectUrl){img.classList.add('image-failed');img.title='图片内容无法解码';}};observer.observe(img);
+    const record={img,uid,work,group,size,error,sourceKey};bindings.set(img,record);img.decoding='async';img.onerror=()=>{if(record.objectUrl){img.classList.add('image-failed');img.title='图片内容无法解码';}};observer.observe(img);
   }
   // 仅由写盘成功的调用方传入同一作品的保存结果；更新引用而不撤销已显示的 Blob。
   function adoptPersisted(img,work){
@@ -65,7 +69,7 @@
     const before=FolderStore.imageOf(record.work,record.size),after=FolderStore.imageOf(work,record.size);
     if(before?.kind!=='inline'||after?.kind!=='local')return false;
     const blob=cache.get(key(record.uid,record.work,record.size));
-    record.work=work;record.persisted=true;
+    record.work=work;record.persisted=true;record.sourceKey=key(record.uid,work,record.size);
     if(blob)cache.set(key(record.uid,work,record.size),blob);
     return true;
   }
@@ -73,6 +77,7 @@
     const ref=uid+':'+path,version=revisions.get(ref)||0,id='local:'+epoch+':'+ref+':'+version;
     cache.delete(id);failures.delete(id);revisions.set(ref,version+1);
     for(const record of bindings.values())if(record.uid===uid&&FolderStore.imageOf(record.work,record.size)?.path===path){
+      record.sourceKey=key(record.uid,record.work,record.size);
       release(record);if(record.visible)show(record);
     }
   }

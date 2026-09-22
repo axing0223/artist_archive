@@ -3,7 +3,7 @@
      以前状态全在模块作用域里（单例），书钉区一调 render 就会把列表的状态覆盖掉——
      列表的 uids/current/slots 全被换成书钉那几张，列表随后的渲染就全乱了。
      所以这里做成工厂：每处自己 create() 一个，互不干扰。 */
-  function create(){
+  function create({imageGroupPrefix='card:'}={}){
    /* 下面的函数体保持原来的两格缩进没重排：这次只是把它整体挪进 create() 里，
       重排三百行会把 diff 撑爆、也容易改错；本项目没有格式化工具，缩进不是门禁。 */
    let observer,resize,current=[],make=null,keyOf=null,patch=null,uids=[];
@@ -17,7 +17,7 @@
   /* 占位被清空、图片被解绑之后留在 painted 里的记号：它和任何真实指纹都不相等，
      所以下一次 render 一定会为这张卡片跑一遍 paint（见 releaseSlot 里的说明）。 */
   const STALE='__released__';
-  function clear(){observer?.disconnect();resize?.disconnect();for(const id of mounted.keys())ArtistImages.dispose('card:'+id);for(const slot of slots.values())slot.remove();mounted.clear();slots.clear();painted.clear();heights.clear();pinned.clear();near.clear();uids=[];current=[];make=null;keyOf=null;patch=null;observer=null;resize=null;}
+  function clear(){observer?.disconnect();resize?.disconnect();for(const id of mounted.keys())ArtistImages.dispose(imageGroupPrefix+id);for(const slot of slots.values())slot.remove();mounted.clear();slots.clear();painted.clear();heights.clear();pinned.clear();near.clear();uids=[];current=[];make=null;keyOf=null;patch=null;observer=null;resize=null;}
   /* 需要的时候才重画这一张。 */
   function paint(slot){
     const uid=slot.dataset.uid,artist=current[Number(slot.dataset.index)];
@@ -46,7 +46,7 @@
        否则卡片回来了、图却是空的。必须在 patch() 之后：patch 走的就是「复用节点」这条路。
        可见性按当前几何重新算（别照观察者记的 near 抄：near 是上一次回调时的判断，可能已经过期）。 */
     const ghost=replaced&&previous&&!calm()&&typeof previous.cloneNode==='function'&&typeof slot.animate==='function'?previous.cloneNode(true):null;
-    if(replaced){ArtistImages.dispose('card:'+uid);slot.replaceChildren(make(artist));}
+    if(replaced){ArtistImages.dispose(imageGroupPrefix+uid);slot.replaceChildren(make(artist));}
     ArtistImages.announce?.(slot,nearViewport(slot));
     mounted.set(uid,artist);painted.set(uid,key);
     const fresh=slot.children[0];
@@ -290,7 +290,7 @@
        空占位不记：那只是一块灰底，跳不跳没人看得出来。 */
     const before=positions(container);
     const wanted=new Set(next);
-    for(const [uid,slot] of slots)if(!wanted.has(uid)){if(mounted.has(uid)){ArtistImages.dispose('card:'+uid);mounted.delete(uid);}observer?.unobserve(slot);resize?.unobserve(slot);slot.remove();slots.delete(uid);painted.delete(uid);near.delete(uid);}
+    for(const [uid,slot] of slots)if(!wanted.has(uid)){if(mounted.has(uid)){ArtistImages.dispose(imageGroupPrefix+uid);mounted.delete(uid);}observer?.unobserve(slot);resize?.unobserve(slot);slot.remove();slots.delete(uid);painted.delete(uid);near.delete(uid);}
     uids=next;
     resize??=new ResizeObserver(entries=>{for(const entry of entries){const id=entry.target.dataset.uid;const h=entry.target.getBoundingClientRect().height;if(h>0)heights.set(id,h);}});
     observer??=new IntersectionObserver(entries=>{for(const entry of entries){const slot=entry.target,id=slot.dataset.uid;if(slots.get(id)!==slot)continue;
@@ -325,7 +325,7 @@
        卡片回来了、图是空的（用户报的"取消书钉之后作品都没有被重新加载"）。
        逐个 unbind 之后，复用它们的新卡片会重新 bind 一批全新的 <img>，观察者自然会照常触发。 */
     for(const img of slot.querySelectorAll?.('img')||[])ArtistImages.unbind?.(img);
-    ArtistImages.dispose('card:'+id);ArtistImages.announce?.(slot,false);slot.replaceChildren();slot.style.height=h+'px';mounted.delete(id);
+    ArtistImages.dispose(imageGroupPrefix+id);ArtistImages.announce?.(slot,false);slot.replaceChildren();slot.style.height=h+'px';mounted.delete(id);
     /* 这里必须留一个「指纹作废」的记号，不能直接删掉。
        卡片被清空、图片也被解绑了，可指纹还和现在一样的话，下一次 render 会把这张卡片判成
        「没变化」直接跳过 paint —— 那批 <img> 就再也没人通知「你可见了」，也不会有新的 bind，

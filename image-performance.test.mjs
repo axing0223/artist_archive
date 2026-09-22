@@ -550,3 +550,29 @@ for(const loaded of [false,true])test('临时预览写盘后沿用图片与缓�
  api.invalidate(uid,after.thumb);await new Promise(r=>setImmediate(r));
  assert.equal(reads,1,'之后真的覆盖同路径图片仍必须失效缓存');assert.equal(img.src,'blob:2');assert.ok(revoked.includes('blob:1'));
 });
+
+
+for(const loaded of [false,true])test('同一作品重复绑定保留图片与加载任务：'+(loaded?'已显示':'加载中'),async()=>{
+ const observers=[],revoked=[],window={};let created=0,reads=0;
+ class IO{constructor(fn){this.fn=fn;observers.push(this);}observe(){}unobserve(){}}
+ const context={window,ImageResources:{ByteCache,Queue},IntersectionObserver:IO,AbortController,DOMException,Date,Map,
+  URL:{createObjectURL:()=>`blob:${++created}`,revokeObjectURL:url=>revoked.push(url)},
+  FolderStore:{imageOf:store.imageOf,readImage:async()=>{reads++;return new Blob(['image']);}}};
+ vm.runInNewContext(await fs.readFile('app/image-loader.js','utf8'),context);
+ const api=window.ArtistImages,work={thumb:'缩略图/one.png'},img={classList:{add(){},remove(){}},removeAttribute(){this.src=undefined;}},tick=()=>new Promise(r=>setImmediate(r));
+ api.setFolder({});api.bind(img,'a',work,'card:a');observers[0].fn([{target:img,isIntersecting:true}]);if(loaded)await tick();
+ api.bind(img,'a',work,'card:a');observers[0].fn([{target:img,isIntersecting:true}]);await tick();
+ assert.equal(created,1);assert.equal(reads,1);assert.deepEqual(revoked,[]);
+ // 同一对象中的路径被修改仍应重绑，不能只比较对象身份。
+ work.thumb='缩略图/two.png';api.bind(img,'a',work,'card:a');observers[0].fn([{target:img,isIntersecting:true}]);await tick();
+ assert.equal(created,2);assert.equal(reads,2);assert.deepEqual(revoked,['blob:1']);
+ api.unbind(img);api.bind(img,'a',work,'card:a');observers[0].fn([{target:img,isIntersecting:true}]);await tick();
+ assert.equal(created,3,'真正解绑后仍可再次加载');assert.equal(api.stats().bound,1);
+});
+
+test('独立书钉画廊清理时只释放自己的图片组',async()=>{
+ const kit=stage();vm.runInNewContext(await fs.readFile('app/virtual-gallery.js','utf8'),kit.context);
+ const gallery=kit.window.ArtistGallery.create({imageGroupPrefix:'pinned-card:'});
+ gallery.render(kit.gallery,[{uid:'a'}],()=>new kit.Element());mountAll(kit.observers,kit.gallery);kit.disposed.length=0;
+ gallery.clear();assert.deepEqual(kit.disposed,['pinned-card:a']);
+});

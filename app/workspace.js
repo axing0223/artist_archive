@@ -40,6 +40,15 @@
   $('empty-action').textContent=!connected?'打开数据文件夹':total?'清除全部筛选':'识别添加画师';
  }
  function init({saveEditor}){
+  // 浮动书钉贴在实际筛选栏下方；筛选展开、换行、窗口缩放都可能改变它的高度。
+  const pinBar=$('pinned-bar'),header=document.querySelector('.app-header'),controls=document.querySelector('.library-controls'),statusBar=document.querySelector('.status-bar');
+  const placePins=()=>{
+   if(!pinBar)return;
+   pinBar.style.setProperty('--pinned-top',Math.ceil((header?.getBoundingClientRect().height||0)+(controls?.getBoundingClientRect().height||0)+8)+'px');
+   pinBar.style.setProperty('--status-height',Math.ceil(statusBar?.getBoundingClientRect().height||34)+'px');
+  };
+  if(typeof ResizeObserver==='function'){const observer=new ResizeObserver(placePins);for(const node of [header,controls,statusBar])if(node)observer.observe(node);}
+  window.addEventListener('resize',placePins);placePins();
   if(initialized)return;initialized=true;
   const motionPreference=matchMedia('(prefers-reduced-motion: reduce)');motionPreference.addEventListener('change',event=>{if(event.matches)document.getAnimations().forEach(animation=>animation.cancel());});
   const densityKey='artist-library.density';
