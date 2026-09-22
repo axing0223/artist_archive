@@ -53,7 +53,7 @@
     <div class="setting-row"><div><strong>将要排入</strong><p class="field-help" id="gen-batch-preview" role="status">正在计算…</p></div><div class="range-control"><button id="gen-batch-run" class="action primary-action" type="button">排入生成队列</button></div></div>
   </div></dialog>
   <dialog id="settings" class="small-dialog" aria-labelledby="settings-title"><div class="viewer-bar"><h2 id="settings-title">设置</h2><button id="close-settings" type="button">关闭 ×</button></div><div class="form-body settings-body">
-    <div class="setting-row"><div><strong>数据截至日期</strong><p class="field-help">用于统计该日期之前发布的站点作品。修改日期后，请在编辑画师时刷新资料，或刷新整个画师库。</p></div><input id="history-date" type="date" value="2026-07-01" required aria-label="数据截至日期"></div>
+    <div class="setting-row"><div><strong>数据截至日期</strong><p class="field-help">用于统计该日期之前发布的站点作品，会使用括号显示该数量（卡片上「作品数量：最新数量（截至日期数量）」里括号内那个就是它）。修改日期后不会自动重算已有数量：请在编辑画师时刷新资料，或刷新整个画师库。</p></div><input id="history-date" type="date" value="2026-07-01" required aria-label="数据截至日期"></div>
     <div class="setting-row"><div><strong>采集作品的排序</strong><p class="field-help">决定识别和采集时优先读取哪些作品。作品较多的画师若出现超时，可切换为「最新发布」。</p></div><select id="work-order" aria-label="采集作品的排序"></select></div>
     <div class="setting-row"><div><strong>刷新所有画师数据</strong><p class="field-help">核对站点正式名称、作品总数和截至日期前数量。改名时会同步迁移本地图片；进度分批保存，可随时停止。</p></div><button id="sync-all" class="action" type="button">开始刷新</button></div>
     <div class="setting-row"><div><strong>保存大图</strong><p class="field-help">开启后，预览作品会将在线原图保存到本地，之后可离线查看。关闭时只临时加载；已保存的原图仍然保留。</p></div><label class="switch"><input id="save-large" type="checkbox" aria-label="预览时保存原图"><span></span></label></div>
