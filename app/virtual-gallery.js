@@ -1,6 +1,13 @@
 (() => {
-  let observer,resize,current=[],make=null,keyOf=null,patch=null,uids=[];
-  const mounted=new Map(),heights=new Map(),pinned=new Set(),slots=new Map(),painted=new Map(),near=new Set();
+  /* 这套渲染状态是**每个容器各一份**的：列表一套、书钉浮动区一套。
+     以前状态全在模块作用域里（单例），书钉区一调 render 就会把列表的状态覆盖掉——
+     列表的 uids/current/slots 全被换成书钉那几张，列表随后的渲染就全乱了。
+     所以这里做成工厂：每处自己 create() 一个，互不干扰。 */
+  function create(){
+   /* 下面的函数体保持原来的两格缩进没重排：这次只是把它整体挪进 create() 里，
+      重排三百行会把 diff 撑爆、也容易改错；本项目没有格式化工具，缩进不是门禁。 */
+   let observer,resize,current=[],make=null,keyOf=null,patch=null,uids=[];
+   const mounted=new Map(),heights=new Map(),pinned=new Set(),slots=new Map(),painted=new Map(),near=new Set();
   /* 系统里关了动效就一个都不放，宁可少点花活也别让人难受。 */
   const calm=()=>typeof matchMedia==='function'&&matchMedia('(prefers-reduced-motion: reduce)').matches;
   /* 一张卡片的「指纹」：指纹没变就不重画。重画会连图片一起重新取、重新淡入，
@@ -290,7 +297,7 @@
     if(!samples.length)return;const average=Math.round(samples.reduce((n,h)=>n+h,0)/samples.length);
     for(const [id,slot] of slots)if(!mounted.has(id)){heights.set(id,average);slot.style.height=average+'px';}
   }
-  window.ArtistGallery={
+   return {
     render,clear,remeasure,animateLayoutChange,
     mount(uid){return mountSlot(slots.get(uid));},
     pin(uid,value){if(value)pinned.add(uid);else pinned.delete(uid);},
@@ -298,5 +305,10 @@
        免得下一次 render 又照着旧指纹把它整张重画一遍，把正在用的候选列表一起冲掉。 */
     markPainted(uid){const slot=slots.get(uid);if(!slot)return;const artist=current[Number(slot.dataset.index)];if(artist)painted.set(uid,keyFor(artist));},
     visible(){return [...mounted.values()];},
-  };
+   };
+  }
+  /* 列表用默认实例（沿用旧的 window.ArtistGallery 名字，其它代码与测试都不用改）；
+     书钉浮动区自己 ArtistGallery.create() 一个，两边状态彻底分开。 */
+  window.ArtistGallery=create();
+  window.ArtistGallery.create=create;
 })();

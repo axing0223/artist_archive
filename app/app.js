@@ -490,33 +490,35 @@
     if(pinned)target.pinned=true;else delete target.pinned;
     await save(next,pinned?`已把「${a.name}」钉在顶部。`:`已取消「${a.name}」的书钉。`);
   }
-  /* 顶部浮动的那一条书钉。里面放的是**副本**而不是画廊里的那张卡片：
-     画廊按可见性挂载/回收卡片，把它的节点搬走会把懒加载与图片绑定一起搞乱。
-     副本只给一眼能认出来的信息（序号、图、名字、分类），以及一个取消书钉的按钮。 */
+  /* 书钉浮动区专用的画廊实例。必须单独一个：ArtistGallery 的渲染状态是按实例的，
+     列表与浮动区共用同一个实例的话，浮动区一渲染就会把列表的状态（uids/slots/mounted）覆盖掉。 */
+  const pinnedGallery=ArtistGallery.create?ArtistGallery.create():ArtistGallery;
+  /* 顶部浮动的那一条书钉。里面放的是**完整卡片**而不是简化的一小块：
+     用户要求"用原有的完整卡片显示在列表顶端，并且保留卡片的完整功能"。 */
+  let pinnedArea=null;
   function paintPinnedBar(){
     const bar=$('pinned-bar');if(!bar)return;
     const list=pinnedArtists();
     bar.hidden=!list.length;
-    if(!list.length){bar.replaceChildren();return;}
-    const label=el('span','pinned-label','书钉 '+list.length+' / '+pinLimit());
-    label.title='浮动在这条上的卡片不受滚动影响；上限在「设置」里调';
-    const chips=el('div','pinned-chips');
-    for(const a of list){
-      const chip=el('div','pinned-chip');chip.dataset.uid=a.uid;
-      chip.title=a.name+'：点一下回到它';
-      const open=btn('',()=>focusArtist(a.uid),'pinned-open');
-      open.setAttribute('aria-label','回到画师 '+a.name);
-      const thumb=a.works?.length?FolderStore.imageOf(a.works[0],'thumb'):null;
-      if(thumb){const img=el('img');img.alt='';ArtistImages.bind(img,a.uid,a.works[0],'pinned:'+a.uid,'thumb',()=>{});open.append(img);}
-      else open.append(el('span','pinned-blank','无图'));
-      const text=el('div','pinned-text');
-      text.append(el('span','pinned-serial',String(seqOf(a)).padStart(4,'0')),el('strong','pinned-name',a.name));
-      text.append(el('span',a.styleFit?'pinned-tag is-fit':'pinned-tag',a.category||'待判断'));
-      const drop=btn('取消书钉',()=>togglePinArtist(a),'pinned-drop');
-      drop.title='取消书钉';
-      chip.append(open,text,drop);chips.append(chip);
+    if(!list.length){
+      pinnedArea=null;
+      bar.replaceChildren();
+      ArtistImages.dispose('pinned');
+      return;
     }
-    bar.replaceChildren(label,chips);
+    /* 浮动区里放的是**完整卡片**：和列表里长得一样、按钮一样、功能一样
+       （删除、画师页面、刷新、画风拟合、书钉、编辑都在）。要这么做就得自己管一套渲染，
+       不能借用画廊的节点——画廊按可见性挂载/回收，把它的节点搬走会把懒加载与图片绑定搞乱。
+       指纹前缀用 pin/，与列表里的卡片分开，两边不会互相复用节点。 */
+    let host=pinnedArea;
+    /* 别写 bar.children.includes(...)：真实浏览器里 children 是 HTMLCollection，没有 includes，
+       那会每轮都抛异常、浮动区永远空着（测试替身是数组，所以骗过了单测）。用 parentNode 判断。 */
+    if(!host||host.parentNode!==bar){
+      host=el('div','pinned-area');host.setAttribute('aria-label','钉住的画师卡片');
+      bar.replaceChildren(el('span','pinned-head','书钉'),host);
+      pinnedArea=host;
+    }
+    pinnedGallery.render(host,list,card,a=>'pin/'+cardKey(a),()=>false);
   }
   function artistCard(a,previous){
     const article=previous||el('article','artist'),info=el('div','artist-info'),identity=el('div','artist-identity'),row=el('div','name-row');
@@ -601,8 +603,12 @@
     // 编辑器有自己的草稿生命周期：后台任务与筛选不能重建输入框或选图器。
     if(editing)return 'edit/'+editorRevision;
     const queue=waiting?`run${genQueue.waiting?1:0}`:`q${genQueue.positionOf(item=>item.uid===a.uid)||0}`;
-    // 删除导致 order 连续重排，但卡片显示稳定 uid 序号，不必让相邻作品重载。
-    return `show/${reservedOf()}/${PREVIEW_SLOTS}/${queue}/${collectingUid===a.uid?'collecting':''}/${JSON.stringify({...a,order:seqOf(a)})}`;
+    /* 删除导致 order 连续重排，但卡片显示稳定 uid 序号，不必让相邻作品重载。
+       末尾带上书钉状态：书钉按钮的置灰取决于「已钉几位 / 上限」，钉满或取消的那一刻，
+       **其他卡片上的那个按钮也要跟着变**。不带进来的话，只有内容真的变过的那张会重画，
+       屏上其余卡片会一直显示旧的可点状态（进出一次编辑态才碰巧同步）。
+       屏外的卡片不在 DOM 里，挂载时才按指纹画，所以这里改了它们也不会白画。 */
+    return `show/${reservedOf()}/${PREVIEW_SLOTS}/${queue}/${collectingUid===a.uid?'collecting':''}/${a.pinned===true?'pin':'--'}/${pinnedArtists().length}/${pinLimit()}/${JSON.stringify({...a,order:seqOf(a)})}`;
   }
   /* 卡片内容就地更新完了（编辑态里那一排作品格），同步一下指纹。 */
   const markEditorPainted=()=>{if(draft)ArtistGallery.markPainted(editingId||draft.uid);};

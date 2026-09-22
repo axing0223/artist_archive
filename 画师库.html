@@ -692,24 +692,23 @@ input:focus-visible,textarea:focus-visible,select:focus-visible{outline-offset:1
 /* 已经标注「画风拟合」/ 已经钉上书钉的按钮：用强调色描边+浅底，一眼看出这一位是标过的。 */
 .artist-actions>.fit-button.active,.artist-actions>.pin-button.active{color:var(--accent);border-color:var(--accent);background:var(--accent-soft)}
 .artist-actions>.pin-button:disabled{opacity:.45;cursor:not-allowed}
-/* 书钉浮动条：固定在顶部（页面头部正下方），不随滚动移动；卡片横向排开，多了就横向滚。
-   它是覆盖层，不占文档流，所以完全不影响卡片的虚拟挂载与滚动位置。 */
-.pinned-bar{position:fixed;top:calc(var(--header) + 10px);right:20px;z-index:35;display:flex;align-items:flex-start;gap:8px;max-width:min(680px,calc(100vw - 40px));padding:7px 9px;background:color-mix(in srgb,var(--panel) 92%,transparent);border:1px solid var(--line);border-radius:11px;box-shadow:var(--shadow);backdrop-filter:blur(7px)}
+/* 书钉浮动区：吸附在页面头部正下方，不随滚动移动。
+   里面放**完整卡片**（与列表同一套渲染），所以横向排开、可以横向滚动。
+   它是覆盖层、不占文档流，因此不影响卡片的虚拟挂载与滚动位置。 */
+.pinned-bar{position:fixed;top:calc(var(--header) + 8px);left:14px;right:14px;z-index:35;display:flex;align-items:flex-start;gap:9px;padding:8px 10px;background:color-mix(in srgb,var(--bg) 88%,transparent);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);backdrop-filter:blur(8px)}
 .pinned-bar[hidden]{display:none}
-.pinned-label{flex-shrink:0;padding-top:6px;font:11px ui-monospace,monospace;color:var(--faint);white-space:nowrap}
-.pinned-chips{display:flex;gap:7px;overflow-x:auto;scrollbar-width:thin;padding-bottom:2px}
-.pinned-chip{position:relative;display:flex;align-items:center;gap:7px;flex-shrink:0;padding:5px 6px;background:var(--raised);border:1px solid var(--line-soft);border-radius:8px}
-.pinned-open{flex-shrink:0;width:44px;height:44px;padding:0;border:1px solid var(--line-soft);border-radius:6px;background:var(--input);overflow:hidden;cursor:zoom-in}
-.pinned-open img{display:block;width:100%;height:100%;object-fit:cover}
-.pinned-blank{display:grid;place-items:center;height:100%;font-size:10px;color:var(--faint)}
-.pinned-text{display:flex;flex-direction:column;gap:1px;min-width:0;max-width:132px}
-.pinned-serial{font:10px ui-monospace,monospace;color:var(--faint)}
-.pinned-name{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.pinned-tag{align-self:flex-start;padding:0 5px;border-radius:4px;background:var(--panel);border:1px solid var(--line-soft);font-size:10px;color:var(--muted)}
-.pinned-tag.is-fit{border-color:var(--accent);color:var(--accent)}
-.pinned-drop{flex-shrink:0;padding:3px 7px;font-size:11px;color:var(--muted);background:none;border:1px solid var(--line-soft);border-radius:6px}
-.pinned-drop:hover{color:var(--danger);border-color:var(--danger);background:var(--danger-bg)}
-@media(max-width:760px){.pinned-bar{left:12px;right:12px;max-width:none}.pinned-text{max-width:96px}}
+.pinned-head{flex-shrink:0;padding-top:4px;font:11px ui-monospace,monospace;color:var(--faint);writing-mode:vertical-rl;letter-spacing:2px}
+.pinned-area{display:flex;gap:11px;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;padding-bottom:2px;align-items:flex-start}
+/* 浮动区里的卡片：给一个够宽的固定宽度横向排开（多了横向滚）。
+   作品格是「5 列 × --card-size 高」，直接搬进窄容器会把卡片挤扁：按钮和序号叠在一起、
+   分类竖排。所以在这里压一下预览高度（只影响浮动区，不动列表的滑杆设置），
+   并把高度上限收紧，卡片就能保持正常比例。 */
+.pinned-area>article.artist{flex:0 0 auto;width:400px;max-width:88vw}
+.pinned-area .works{grid-template-columns:repeat(5,minmax(46px,1fr));gap:6px}
+.pinned-area .thumb{height:min(var(--card-size),118px)}
+.pinned-area .work figcaption{min-height:0}
+.pinned-area .artist-notes{max-width:none}
+@media(max-width:760px){.pinned-bar{left:8px;right:8px;top:calc(var(--header) + 6px)}.pinned-area>article.artist{width:min(300px,86vw)}}
 .artist-actions>.danger:not(.is-armed){background:transparent}
 .artist-actions>.danger:not(.is-armed):hover{background:var(--danger-bg)}
 .work figcaption{font-variant-numeric:tabular-nums}
@@ -1889,8 +1888,15 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
   window.ArtistImages={bind,unbind,adoptPersisted,dispose,fetch:fetchBlob,clear,invalidate,setFolder(value){for(const img of [...bindings.keys()])unbind(img);cache.clear();failures.clear();revisions.clear();bursts.clear();epoch++;folder=value;},stats(){return {bytes:cache.bytes,entries:cache.items.size,active:queue.active,queued:queue.waiting.length,bound:bindings.size};},async dataUrl(uid,w,size='thumb',signal){const blob=await fetchBlob(uid,w,size,signal);return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(blob);});}};
 })();
 </script><script>(() => {
-  let observer,resize,current=[],make=null,keyOf=null,patch=null,uids=[];
-  const mounted=new Map(),heights=new Map(),pinned=new Set(),slots=new Map(),painted=new Map(),near=new Set();
+  /* 这套渲染状态是**每个容器各一份**的：列表一套、书钉浮动区一套。
+     以前状态全在模块作用域里（单例），书钉区一调 render 就会把列表的状态覆盖掉——
+     列表的 uids/current/slots 全被换成书钉那几张，列表随后的渲染就全乱了。
+     所以这里做成工厂：每处自己 create() 一个，互不干扰。 */
+  function create(){
+   /* 下面的函数体保持原来的两格缩进没重排：这次只是把它整体挪进 create() 里，
+      重排三百行会把 diff 撑爆、也容易改错；本项目没有格式化工具，缩进不是门禁。 */
+   let observer,resize,current=[],make=null,keyOf=null,patch=null,uids=[];
+   const mounted=new Map(),heights=new Map(),pinned=new Set(),slots=new Map(),painted=new Map(),near=new Set();
   /* 系统里关了动效就一个都不放，宁可少点花活也别让人难受。 */
   const calm=()=>typeof matchMedia==='function'&&matchMedia('(prefers-reduced-motion: reduce)').matches;
   /* 一张卡片的「指纹」：指纹没变就不重画。重画会连图片一起重新取、重新淡入，
@@ -2180,7 +2186,7 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
     if(!samples.length)return;const average=Math.round(samples.reduce((n,h)=>n+h,0)/samples.length);
     for(const [id,slot] of slots)if(!mounted.has(id)){heights.set(id,average);slot.style.height=average+'px';}
   }
-  window.ArtistGallery={
+   return {
     render,clear,remeasure,animateLayoutChange,
     mount(uid){return mountSlot(slots.get(uid));},
     pin(uid,value){if(value)pinned.add(uid);else pinned.delete(uid);},
@@ -2188,7 +2194,12 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
        免得下一次 render 又照着旧指纹把它整张重画一遍，把正在用的候选列表一起冲掉。 */
     markPainted(uid){const slot=slots.get(uid);if(!slot)return;const artist=current[Number(slot.dataset.index)];if(artist)painted.set(uid,keyFor(artist));},
     visible(){return [...mounted.values()];},
-  };
+   };
+  }
+  /* 列表用默认实例（沿用旧的 window.ArtistGallery 名字，其它代码与测试都不用改）；
+     书钉浮动区自己 ArtistGallery.create() 一个，两边状态彻底分开。 */
+  window.ArtistGallery=create();
+  window.ArtistGallery.create=create;
 })();
 </script><script>(function(root){
   'use strict';
@@ -3183,33 +3194,35 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
     if(pinned)target.pinned=true;else delete target.pinned;
     await save(next,pinned?`已把「${a.name}」钉在顶部。`:`已取消「${a.name}」的书钉。`);
   }
-  /* 顶部浮动的那一条书钉。里面放的是**副本**而不是画廊里的那张卡片：
-     画廊按可见性挂载/回收卡片，把它的节点搬走会把懒加载与图片绑定一起搞乱。
-     副本只给一眼能认出来的信息（序号、图、名字、分类），以及一个取消书钉的按钮。 */
+  /* 书钉浮动区专用的画廊实例。必须单独一个：ArtistGallery 的渲染状态是按实例的，
+     列表与浮动区共用同一个实例的话，浮动区一渲染就会把列表的状态（uids/slots/mounted）覆盖掉。 */
+  const pinnedGallery=ArtistGallery.create?ArtistGallery.create():ArtistGallery;
+  /* 顶部浮动的那一条书钉。里面放的是**完整卡片**而不是简化的一小块：
+     用户要求"用原有的完整卡片显示在列表顶端，并且保留卡片的完整功能"。 */
+  let pinnedArea=null;
   function paintPinnedBar(){
     const bar=$('pinned-bar');if(!bar)return;
     const list=pinnedArtists();
     bar.hidden=!list.length;
-    if(!list.length){bar.replaceChildren();return;}
-    const label=el('span','pinned-label','书钉 '+list.length+' / '+pinLimit());
-    label.title='浮动在这条上的卡片不受滚动影响；上限在「设置」里调';
-    const chips=el('div','pinned-chips');
-    for(const a of list){
-      const chip=el('div','pinned-chip');chip.dataset.uid=a.uid;
-      chip.title=a.name+'：点一下回到它';
-      const open=btn('',()=>focusArtist(a.uid),'pinned-open');
-      open.setAttribute('aria-label','回到画师 '+a.name);
-      const thumb=a.works?.length?FolderStore.imageOf(a.works[0],'thumb'):null;
-      if(thumb){const img=el('img');img.alt='';ArtistImages.bind(img,a.uid,a.works[0],'pinned:'+a.uid,'thumb',()=>{});open.append(img);}
-      else open.append(el('span','pinned-blank','无图'));
-      const text=el('div','pinned-text');
-      text.append(el('span','pinned-serial',String(seqOf(a)).padStart(4,'0')),el('strong','pinned-name',a.name));
-      text.append(el('span',a.styleFit?'pinned-tag is-fit':'pinned-tag',a.category||'待判断'));
-      const drop=btn('取消书钉',()=>togglePinArtist(a),'pinned-drop');
-      drop.title='取消书钉';
-      chip.append(open,text,drop);chips.append(chip);
+    if(!list.length){
+      pinnedArea=null;
+      bar.replaceChildren();
+      ArtistImages.dispose('pinned');
+      return;
     }
-    bar.replaceChildren(label,chips);
+    /* 浮动区里放的是**完整卡片**：和列表里长得一样、按钮一样、功能一样
+       （删除、画师页面、刷新、画风拟合、书钉、编辑都在）。要这么做就得自己管一套渲染，
+       不能借用画廊的节点——画廊按可见性挂载/回收，把它的节点搬走会把懒加载与图片绑定搞乱。
+       指纹前缀用 pin/，与列表里的卡片分开，两边不会互相复用节点。 */
+    let host=pinnedArea;
+    /* 别写 bar.children.includes(...)：真实浏览器里 children 是 HTMLCollection，没有 includes，
+       那会每轮都抛异常、浮动区永远空着（测试替身是数组，所以骗过了单测）。用 parentNode 判断。 */
+    if(!host||host.parentNode!==bar){
+      host=el('div','pinned-area');host.setAttribute('aria-label','钉住的画师卡片');
+      bar.replaceChildren(el('span','pinned-head','书钉'),host);
+      pinnedArea=host;
+    }
+    pinnedGallery.render(host,list,card,a=>'pin/'+cardKey(a),()=>false);
   }
   function artistCard(a,previous){
     const article=previous||el('article','artist'),info=el('div','artist-info'),identity=el('div','artist-identity'),row=el('div','name-row');
@@ -3294,8 +3307,12 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
     // 编辑器有自己的草稿生命周期：后台任务与筛选不能重建输入框或选图器。
     if(editing)return 'edit/'+editorRevision;
     const queue=waiting?`run${genQueue.waiting?1:0}`:`q${genQueue.positionOf(item=>item.uid===a.uid)||0}`;
-    // 删除导致 order 连续重排，但卡片显示稳定 uid 序号，不必让相邻作品重载。
-    return `show/${reservedOf()}/${PREVIEW_SLOTS}/${queue}/${collectingUid===a.uid?'collecting':''}/${JSON.stringify({...a,order:seqOf(a)})}`;
+    /* 删除导致 order 连续重排，但卡片显示稳定 uid 序号，不必让相邻作品重载。
+       末尾带上书钉状态：书钉按钮的置灰取决于「已钉几位 / 上限」，钉满或取消的那一刻，
+       **其他卡片上的那个按钮也要跟着变**。不带进来的话，只有内容真的变过的那张会重画，
+       屏上其余卡片会一直显示旧的可点状态（进出一次编辑态才碰巧同步）。
+       屏外的卡片不在 DOM 里，挂载时才按指纹画，所以这里改了它们也不会白画。 */
+    return `show/${reservedOf()}/${PREVIEW_SLOTS}/${queue}/${collectingUid===a.uid?'collecting':''}/${a.pinned===true?'pin':'--'}/${pinnedArtists().length}/${pinLimit()}/${JSON.stringify({...a,order:seqOf(a)})}`;
   }
   /* 卡片内容就地更新完了（编辑态里那一排作品格），同步一下指纹。 */
   const markEditorPainted=()=>{if(draft)ArtistGallery.markPainted(editingId||draft.uid);};

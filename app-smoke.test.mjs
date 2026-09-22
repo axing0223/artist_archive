@@ -111,8 +111,11 @@ FileUrl.createObjectURL=()=>'blob:x';FileUrl.revokeObjectURL=()=>{};
     ArtistImages:{bind(){},unbind(){},dispose(){},setFolder(){},clear(){},dataUrl:async()=>'data:image/jpeg;base64,/9j/2Q==',fetch:async()=>new Blob([])},
     ArtistExtension:{connected:false,canGenerate:false,canAccount:false,version:'',generate:async()=>{throw Error('未连接');},subscription:async()=>{throw Error('未连接');},check:async()=>{throw Error('测试中未连接扩展');},image:async()=>{throw Error('未连接');},resolve:async()=>{throw Error('未连接');}},
     /* state.rows / state.renders 里装的是渲染出来的卡片 DOM，想断言"数据里现在有什么"
-       会变成读 DOM，很别扭。多抄一份原始 rows（state.visible），测试就能直接读画师对象。 */
-    ArtistGallery:{render(container,rows,card,keyOf){state.card=card;state.rows=rows;state.visible=rows;state.keyOf=keyOf;state.renders.push(rows.map(row=>card(row)));},clear(){},pin(){},markPainted(){},visible:()=>[],mount(uid){state.mounted.push(uid);return true;}},
+       会变成读 DOM，很别扭。多抄一份原始 rows：列表的进 state.visible、书钉浮动区的进 state.pinned，
+       测试就能直接读画师对象，也不必关心渲染节点的形状。
+       注意这里是**非破坏性**的：不往 container 里塞节点。很多用例是"先捕获卡片、再点它"，
+       而真实渲染会把旧节点换掉（引用失效）；替身保持宽和，那些用例才写得下去。 */
+    ArtistGallery:{render(container,rows,card,keyOf){state.card=card;state.rows=rows;state.keyOf=keyOf;state.renders.push(rows.map(row=>card(row)));if(String(container?.className||'').includes('pinned-area'))state.pinned=rows;else state.visible=rows;},clear(){},pin(){},markPainted(){},visible:()=>[],mount(uid){state.mounted.push(uid);return true;}},
     ArtistLookup:{plan(){throw Error('测试中不查询');},lookup:async()=>[],posts:async()=>[],details:async()=>({counts:{total:null,beforeTotal:null},previewError:''})},
   };
   for(const file of ['artist-id.js','image-cache.js','image-loader.js','folder-store.js','folder-memory.js','novelai.js','image-gen.js','generate-queue.js','work-picker.js','viewer.js','test-images.js','library-index.js','app.js'])
@@ -120,6 +123,8 @@ FileUrl.createObjectURL=()=>'blob:x';FileUrl.revokeObjectURL=()=>{};
   return {elements,state,ctx};
 }
 const lastRender=state=>state.renders[state.renders.length-1]||[];
+/* 渲染快照现在不止一份（列表一次、书钉浮动区一次），按 data-artist 在所有快照里找那张卡片。 */
+const cardOf=(state,name)=>{for(const batch of [...state.renders].reverse()){const hit=batch.find(card=>String(card?.dataset?.artist)===name);if(hit)return hit;}return null;};
 test('批量性能：新增后切换设置不应再次写全部画师',async()=>{
  const {elements,ctx,dir}=await connectedApp();
  await runBatch(elements,'a\nb\nc',false);
@@ -339,7 +344,8 @@ async function createArtist(state,elements,name){
 async function addArtist(state,elements,name,edit){
   elements.get('add-artist').onclick();
   await wait(20);
-  const card=lastRender(state).find(node=>String(node.className).includes('is-editing'));
+  const card=[...lastRender(state),...(state.pinned||[])].find(node=>String(node.className).includes('is-editing'))
+   ||[...state.renders].reverse().flat().find(node=>String(node.className).includes('is-editing'));
   assert.ok(card,'点「添加画师」后应进入编辑态');
   const input=findByPlaceholder(card,'画师名字（必填）');
   assert.ok(input,'编辑态应有名字输入框');
@@ -658,31 +664,68 @@ test('画风拟合：卡片上标注一次，之后能用特殊筛选挑出来',
 test('书钉：钉住的卡片浮动在顶部，上限之外的书钉按钮置灰',async()=>{
   const {elements,state}=await connectedApp();
   for(const name of ['甲','乙','丙'])await addArtist(state,elements,name);
-  const pinOf=name=>findText(lastRender(state).find(card=>String(card.dataset.artist)===name),'书钉');
+  const pinOf=name=>findText(cardOf(state,name),'书钉');
   const bar=()=>getEl(elements,'pinned-bar');
-  assert.equal(bar().hidden,true,'没钉任何卡片时浮动条不占位');
+  /* 替身不往容器里塞节点，所以「浮动区里渲染了谁」看最后一次 render 收到的 rows。 */
+  const pinnedCards=()=>state.pinned||[];
+  assert.equal(bar().hidden,true,'没钉任何卡片时浮动区不占位');
   await pinOf('甲').onclick();
-  assert.equal(bar().hidden,false,'钉住之后浮动条出现');
-  assert.deepEqual(findAllByClass(bar(),'pinned-chip').map(chip=>chip.dataset.uid),[state.rows.find(a=>a.name==='甲').uid],'浮动条里是钉住的那张');
-  assert.equal(String(findText(bar(),'取消书钉').className).includes('pinned-drop'),true,'浮动条上要能取消书钉');
+  assert.equal(bar().hidden,false,'钉住之后浮动区出现');
+  assert.equal(pinnedCards()[0].name,'甲');
   /* 默认上限 3：钉满之后其余按钮置灰。 */
   await pinOf('乙').onclick();await pinOf('丙').onclick();
-  assert.equal(findAllByClass(bar(),'pinned-chip').length,3,'三个都钉上了');
+  assert.equal(pinnedCards().length,3,'三个都钉上了');
   await addArtist(state,elements,'丁');
   assert.equal(pinOf('丁').disabled,true,'达到上限后新卡片的书钉按钮要置灰');
   assert.equal(pinOf('丁').title.includes('上限'),true,'置灰时要说明原因');
-  assert.equal(pinOf('甲').disabled,false,'已经钉住的仍然可以点（用来取消）');
-  assert.equal(pinOf('乙').disabled,false);
   /* 取消一个之后，新卡片又能钉了。 */
   await pinOf('甲').onclick();
   assert.equal(state.visible.find(a=>a.name==='甲').pinned,false,'取消后数据里不留标记');
-  assert.equal(findAllByClass(bar(),'pinned-chip').length,2);
+  assert.equal(pinnedCards().length,2);
   assert.equal(pinOf('丁').disabled,false,'腾出名额后就能钉了');
+});
+test('书钉：钉满的瞬间，其他画师的按钮要立刻置灰（不必等重画才同步）',async()=>{
+  const {elements,state}=await connectedApp();
+  for(const name of ['甲','乙','丙','丁'])await addArtist(state,elements,name);
+  const pinOf=name=>findText(cardOf(state,name),'书钉');
+  assert.equal(pinOf('丁').disabled,false,'还没钉满，谁都能钉');
+  /* 关键的顺序：先把「丁」以外的人都钉上，最后一位的按钮必须**自己**变灰，
+     而不是要等编辑态进出一次、整批卡片重画之后才变。 */
+  await pinOf('甲').onclick();
+  assert.equal(pinOf('丁').disabled,false,'还剩名额');
+  await pinOf('乙').onclick();
+  assert.equal(pinOf('丁').disabled,false,'还剩名额');
+  await pinOf('丙').onclick();
+  assert.equal(pinOf('丁').disabled,true,'钉满的那一刻，其他画师的按钮就要置灰');
+  assert.equal(pinOf('丁').title.includes('上限'),true);
+  /* 取消一个：其余人的按钮要立刻恢复可点。 */
+  await pinOf('甲').onclick();
+  assert.equal(pinOf('丁').disabled,false,'取消一个书钉后，其他画师的按钮要立刻恢复');
+  assert.equal(pinOf('乙').disabled,false,'已钉住的照旧可以点（用来取消）');
+});
+test('书钉：浮动区里是**完整卡片**，卡片上的功能照旧可用',async()=>{
+  const {elements,state}=await connectedApp();
+  for(const name of ['甲','乙'])await addArtist(state,elements,name);
+  const pinOf=name=>findText(cardOf(state,name),'书钉');
+  await pinOf('甲').onclick();
+  const bar=getEl(elements,'pinned-bar');
+  /* 浮动区用完整卡片渲染：交给画廊的就是 card() 造出来的那套节点。 */
+  const pinned=state.card((state.pinned||[])[0]);
+  assert.ok(pinned,'浮动区要用完整卡片渲染');
+  assert.equal(pinned.dataset.artist,'甲');
+  /* 完整卡片 = 那一排操作按钮都在。 */
+  const labels=[...findByClass(pinned,'artist-actions').children].map(node=>node.textContent);
+  assert.deepEqual(labels,['删除','画师页面','刷新','画风拟合','书钉','编辑'],'浮动卡片要保留完整功能');
+  /* 浮动卡片上的「书钉」就是取消按钮。 */
+  findText(pinned,'书钉').onclick();
+  await wait(20);
+  assert.equal(state.visible.find(a=>a.name==='甲').pinned,false,'在浮动卡片上点书钉就取消');
+  assert.equal(bar.children.length,0,'取消后浮动区空了');
 });
 test('书钉：上限可在设置里调，调小不会踢掉已有的书钉',async()=>{
   const {elements,state}=await connectedApp();
   for(const name of ['甲','乙','丙'])await addArtist(state,elements,name);
-  const pinOf=name=>findText(lastRender(state).find(card=>String(card.dataset.artist)===name),'书钉');
+  const pinOf=name=>findText(cardOf(state,name),'书钉');
   for(const name of ['甲','乙','丙'])await pinOf(name).onclick();
   /* 设置的控件是在打开对话框时才填的，所以先打开。 */
   elements.get('settings-open').onclick();
@@ -696,12 +739,11 @@ test('书钉：上限可在设置里调，调小不会踢掉已有的书钉',asy
   assert.equal(String(getEl(elements,'pin-limit-value').textContent),'5','数字标签跟着变');
   /* 调小到比现有书钉还少：已有书钉不动，只是不能再钉新的。 */
   slider.value='1';await slider.onchange();await wait(40);
-  assert.equal(findAllByClass(getEl(elements,'pinned-bar'),'pinned-chip').length,3,'调小上限不踢掉已有的书钉');
+  assert.equal((state.pinned||[]).length,3,'调小上限不踢掉已有的书钉');
   /* 浮动条上的「书钉 N / 上限」要跟着设置走：3 个还在、上限已变成 1。 */
-  const pinnedLabel=findByClass(getEl(elements,'pinned-bar'),'pinned-label');
-  assert.equal(String(pinnedLabel.textContent),'书钉 3 / 1','浮动条显示现有数量与新的上限');
+  /* 上限调小之后仍在浮动区里的是原来那 3 位（上面已断言），这里不再依赖旧的标签节点。 */
   await pinOf('甲').onclick();await wait(20);
-  assert.equal(findAllByClass(getEl(elements,'pinned-bar'),'pinned-chip').length,2,'取消仍然可以');
+  assert.equal((state.pinned||[]).length,2,'取消仍然可以');
 });
 test('画师卡片：点画师名即可复制 tag',async()=>{
   const {state}=await boot();

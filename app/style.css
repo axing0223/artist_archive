@@ -684,24 +684,23 @@ input:focus-visible,textarea:focus-visible,select:focus-visible{outline-offset:1
 /* 已经标注「画风拟合」/ 已经钉上书钉的按钮：用强调色描边+浅底，一眼看出这一位是标过的。 */
 .artist-actions>.fit-button.active,.artist-actions>.pin-button.active{color:var(--accent);border-color:var(--accent);background:var(--accent-soft)}
 .artist-actions>.pin-button:disabled{opacity:.45;cursor:not-allowed}
-/* 书钉浮动条：固定在顶部（页面头部正下方），不随滚动移动；卡片横向排开，多了就横向滚。
-   它是覆盖层，不占文档流，所以完全不影响卡片的虚拟挂载与滚动位置。 */
-.pinned-bar{position:fixed;top:calc(var(--header) + 10px);right:20px;z-index:35;display:flex;align-items:flex-start;gap:8px;max-width:min(680px,calc(100vw - 40px));padding:7px 9px;background:color-mix(in srgb,var(--panel) 92%,transparent);border:1px solid var(--line);border-radius:11px;box-shadow:var(--shadow);backdrop-filter:blur(7px)}
+/* 书钉浮动区：吸附在页面头部正下方，不随滚动移动。
+   里面放**完整卡片**（与列表同一套渲染），所以横向排开、可以横向滚动。
+   它是覆盖层、不占文档流，因此不影响卡片的虚拟挂载与滚动位置。 */
+.pinned-bar{position:fixed;top:calc(var(--header) + 8px);left:14px;right:14px;z-index:35;display:flex;align-items:flex-start;gap:9px;padding:8px 10px;background:color-mix(in srgb,var(--bg) 88%,transparent);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);backdrop-filter:blur(8px)}
 .pinned-bar[hidden]{display:none}
-.pinned-label{flex-shrink:0;padding-top:6px;font:11px ui-monospace,monospace;color:var(--faint);white-space:nowrap}
-.pinned-chips{display:flex;gap:7px;overflow-x:auto;scrollbar-width:thin;padding-bottom:2px}
-.pinned-chip{position:relative;display:flex;align-items:center;gap:7px;flex-shrink:0;padding:5px 6px;background:var(--raised);border:1px solid var(--line-soft);border-radius:8px}
-.pinned-open{flex-shrink:0;width:44px;height:44px;padding:0;border:1px solid var(--line-soft);border-radius:6px;background:var(--input);overflow:hidden;cursor:zoom-in}
-.pinned-open img{display:block;width:100%;height:100%;object-fit:cover}
-.pinned-blank{display:grid;place-items:center;height:100%;font-size:10px;color:var(--faint)}
-.pinned-text{display:flex;flex-direction:column;gap:1px;min-width:0;max-width:132px}
-.pinned-serial{font:10px ui-monospace,monospace;color:var(--faint)}
-.pinned-name{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.pinned-tag{align-self:flex-start;padding:0 5px;border-radius:4px;background:var(--panel);border:1px solid var(--line-soft);font-size:10px;color:var(--muted)}
-.pinned-tag.is-fit{border-color:var(--accent);color:var(--accent)}
-.pinned-drop{flex-shrink:0;padding:3px 7px;font-size:11px;color:var(--muted);background:none;border:1px solid var(--line-soft);border-radius:6px}
-.pinned-drop:hover{color:var(--danger);border-color:var(--danger);background:var(--danger-bg)}
-@media(max-width:760px){.pinned-bar{left:12px;right:12px;max-width:none}.pinned-text{max-width:96px}}
+.pinned-head{flex-shrink:0;padding-top:4px;font:11px ui-monospace,monospace;color:var(--faint);writing-mode:vertical-rl;letter-spacing:2px}
+.pinned-area{display:flex;gap:11px;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;padding-bottom:2px;align-items:flex-start}
+/* 浮动区里的卡片：给一个够宽的固定宽度横向排开（多了横向滚）。
+   作品格是「5 列 × --card-size 高」，直接搬进窄容器会把卡片挤扁：按钮和序号叠在一起、
+   分类竖排。所以在这里压一下预览高度（只影响浮动区，不动列表的滑杆设置），
+   并把高度上限收紧，卡片就能保持正常比例。 */
+.pinned-area>article.artist{flex:0 0 auto;width:400px;max-width:88vw}
+.pinned-area .works{grid-template-columns:repeat(5,minmax(46px,1fr));gap:6px}
+.pinned-area .thumb{height:min(var(--card-size),118px)}
+.pinned-area .work figcaption{min-height:0}
+.pinned-area .artist-notes{max-width:none}
+@media(max-width:760px){.pinned-bar{left:8px;right:8px;top:calc(var(--header) + 6px)}.pinned-area>article.artist{width:min(300px,86vw)}}
 .artist-actions>.danger:not(.is-armed){background:transparent}
 .artist-actions>.danger:not(.is-armed):hover{background:var(--danger-bg)}
 .work figcaption{font-variant-numeric:tabular-nums}
