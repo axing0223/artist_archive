@@ -666,6 +666,10 @@ input:focus-visible,textarea:focus-visible,select:focus-visible{outline-offset:1
 .action-menu summary:hover,.action-menu[open]>summary{background:var(--raised)}
 .action-menu .menu-panel{border-color:var(--line);border-radius:12px}
 .categories button:hover:not(.active){background:var(--raised)}
+/* 反选（排除）某个分类时，「全部」按钮不能画成实心红——它点了是恢复全部，不是"排除全部"。
+   所以只用一道红下划线表示"有东西被排除了"。类名特意不叫 is-excluded：
+   那个名字和其它按钮的 .active 一样会被按类名找元素的代码连坐，语义也不一样（这里不是"这一类被排除"）。 */
+.categories button.has-excluded:not(.active){color:var(--danger);border-bottom-color:var(--danger)}
 .categories .n{font-variant-numeric:tabular-nums;color:var(--muted)}
 #density-toggle{color:var(--accent);border-color:var(--line)}
 .primary-action{box-shadow:inset 0 1px 0 #ffffff20}
