@@ -2408,20 +2408,27 @@ test('回归：展开候选后视线对准画师作品格，且用顶部对齐',
   assert.ok(call,'展开之后应把视线交给画师作品格，而不是候选区');
   assert.equal(call.options.block,'start','手动展开用顶部对齐，让作品格与第一行候选同时入画');
 });
-test('回归：翻页与换排序后只在作品格看不见时才拉回视线',async()=>{
+test('回归：翻页不动视线（用户正在看候选列表），换排序才把视线交回作品格',async()=>{
   const {elements,state,ctx}=await boot();
   const card=await openCandidatePicker(elements,state,ctx,async()=>Array.from({length:44},(_,i)=>post(String(i+1))));
   state.scrollCalls.length=0;
+  /* 翻页：一页都不该动滚动位置。用户正在候选列表上逐张挑，翻一页就跳一次视线很烦。 */
   findText(card(),'下一页 →').onclick();await wait(30);
-  let call=state.scrollCalls.find(item=>item.selector.includes('.works'));
-  assert.ok(call,'翻页之后也要把视线交回画师作品格，而不是把候选区顶到最上面');
-  assert.equal(call.options.block,'nearest','翻页用 nearest：作品格还在眼前就不动它');
+  assert.deepEqual(state.scrollCalls,[],'翻页不该滚动页面，也不该把视线拉回作品格');
+  assert.equal(String(findByClass(card(),'picker-page').textContent),'第 2 页','翻页本身要生效');
+  /* 键盘翻页（A / D）同样不动视线，否则鼠标与键盘两条路行为不一致。 */
+  findByClass(card(),'work-picker').fire('keydown',{key:'d',preventDefault(){},stopPropagation(){}});
+  await wait(30);
+  assert.deepEqual(state.scrollCalls,[],'键盘翻页也不该动视线');
+  /* 读到末页后会把总页数补上（第 3 / 3 页），所以这里只断言页码前进到 3。 */
+  assert.match(String(findByClass(card(),'picker-page').textContent),/^第 3( \/ 3)? 页$/,'键盘翻页也要生效');
+  /* 换排序是换了一整批作品，这时候把视线交回作品格才有意义。 */
   state.scrollCalls.length=0;
   const orderSelect=findByClass(card(),'picker-order').children[1];
   orderSelect.value='score';orderSelect.onchange();await wait(30);
-  call=state.scrollCalls.find(item=>item.selector.includes('.works'));
-  assert.ok(call,'换排序之后同样把视线交回画师作品格');
-  assert.equal(call.options.block,'nearest','换排序同样用 nearest');
+  const call=state.scrollCalls.find(item=>item.selector.includes('.works'));
+  assert.ok(call,'换排序之后把视线交回画师作品格');
+  assert.equal(call.options.block,'nearest','用 nearest：作品格还在眼前就不动它');
 });
 test('回归：勾选作品下载缩略图期间仍然可以按 a/d 翻页',async()=>{
   const {elements,state,ctx}=await boot();

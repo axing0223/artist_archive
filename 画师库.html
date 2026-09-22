@@ -2178,10 +2178,13 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
     orderSelect.append(...orderOptions.map(option=>{const node=el('option','',option.label);node.value=option.value;return node;}));orderSelect.value=order;
     orderBar.append(el('span','','排序'),orderSelect);
     const pages=el('nav','picker-pagination');pages.setAttribute('aria-label','作品分页');
-    const previous=btn('← 上一页',()=>go(page-1,true)),next=btn('下一页 →',()=>go(page+1,true)),pageLabel=el('span','picker-page','第 1 页');
+    /* 翻页不动焦点、也不动滚动位置：用户正在看候选列表，翻一页就跳一次视线很烦。
+       焦点留在原地，键盘的 A / D 与左右方向键照旧能用（判据是"焦点还在这个容器里"，
+       而翻页本来就没把焦点移走）。 */
+    const previous=btn('← 上一页',()=>go(page-1)),next=btn('下一页 →',()=>go(page+1)),pageLabel=el('span','picker-page','第 1 页');
     previous.title='上一页：A / ←';next.title='下一页：D / →';pageLabel.setAttribute('aria-live','polite');
     pages.append(previous,pageLabel,next);
-    const retry=btn('重试',()=>go(failedPage,true,failedOrder));retry.hidden=true;
+    const retry=btn('重试',()=>go(failedPage,false,failedOrder));retry.hidden=true;
     if(orderOptions.length)status.append(orderBar);status.append(pages,counter,retry,message);container.append(status,grid);
     const picked=new Map((preset||[]).filter(work=>work&&work.id!=null).map(work=>[String(work.id),work]));
     let query={order,buffer:[],seen:new Set(),sourcePage:1,exhausted:false},works=[],page=1,loading=false,disposed=false,revision=0,controller=null,failedPage=1,failedOrder=order,focusTimer=null;
@@ -2253,7 +2256,7 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
       if(event.isComposing||event.defaultPrevented||event.ctrlKey||event.altKey||event.metaKey||event.target?.closest?.('input:not([type=checkbox]):not([type=radio]),textarea,select,[contenteditable=true]'))return;
       const key=event.key.toLowerCase();if(!['a','d','arrowleft','arrowright'].includes(key))return;
       event.preventDefault();event.stopPropagation();if(loading)return;
-      const delta=key==='a'||key==='arrowleft'?-1:1;if((delta<0&&previous.disabled)||(delta>0&&next.disabled))return;go(page+delta,true);
+      const delta=key==='a'||key==='arrowleft'?-1:1;if((delta<0&&previous.disabled)||(delta>0&&next.disabled))return;go(page+delta);
     });
     render();const ready=go(1);
     return {ready,tools:status,focus,selected:()=>[...picked.values()],added:()=>[...picked.keys()],
