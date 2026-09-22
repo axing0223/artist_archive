@@ -110,7 +110,9 @@ FileUrl.createObjectURL=()=>'blob:x';FileUrl.revokeObjectURL=()=>{};
     URL:FileUrl,Blob,structuredClone,setTimeout,clearTimeout,requestAnimationFrame:fn=>fn(),
     ArtistImages:{bind(){},unbind(){},dispose(){},setFolder(){},clear(){},dataUrl:async()=>'data:image/jpeg;base64,/9j/2Q==',fetch:async()=>new Blob([])},
     ArtistExtension:{connected:false,canGenerate:false,canAccount:false,version:'',generate:async()=>{throw Error('未连接');},subscription:async()=>{throw Error('未连接');},check:async()=>{throw Error('测试中未连接扩展');},image:async()=>{throw Error('未连接');},resolve:async()=>{throw Error('未连接');}},
-    ArtistGallery:{render(container,rows,card,keyOf){state.card=card;state.rows=rows;state.keyOf=keyOf;state.renders.push(rows.map(row=>card(row)));},clear(){},pin(){},markPainted(){},visible:()=>[],mount(uid){state.mounted.push(uid);return true;}},
+    /* state.rows / state.renders 里装的是渲染出来的卡片 DOM，想断言"数据里现在有什么"
+       会变成读 DOM，很别扭。多抄一份原始 rows（state.visible），测试就能直接读画师对象。 */
+    ArtistGallery:{render(container,rows,card,keyOf){state.card=card;state.rows=rows;state.visible=rows;state.keyOf=keyOf;state.renders.push(rows.map(row=>card(row)));},clear(){},pin(){},markPainted(){},visible:()=>[],mount(uid){state.mounted.push(uid);return true;}},
     ArtistLookup:{plan(){throw Error('测试中不查询');},lookup:async()=>[],posts:async()=>[],details:async()=>({counts:{total:null,beforeTotal:null},previewError:''})},
   };
   for(const file of ['artist-id.js','image-cache.js','image-loader.js','folder-store.js','folder-memory.js','novelai.js','image-gen.js','generate-queue.js','work-picker.js','viewer.js','test-images.js','library-index.js','app.js'])
@@ -227,7 +229,7 @@ test('浏览卡片按信息、五张作品、补充资料分层，操作集中�
  const {state}=await boot();const card=state.card(bareArtist({artistUrl:'https://example.com/artist'}));
  assert.equal(card.children.length,3);assert.ok(card.children[0].className.includes('artist-info'));assert.ok(card.children[1].className.includes('works'));assert.ok(card.children[2].className.includes('artist-footer'));
  const actions=findByClass(card,'artist-actions');assert.ok(findText(actions,'编辑'));assert.ok(findText(actions,'删除'));const source=actions.children.find(n=>n.tagName==='a');assert.equal(source['aria-label'],'打开 tester 的画师页面');
- assert.deepEqual(actions.children.map(node=>node.textContent),['删除','画师页面','编辑'],'卡片右上角按删除、画师页面、编辑排列');assert.ok(findByClass(card.children[0],'artist-meta'));assert.equal(findAllByClass(card.children[1],'work').length,5,'必须为五个作品位置');
+ assert.deepEqual(actions.children.map(node=>node.textContent),['删除','画师页面','刷新','画风拟合','书钉','编辑'],'卡片右上角按删除、画师页面、刷新、画风拟合、书钉、编辑排列');assert.ok(findByClass(card.children[0],'artist-meta'));assert.equal(findAllByClass(card.children[1],'work').length,5,'必须为五个作品位置');
 });
 test('浏览态卡片的「删除画师」也要点两次才真删',async()=>{
   const {elements,state}=await boot();
@@ -282,15 +284,16 @@ test('没有备注时不留下空行',async()=>{
   const card=state.card(artist),works=card.children[1];
   assert.equal(works.children.filter(child=>child.className==='sample-note').length,0);
 });
-test('编辑按钮在右上角按删除、刷新、取消、保存排列',async()=>{
+test('编辑按钮在右上角按删除、取消、保存排列（刷新已搬到卡片上）',async()=>{
   const {elements,state}=await boot();
   elements.get('add-artist').onclick();
   const card=lastRender(state)[0];
   const findClass=(node,cls)=>{if(String(node.className).includes(cls))return node;for(const child of node.children||[]){const hit=findClass(child,cls);if(hit)return hit;}return null;};
   const actions=findClass(card,'artist-actions');
   assert.ok(actions,'编辑态卡片应有操作区');
-  assert.deepEqual(actions.children.map(child=>child.textContent),['删除画师','刷新','取消','保存'],'四个按钮要在同一个容器里依次排列');
-  assert.equal(actions.children[3].className.includes('primary-action'),true,'保存是主操作');
+  assert.deepEqual(actions.children.map(child=>child.textContent),['删除画师','取消','保存'],'编辑态只剩这三个：刷新在卡片上');
+  assert.equal(findText(actions,'刷新'),null,'编辑态不再放刷新按钮');
+  assert.equal(actions.children[2].className.includes('primary-action'),true,'保存是主操作');
 });
 test('删除画师改为按钮二次确认，不再调用系统对话框',async()=>{
   const {elements,state}=await boot();
@@ -329,6 +332,21 @@ async function createArtist(state,elements,name){
   const input=findByPlaceholder(lastRender(state)[0],'画师名字（必填）');
   input.value=name;input.oninput();
   await findText(lastRender(state)[0],'保存').onclick();
+}
+/* 连续建多位画师时用这个：点完「添加画师」要让出一拍等编辑态渲染出来，
+   建完再等一拍让写盘收尾——否则下一次点击会被 busy 直接忽略（界面上就是"点了没反应"）。
+   它也可以顺带在编辑态里干点别的（勾标签、选分类、加新标签），是测试里最常用的入口。 */
+async function addArtist(state,elements,name,edit){
+  elements.get('add-artist').onclick();
+  await wait(20);
+  const card=lastRender(state).find(node=>String(node.className).includes('is-editing'));
+  assert.ok(card,'点「添加画师」后应进入编辑态');
+  const input=findByPlaceholder(card,'画师名字（必填）');
+  assert.ok(input,'编辑态应有名字输入框');
+  input.value=name;input.oninput();
+  if(edit)await edit(card);
+  await findText(card,'保存').onclick();
+  await wait(20);
 }
 test('新增画师：填好名字保存后进入列表，并拿到正式序号标识',async()=>{
   const {elements,state}=await boot();
@@ -563,54 +581,41 @@ test('收起「从 Danbooru 添加作品」后不留下空的 work-picker 容器
   await wait(20);
   assert.equal(hosts().length,0);
 });
-test('编辑界面刷新当前画师：数量、正式名、笔名一起更新，保存时才落盘',async()=>{
+test('卡片上的「刷新」：数量、正式名、笔名一起更新并立刻落盘',async()=>{
   const {elements,state,ctx}=await boot();
   const renames=[],original=ctx.FolderStore.rename;
   ctx.FolderStore.rename=(dir,from,to)=>{renames.push(from+'→'+to);return original(dir,from,to);};
   stub(ctx,{lookup:async()=>[{id:7,name:'betanonbeet',aliases:['betabeet','bb'],pageUrl:''}],
     details:async()=>({counts:{checkedAt:'x',total:42,beforeTotal:9},countsError:false})});
   await createArtist(state,elements,'betabeet');
-  findText(lastRender(state)[0],'编辑').onclick();
-  await wait(180);
+  /* 不进编辑态，直接点卡片上的「刷新」。 */
   await findText(lastRender(state)[0],'刷新').onclick();
-  const card=lastRender(state)[0];
-  assert.equal(findByPlaceholder(card,'画师名字（必填）').value,'betanonbeet','名字同步成站点上的正式名');
-  assert.equal(findAllByClass(findByClass(card,'alias-picker'),'alias-choice').length,2,'笔名也一并带回来');
-  await findText(lastRender(state)[0],'保存').onclick();
-  assert.equal(state.rows[0].name,'betanonbeet');
-  assert.equal(state.rows[0].uid,'0001-betanonbeet-7','保存时标识跟着名字一起换');
-  assert.equal(state.rows[0].counts.total,42,'数量落盘');
-  assert.equal(state.rows[0].counts.beforeTotal,9);
+  assert.equal(state.rows[0].name,'betanonbeet','名字同步成站点上的正式名');
+  assert.equal(state.rows[0].uid,'0001-betanonbeet-7','标识跟着新名字换');
+  assert.equal(state.rows[0].counts.total,42,'数量直接落盘，不需要再点保存');
+  assert.equal(state.rows[0].counts.beforeTotal,9,'截至日期前的数量也一起更新');
+  assert.deepEqual(state.rows[0].aliases,['betabeet','bb'],'笔名一并带回来');
   assert.deepEqual(renames,['0001-betabeet-manual→0001-betanonbeet-7'],'要登记目录迁移，否则旧目录里的图片会被删掉');
 });
-test('编辑界面刷新：站点正式名会撞上库里已有画师时不跟着改',async()=>{
+test('卡片上的「刷新」：站点正式名会撞上库里已有画师时不跟着改',async()=>{
   const {elements,state,ctx}=await boot();
   const get=id=>{if(!elements.has(id))elements.set(id,new El());return elements.get(id);};
   get('batch-artists').onclick();get('batch-names').value='old\ntaken';get('batch-works').checked=false;
   await get('batch-form').onsubmit({preventDefault(){}});
   stub(ctx,{lookup:async()=>[{id:9,name:'taken',aliases:[],pageUrl:''}],details:async()=>({counts:{},countsError:false})});
-  findText(lastRender(state)[0],'编辑').onclick();
-  await wait(180);
   await findText(lastRender(state)[0],'刷新').onclick();
-  assert.equal(findByPlaceholder(lastRender(state)[0],'画师名字（必填）').value,'old','撞名时不该改名字');
-  await findText(lastRender(state)[0],'保存').onclick();
   assert.equal(state.rows[0].name,'old','撞名时不该改名字');
   assert.equal(state.rows[0].uid,'0001-old-9','名字不变，但刷新补上了编号，标识要跟着补');
   assert.equal(state.rows[1].name,'taken','另一位不受影响');
 });
-test('编辑界面刷新：点取消则刷到的内容全部丢弃',async()=>{
+test('卡片上的「刷新」失败时如实报错，不改动已有数据',async()=>{
   const {elements,state,ctx}=await boot();
-  stub(ctx,{lookup:async()=>[{id:7,name:'betanonbeet',aliases:['betabeet'],pageUrl:''}],
-    details:async()=>({counts:{checkedAt:'x',total:42},countsError:false})});
+  stub(ctx,{lookup:async()=>{throw Error('站点没回应');},details:async()=>({counts:{},countsError:false})});
   await createArtist(state,elements,'betabeet');
-  findText(lastRender(state)[0],'编辑').onclick();
-  await wait(180);
+  const before=state.rows[0].uid;
   await findText(lastRender(state)[0],'刷新').onclick();
-  findText(lastRender(state)[0],'取消').onclick();
-  await wait(180);
-  assert.equal(state.rows[0].name,'betabeet','取消后保持原样');
-  assert.equal(state.rows[0].uid,'0001-betabeet-manual');
-  assert.notEqual(state.rows[0].counts&&state.rows[0].counts.total,42,'刷新只改表单，没保存就不该落盘');
+  assert.equal(state.rows[0].uid,before,'读不到就什么都不改');
+  assert.equal(state.rows[0].counts?.total??null,null,'也不该把数量写成 0 或 null');
 });
 test('设置里的预览图尺寸滑动条可以逐像素调',async()=>{
   const html=await fs.readFile('app/index.html','utf8');
@@ -620,6 +625,83 @@ test('设置里的预览图尺寸滑动条可以逐像素调',async()=>{
   const size=get('card-size'),label=get('card-size-value');
   size.value='237';size.oninput();
   assert.equal(label.textContent,'237','滑到哪就显示哪，不再被吸附到整数十');
+});
+test('画风拟合：卡片上标注一次，之后能用特殊筛选挑出来',async()=>{
+  const {elements,state}=await connectedApp();
+  for(const name of ['甲','乙'])await addArtist(state,elements,name);
+  /* 默认不标注，筛选也挑不出人。 */
+  const fitOf=name=>findText(lastRender(state).find(card=>String(card.dataset.artist)===name),'画风拟合');
+  assert.equal(fitOf('甲')['aria-pressed'],'false','默认未标注');
+  assert.equal(String(fitOf('甲').className).includes('active'),false);
+  const special=()=>findAllByClass(getEl(elements,'special'),'special-pick');
+  const fitButton=()=>special().find(node=>String(node.textContent).startsWith('画风拟合'));
+  assert.ok(fitButton(),'特殊筛选里应有「画风拟合」');
+  fitButton().onclick();
+  assert.equal(state.renders[state.renders.length-1].length,0,'没人标注时筛选结果为空');
+  fitButton().onclick();fitButton().onclick();
+  /* 标注「甲」。 */
+  await fitOf('甲').onclick();
+  assert.equal(state.visible.find(a=>a.name==='甲').styleFit,true,'标注要落进数据');
+  assert.equal(state.visible.find(a=>a.name==='乙').styleFit,false,'另一位不该被连带标注');
+  fitButton().onclick();
+  /* 注意 state.visible 里的数组是 vm 那个 realm 造的，deepStrictEqual 会因原型不同而挂，
+     所以摊平成普通数组再比。筛选之后列表里只剩命中的那位，别再按名字找别人。 */
+  assert.deepEqual([...state.visible].map(a=>a.name),['甲'],'筛出来的正好是标过的那位');
+  /* 取消标注：筛选中列表里只有"甲"，点它自己的按钮取消；取消之后它立刻被这次筛选排除。 */
+  await fitOf('甲').onclick();
+  assert.deepEqual([...state.visible].map(a=>a.name),[],'取消标注后立刻被这次筛选排除');
+  /* 清掉筛选回到全部：人还在，只是标记没了。 */
+  fitButton().onclick();
+  assert.deepEqual([...state.visible].map(a=>a.name).sort(),['乙','甲'],'人还在，只是不再被标注');
+  assert.equal(state.visible.find(a=>a.name==='甲').styleFit,false,'标注已取消');
+});
+test('书钉：钉住的卡片浮动在顶部，上限之外的书钉按钮置灰',async()=>{
+  const {elements,state}=await connectedApp();
+  for(const name of ['甲','乙','丙'])await addArtist(state,elements,name);
+  const pinOf=name=>findText(lastRender(state).find(card=>String(card.dataset.artist)===name),'书钉');
+  const bar=()=>getEl(elements,'pinned-bar');
+  assert.equal(bar().hidden,true,'没钉任何卡片时浮动条不占位');
+  await pinOf('甲').onclick();
+  assert.equal(bar().hidden,false,'钉住之后浮动条出现');
+  assert.deepEqual(findAllByClass(bar(),'pinned-chip').map(chip=>chip.dataset.uid),[state.rows.find(a=>a.name==='甲').uid],'浮动条里是钉住的那张');
+  assert.equal(String(findText(bar(),'取消书钉').className).includes('pinned-drop'),true,'浮动条上要能取消书钉');
+  /* 默认上限 3：钉满之后其余按钮置灰。 */
+  await pinOf('乙').onclick();await pinOf('丙').onclick();
+  assert.equal(findAllByClass(bar(),'pinned-chip').length,3,'三个都钉上了');
+  await addArtist(state,elements,'丁');
+  assert.equal(pinOf('丁').disabled,true,'达到上限后新卡片的书钉按钮要置灰');
+  assert.equal(pinOf('丁').title.includes('上限'),true,'置灰时要说明原因');
+  assert.equal(pinOf('甲').disabled,false,'已经钉住的仍然可以点（用来取消）');
+  assert.equal(pinOf('乙').disabled,false);
+  /* 取消一个之后，新卡片又能钉了。 */
+  await pinOf('甲').onclick();
+  assert.equal(state.visible.find(a=>a.name==='甲').pinned,false,'取消后数据里不留标记');
+  assert.equal(findAllByClass(bar(),'pinned-chip').length,2);
+  assert.equal(pinOf('丁').disabled,false,'腾出名额后就能钉了');
+});
+test('书钉：上限可在设置里调，调小不会踢掉已有的书钉',async()=>{
+  const {elements,state}=await connectedApp();
+  for(const name of ['甲','乙','丙'])await addArtist(state,elements,name);
+  const pinOf=name=>findText(lastRender(state).find(card=>String(card.dataset.artist)===name),'书钉');
+  for(const name of ['甲','乙','丙'])await pinOf(name).onclick();
+  /* 设置的控件是在打开对话框时才填的，所以先打开。 */
+  elements.get('settings-open').onclick();
+  const slider=getEl(elements,'pin-limit');
+  assert.equal(slider.value,'3','滑块默认与默认上限一致');
+  assert.equal(getEl(elements,'pin-limit-value').textContent,'3');
+  slider.value='5';slider.oninput();
+  assert.equal(getEl(elements,'pin-limit-value').textContent,'5','拖动时先只更新数字');
+  assert.equal(typeof slider.onchange,'function','滑块应接上 onchange');
+  await slider.onchange();await wait(40);
+  assert.equal(String(getEl(elements,'pin-limit-value').textContent),'5','数字标签跟着变');
+  /* 调小到比现有书钉还少：已有书钉不动，只是不能再钉新的。 */
+  slider.value='1';await slider.onchange();await wait(40);
+  assert.equal(findAllByClass(getEl(elements,'pinned-bar'),'pinned-chip').length,3,'调小上限不踢掉已有的书钉');
+  /* 浮动条上的「书钉 N / 上限」要跟着设置走：3 个还在、上限已变成 1。 */
+  const pinnedLabel=findByClass(getEl(elements,'pinned-bar'),'pinned-label');
+  assert.equal(String(pinnedLabel.textContent),'书钉 3 / 1','浮动条显示现有数量与新的上限');
+  await pinOf('甲').onclick();await wait(20);
+  assert.equal(findAllByClass(getEl(elements,'pinned-bar'),'pinned-chip').length,2,'取消仍然可以');
 });
 test('画师卡片：点画师名即可复制 tag',async()=>{
   const {state}=await boot();

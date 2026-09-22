@@ -26,11 +26,17 @@
   const PREVIEW_SLOTS=5,RESERVED_SLOTS=2,UPLOAD_TYPES=['image/jpeg','image/png','image/webp','image/gif','image/avif'];
   const showsTestSlots=value=>value?.showTestSlots===true||value?.fixedTestSlots===true;
   const reservedOf=()=>data&&showsTestSlots(data)?RESERVED_SLOTS:0;
+  /* 「书钉」上限：同时最多钉住几张卡片。存进 画师库.json（它是库级设置，跟着数据走）。
+     留一个下限 1、上限 12，避免手改成 0 之后按钮全灰、用户不知道怎么恢复。 */
+  const PIN_LIMIT_MIN=1,PIN_LIMIT_MAX=12,DEFAULT_PIN_LIMIT=3;
+  const pinLimitOf=value=>{const n=Number(value?.pinLimit);return Number.isSafeInteger(n)&&n>=PIN_LIMIT_MIN&&n<=PIN_LIMIT_MAX?n:DEFAULT_PIN_LIMIT;};
+  const pinLimit=()=>pinLimitOf(data);
+  const pinnedArtists=()=>(data?.artists||[]).filter(a=>a.pinned===true);
   /* 每组筛选都是「不选 → 正选 → 反选 → 不选」三态循环：xxx 是正选（只看这些），
      notXxx 是反选（排除这些），两边都不在就是不选。第三态以前不存在，所以按钮只会在开/关之间跳。 */
   const state={category:'全部',notCategory:null,tags:new Set(),notTags:new Set(),scores:new Set(),notScores:new Set(),special:new Set(),notSpecial:new Set(),query:'',sort:'order',desc:false};
   /* 特殊筛选：按「缺什么」找画师。键名会进筛选键与 aria，保持英文短横线。 */
-  const SPECIAL_FILTERS=[['low-works','作品少于 50'],['no-works','例图空缺']];
+  const SPECIAL_FILTERS=[['low-works','作品少于 50'],['no-works','例图空缺'],['style-fit','画风拟合']];
   /* 「没读到」在数据里是 null 而不是缺字段，而 Number(null)===0：不能直接拿数字判断。 */
   const knownCount=value=>value!==null&&value!==undefined&&value!=='';
   /* 排序方向按钮：升序 ↑ / 降序 ↓，当前方向写在按钮自己身上。 */
@@ -94,9 +100,9 @@
       ids.add(id);nextSequence=Math.max(nextSequence,(ArtistId.parse(id)?.seq||0)+1);
       const works=a.works.map(w=>{if(!FolderStore.validWork(w))throw Error(name+' 的图片格式或本地路径无效。');return {id:text(String(w.id??''),100),url:url(w.url),caption:text(w.caption),thumb:imageValue(w.thumb),thumbUrl:httpsValue(w.thumbUrl),previewUrl:httpsValue(w.previewUrl),large:imageValue(w.large),largeUrl:httpsValue(w.largeUrl),...(w.kind==='test'?{kind:'test',testSeq:Number.isSafeInteger(w.testSeq)&&w.testSeq>0?w.testSeq:1}:{})};});
       const c=a.counts||{},number=n=>Number.isSafeInteger(n)&&n>=0?n:null;
-      return {uid:id,order:i+1,name,category:a.category||null,score:Number.isSafeInteger(a.score)&&a.score>=1&&a.score<=5?a.score:null,aliases:unique(Array.isArray(a.aliases)?a.aliases:[]).map(x=>x.slice(0,60)),alias:typeof a.alias==='string'&&a.alias.trim()?a.alias.trim().slice(0,60):null,tags:unique(a.tags||[]).map(t=>t.slice(0,40)),danbooruId,counts:{total:number(c.total),checkedAt:text(c.checkedAt,40),beforeDate:text(c.beforeDate,10),beforeTotal:number(c.beforeTotal)},artistUrl:url(a.artistUrl),description:text(a.description),note:text(a.note),basis:text(a.basis,100),status:text(a.status,100),works};
+      return {uid:id,order:i+1,name,category:a.category||null,score:Number.isSafeInteger(a.score)&&a.score>=1&&a.score<=5?a.score:null,aliases:unique(Array.isArray(a.aliases)?a.aliases:[]).map(x=>x.slice(0,60)),alias:typeof a.alias==='string'&&a.alias.trim()?a.alias.trim().slice(0,60):null,tags:unique(a.tags||[]).map(t=>t.slice(0,40)),danbooruId,counts:{total:number(c.total),checkedAt:text(c.checkedAt,40),beforeDate:text(c.beforeDate,10),beforeTotal:number(c.beforeTotal)},artistUrl:url(a.artistUrl),description:text(a.description),note:text(a.note),basis:text(a.basis,100),status:text(a.status,100),styleFit:a.styleFit===true,pinned:a.pinned===true,works};
     });
-    return {version:1,categories:categoryList,cutoffDate:/^\d{4}-\d{2}-\d{2}$/.test(raw.cutoffDate)?raw.cutoffDate:'2026-07-01',saveLargeImages:raw.saveLargeImages===true,autoOpenWorks:raw.autoOpenWorks===true,showTestSlots:showsTestSlots(raw),workOrder:WORK_ORDERS.includes(raw.workOrder)?raw.workOrder:DEFAULT_WORK_ORDER,date:text(raw.date,40),method:text(raw.method,12000),tags:unique([...(Array.isArray(raw.tags)?raw.tags:defaults),...artists.flatMap(a=>a.tags)]).map(t=>t.slice(0,40)),artists};
+    return {version:1,categories:categoryList,cutoffDate:/^\d{4}-\d{2}-\d{2}$/.test(raw.cutoffDate)?raw.cutoffDate:'2026-07-01',saveLargeImages:raw.saveLargeImages===true,autoOpenWorks:raw.autoOpenWorks===true,showTestSlots:showsTestSlots(raw),pinLimit:pinLimitOf(raw),workOrder:WORK_ORDERS.includes(raw.workOrder)?raw.workOrder:DEFAULT_WORK_ORDER,date:text(raw.date,40),method:text(raw.method,12000),tags:unique([...(Array.isArray(raw.tags)?raw.tags:defaults),...artists.flatMap(a=>a.tags)]).map(t=>t.slice(0,40)),artists};
   }
   /* 文案真的变了才轻轻淡一下：保存、生图、检测都会写状态栏，一直闪反而吵。 */
   function status(t,error=false){
@@ -463,6 +469,55 @@
     const input=el('input');input.type='file';input.accept=UPLOAD_TYPES.join(',');input.multiple=true;
     input.onchange=()=>{const files=[...input.files];if(files.length)dropImages(a,index,files);};input.click();
   }
+  /* 画风拟合：标记一位画师，供「特殊筛选 → 画风拟合」挑出来。纯标记，不动图片与分类。 */
+  async function toggleStyleFit(a){
+    if(busy)return;
+    const on=a.styleFit!==true,next=clone(data);
+    const target=next.artists.find(item=>item.uid===a.uid);
+    if(!target){status('这位画师已经不在库里了。',true);return;}
+    if(on)target.styleFit=true;else delete target.styleFit;
+    await save(next,on?`已把「${a.name}」标注为画风拟合。`:`已取消「${a.name}」的画风拟合标注。`);
+  }
+  /* 书钉：钉住之后这张卡片浮动在页面顶部，滚动时一直看得见。
+     上限在「设置」里调；满了之后其余书钉按钮置灰（在 artistCard 里算），所以这里只需再挡一次。 */
+  async function togglePinArtist(a){
+    if(busy)return;
+    const pinned=a.pinned!==true;
+    if(pinned&&pinnedArtists().length>=pinLimit()){status(`书钉已满（最多 ${pinLimit()} 个）：先取消一个，或到「设置」里调大上限。`,true);return;}
+    const next=clone(data);
+    const target=next.artists.find(item=>item.uid===a.uid);
+    if(!target){status('这位画师已经不在库里了。',true);return;}
+    if(pinned)target.pinned=true;else delete target.pinned;
+    await save(next,pinned?`已把「${a.name}」钉在顶部。`:`已取消「${a.name}」的书钉。`);
+  }
+  /* 顶部浮动的那一条书钉。里面放的是**副本**而不是画廊里的那张卡片：
+     画廊按可见性挂载/回收卡片，把它的节点搬走会把懒加载与图片绑定一起搞乱。
+     副本只给一眼能认出来的信息（序号、图、名字、分类），以及一个取消书钉的按钮。 */
+  function paintPinnedBar(){
+    const bar=$('pinned-bar');if(!bar)return;
+    const list=pinnedArtists();
+    bar.hidden=!list.length;
+    if(!list.length){bar.replaceChildren();return;}
+    const label=el('span','pinned-label','书钉 '+list.length+' / '+pinLimit());
+    label.title='浮动在这条上的卡片不受滚动影响；上限在「设置」里调';
+    const chips=el('div','pinned-chips');
+    for(const a of list){
+      const chip=el('div','pinned-chip');chip.dataset.uid=a.uid;
+      chip.title=a.name+'：点一下回到它';
+      const open=btn('',()=>focusArtist(a.uid),'pinned-open');
+      open.setAttribute('aria-label','回到画师 '+a.name);
+      const thumb=a.works?.length?FolderStore.imageOf(a.works[0],'thumb'):null;
+      if(thumb){const img=el('img');img.alt='';ArtistImages.bind(img,a.uid,a.works[0],'pinned:'+a.uid,'thumb',()=>{});open.append(img);}
+      else open.append(el('span','pinned-blank','无图'));
+      const text=el('div','pinned-text');
+      text.append(el('span','pinned-serial',String(seqOf(a)).padStart(4,'0')),el('strong','pinned-name',a.name));
+      text.append(el('span',a.styleFit?'pinned-tag is-fit':'pinned-tag',a.category||'待判断'));
+      const drop=btn('取消书钉',()=>togglePinArtist(a),'pinned-drop');
+      drop.title='取消书钉';
+      chip.append(open,text,drop);chips.append(chip);
+    }
+    bar.replaceChildren(label,chips);
+  }
   function artistCard(a,previous){
     const article=previous||el('article','artist'),info=el('div','artist-info'),identity=el('div','artist-identity'),row=el('div','name-row');
     article.dataset.artist=a.name;article.setAttribute('aria-label','画师 '+a.name);
@@ -488,9 +543,28 @@
     if(previous)for(const node of [...article.children])if(node.className.startsWith('score-badge'))node.remove();
     if(Number.isSafeInteger(a.score)&&a.score>=1&&a.score<=5){const score=el('span','score-badge score-'+a.score,String(a.score));score.setAttribute('aria-label','参考评分 '+a.score+' 分');score.title='参考评分 '+a.score+' / 5';article.append(score);}
     row.append(meta);identity.append(row);
+    /* 卡片按钮的顺序按用户指定：删除 · 画师页面 · 刷新 · 画风拟合 · 书钉 · 编辑。
+       「刷新」从编辑态搬到了卡片上：不进编辑就能刷这一位的数量，刷新完直接落盘。 */
     const actions=el('div','artist-actions');actions.append(deleteArtistButton(a));
     if(a.artistUrl){const source=link('画师页面',a.artistUrl,'edit-button');source.setAttribute('aria-label','打开 '+a.name+' 的画师页面');actions.append(source);}
     else{const source=btn('画师页面',()=>{},'edit-button');source.disabled=true;source.title='尚未填写画师页面';actions.append(source);}
+    const refresh=btn('刷新',()=>refreshCardArtist(a),'edit-button');
+    refresh.title='重新读取站点上的作品数量与截至日期前数量';
+    refresh.setAttribute('aria-label','刷新 '+a.name+' 的作品数量');
+    actions.append(refresh);
+    /* 画风拟合：一个纯粹的标记位，标过之后能用「特殊筛选 → 画风拟合」一次挑出来。
+       它不进评分维度——评分说的是"多喜欢"，这个是"这张参考图能不能代表画风"，两件事。 */
+    const fit=btn('画风拟合',()=>toggleStyleFit(a),'edit-button fit-button'+(a.styleFit?' active':''));
+    fit.setAttribute('aria-pressed',String(a.styleFit===true));
+    fit.title=a.styleFit?'已标注画风拟合，点一下取消':'标注为画风拟合（可用上方「特殊筛选 → 画风拟合」挑出来）';
+    actions.append(fit);
+    /* 书钉：钉住之后这张卡片会浮动在页面顶部，滚到哪儿都看得见。上限在设置里调。 */
+    const pinned=a.pinned===true,limit=pinLimit(),full=!pinned&&pinnedArtists().length>=limit;
+    const pin=btn('书钉',()=>togglePinArtist(a),'edit-button pin-button'+(pinned?' active':''));
+    pin.disabled=full;
+    pin.setAttribute('aria-pressed',String(pinned));
+    pin.title=pinned?'取消书钉':full?`书钉已满（最多 ${limit} 个）：先取消一个，或到「设置」里调大上限`:'钉在页面顶部，滚动时一直看得见';
+    actions.append(pin);
     actions.append(btn('编辑',()=>startEdit(a),'edit-button'));info.append(identity,actions);
     const works=previous?[...previous.children].find(node=>node.className==='works'):el('div','works'),pool=workPool(works),reserve=reservedOf(),slots=FolderStore.previewWorks(a,PREVIEW_SLOTS,reserve);
     const workNodes=slots.map((w,i)=>{const reused=w&&pool.get(workStamp(a,w))?.length;const node=w?takeWork(pool,a,w,i):i>=PREVIEW_SLOTS-reserve?generateSlot(a,PREVIEW_SLOTS-i):btn('添加图片',()=>chooseSlotImage(a,i),'work work-empty');
@@ -507,7 +581,16 @@
      不能按 draft.uid——刷新同步到正式名之后 draft.uid 会和库里存的那条不一样。 */
   function patchCard(node,a){
     if(!node||node.classList.contains('is-editing')||(draft&&(a===draft||a.uid===editingId)))return false;
+    /* 这一条不能省：浮动书钉里可能是**同一个对象**，而它没有编辑表单。
+       被就地更新成浏览态，就会把正在编辑的那张卡连输入框一起抹掉。
+       判据用 DOM 包含关系：「正在编辑的那张卡」就在这个节点里面。 */
+    if(draft&&containsNode(node,draft.uid))return false;
     artistCard(a,node);return true;
+  }
+  function containsNode(node,uid){
+    if(node.dataset?.uid===uid)return true;
+    for(const child of node.querySelectorAll?.('[data-uid]')||[])if(child.dataset.uid===uid)return true;
+    return false;
   }
   function card(a){return draft&&(a===draft||(editingId&&a.uid===editingId))?editingCard(a):artistCard(a);}
   /* 这张卡片要不要重画：画师数据、是不是编辑态、生图队列状态、固定测试格数量，全一样就别动它。     不重画 = 图片不重新取、不重新淡入。以前只要 render() 一次，屏幕上每张卡片的图都要重新淡入一遍，
@@ -605,7 +688,7 @@
     const noteInput=el('textarea');noteInput.rows=2;noteInput.maxLength=5000;noteInput.value=draft.note||'';noteInput.placeholder='备注';noteInput.oninput=()=>draft.note=noteInput.value;
     const grid=el('div','edit-grid');grid.append(field('画师名字',nameInput),field('主分类',categorySelect),field('画师页面链接',urlInput),scoreField,fieldBox('标签',tagEditor),aliasField);
     editorError=el('p','error');editorError.setAttribute('role','alert');info.append(grid,field('画风描述',descInput),field('备注',noteInput),editorError);
-    const actions=el('div','artist-actions');const remove=removeButton();remove.classList.add('edit-button');if(!editingId)remove.hidden=true;actions.append(remove,btn('刷新',refreshCurrentArtist,'edit-button'),btn('取消',cancelEdit,'edit-button'),btn('保存',saveDraft,'edit-button primary-action'));editorHead.append(actions);
+    const actions=el('div','artist-actions');const remove=removeButton();remove.classList.add('edit-button');if(!editingId)remove.hidden=true;actions.append(remove,btn('取消',cancelEdit,'edit-button'),btn('保存',saveDraft,'edit-button primary-action'));editorHead.append(actions);
     const works=el('div','works');
     /* 作品格单独可重画：从 Danbooru 勾一张就补一张，不动整张卡片——
        重画整张会把下面正在挑作品的候选列表一起冲掉。
@@ -690,6 +773,7 @@
     if(draft&&!editingId)rows.push(draft);
     else if(draft&&editingId&&!rows.some(a=>a.uid===editingId)){const editing=data.artists.find(a=>a.uid===editingId);if(editing)rows.unshift(editing);}
     ArtistGallery.render($('gallery'),rows,card,cardKey,patchCard);
+    paintPinnedBar();
     /* 编辑态收起后，作品格的图片到这里才释放：上面那次重画已经拿旧内容克隆过渐隐副本了。 */
     if(editorImagesPending&&!draft){editorImagesPending=false;ArtistImages.dispose('editor');}
     $('empty').hidden=rows.length!==0;
@@ -854,6 +938,24 @@
     if(uid===artist.uid)return false;
     FolderStore.rename(folder,artist.uid,uid);artist.uid=uid;return true;
   }
+  /* 刷新一位画师的站点资料：正式名、笔名、作品数量与截至日期前数量。
+     注意第二、三个参数是"往哪儿写"与"用哪个名字查"，不是"第几位画师"——
+     只有名字与编号会被这次刷新改动，所以调用方负责把结果落到自己的对象上
+     （编辑态落到 draft，卡片上落到库里那一条）。 */
+  async function refreshArtistData(artist,apply,name=(artist.name||'').trim()){
+    const [hit,counts]=await Promise.all([lookupArtist(name).catch(()=>null),refreshCounts({...artist,name}).catch(()=>null)]);
+    if(counts)apply({counts:counts.counts});
+    if(!hit)return {notes:['站点上没找到这位画师'],bad:true};
+    const notes=[];let bad=false;
+    if(hit.id!=null)apply({danbooruId:hit.id});
+    if(hit.aliases.length)apply({aliases:hit.aliases});
+    if(hit.canonical&&hit.canonical!==name){
+      const taken=data.artists.some(a=>a.uid!==artist.uid&&a.name.toLowerCase()===hit.canonical.toLowerCase());
+      if(taken){notes.push('站点上已改名为 '+hit.canonical+'，但库里已有同名画师，没有跟着改');bad=true;}
+      else{apply({name:hit.canonical});notes.push('站点上已改名为 '+hit.canonical+'，已跟着改');}
+    }
+    return {notes,bad};
+  }
   /* 读一次作品数量（含截至日期前数量）。失败项保留原值，不覆盖成 null。
      笔名不在这里读：它在「识别添加」和「批量导入」时随画师编号一起取回，只取一次，
      保存时再查一遍纯属浪费一次完整往返。 */
@@ -926,23 +1028,39 @@
     const name=(draft.name||'').trim();
     if(!name){setEditorError('先在「画师名字」里填 Danbooru 标签，再刷新。');return;}
     setEditorError('');busy=true;status('正在刷新 '+name+' 的数据…');
-    const notes=[];let bad=false;
-    try{
-      const [hit,counts]=await Promise.all([lookupArtist(name).catch(()=>null),refreshCounts({...draft,name}).catch(()=>null)]);
-      if(counts)draft.counts=counts.counts;
-      if(!hit){notes.push('站点上没找到这位画师');bad=true;}
-      else{
-        if(hit.id!=null)draft.danbooruId=hit.id;
-        if(hit.aliases.length)draft.aliases=hit.aliases;
-        if(hit.canonical&&hit.canonical!==name){
-          const taken=data.artists.some(a=>a.uid!==editingId&&a.name.toLowerCase()===hit.canonical.toLowerCase());
-          if(taken){notes.push('站点上已改名为 '+hit.canonical+'，但库里已有同名画师，没有跟着改');bad=true;}
-          else{draft.name=hit.canonical;notes.push('站点上已改名为 '+hit.canonical+'，已跟着改');}
-        }
-      }
-    }finally{busy=false;}
+    let outcome={notes:[],bad:false};
+    try{outcome=await refreshArtistData(draft,patch=>Object.assign(draft,patch),name);}
+    finally{busy=false;}
+    const {notes,bad}=outcome;
     closeWorkPicker();editorRevision++;render();
     status(notes.length?'已刷新 '+name+'：'+notes.join('；')+'。保存后才会落盘。':'已刷新 '+name+' 的作品数量与笔名。保存后才会落盘。',bad);
+  }
+  /* 卡片上的「刷新」：不进编辑态也能刷这一位，直接把结果落盘。
+     要点：刷新可能会把正式名同步成站点上的新名字，而 uid 是从名字推出来的，
+     所以改完名字必须**重新发号并登记目录迁移**——这条原来在编辑态的保存流程里，
+     搬到卡片上之后要在这里自己做，否则名字变了、目录还是旧的（下次保存会删掉旧目录里的图片）。
+     另外：先把改动落到库里那一条上、再 clone 进 save()，免得克隆把改动丢掉。 */
+  async function refreshCardArtist(a){
+    if(busy||uploading)return;
+    const name=(a.name||'').trim();
+    if(!name){status('这位画师没有名字，无法刷新。',true);return;}
+    const uid=a.uid;
+    busy=true;status('正在刷新 '+name+' 的数据…');
+    try{
+      const outcome=await refreshArtistData(a,patch=>Object.assign(a,patch),name);
+      const {notes,bad}=outcome;
+      const live=data.artists.find(item=>item.uid===uid);
+      if(!live){status('这位画师已经不在库里了。',true);return;}
+      /* 只要「按新名字与新编号算出来的标识」和现在不一样就重发并登记迁移——
+         不只是改名：原来缺编号的（手动画师）刷新后补上编号，标识同样要跟上。 */
+      const renamed=live.name!==name;
+      reidentify(live,live.name,live.danbooruId);
+      const label=renamed?`已刷新并改用站点上的正式名「${live.name}」。`:`已刷新「${live.name}」的作品数量与截至日期前数量。`;
+      const saved=await save(clone(data),notes.length?label+'（'+notes.join('；')+'）':label,undefined,null,bad);
+      if(saved)render();
+    }catch(error){
+      status('刷新失败：'+error.message,true);
+    }finally{busy=false;}
   }
   async function saveDraft(){
     if(busy||uploading)return;
@@ -1748,7 +1866,7 @@
     $('test-remove-all').onclick=()=>{for(const box of $('test-remove-list').querySelectorAll('input[type=checkbox]'))box.checked=true;};
     $('test-remove-none').onclick=()=>{for(const box of $('test-remove-list').querySelectorAll('input[type=checkbox]'))box.checked=false;};
     $('test-remove-run').onclick=()=>ArtistTestImages.runRemove();
-    $('settings-open').onclick=()=>{$('history-date').value=data.cutoffDate;$('save-large').checked=data.saveLargeImages===true;$('show-test').checked=showsTestSlots(data);$('auto-open-works').checked=data.autoOpenWorks===true;$('work-order').value=data.workOrder;$('card-size').value=String(prefs.cardSize);$('card-size-value').textContent=prefs.cardSize;$('card-size-compact').value=String(prefs.cardSizeCompact);$('card-size-compact-value').textContent=prefs.cardSizeCompact;$('settings').showModal();};$('close-settings').onclick=()=>$('settings').close();
+    $('settings-open').onclick=()=>{$('history-date').value=data.cutoffDate;$('save-large').checked=data.saveLargeImages===true;$('show-test').checked=showsTestSlots(data);$('auto-open-works').checked=data.autoOpenWorks===true;$('work-order').value=data.workOrder;$('card-size').value=String(prefs.cardSize);$('card-size-value').textContent=prefs.cardSize;$('card-size-compact').value=String(prefs.cardSizeCompact);$('card-size-compact-value').textContent=prefs.cardSizeCompact;$('pin-limit').value=String(pinLimit());$('pin-limit-value').textContent=pinLimit();$('settings').showModal();};$('close-settings').onclick=()=>$('settings').close();
     $('gen-settings-open').onclick=()=>{fillGenSettings();showAccount();updateGenStatus();$('gen-settings').showModal();if(ArtistImageGen.loadToken()&&!ArtistImageGen.cachedAccount())refreshAccount(false);};$('close-gen-settings').onclick=()=>$('gen-settings').close();
     $('opus-status').onclick=()=>refreshAccount(true);
     $('gen-queue').onclick=()=>{const dropped=genQueue.clear();status(dropped?`已取消排队的 ${dropped} 条生成需求；正在跑的那条会跑完。`:'队列里没有等待中的需求。');};paintQueue();
@@ -1761,6 +1879,15 @@
     $('card-size-compact').oninput=()=>{const value=Number($('card-size-compact').value);$('card-size-compact-value').textContent=value;prefs.setCardSizeCompact(value);};
     $('save-large').onchange=async()=>{const next=clone(data);next.saveLargeImages=$('save-large').checked;await save(next,next.saveLargeImages?'已开启「保存大图」：预览作品时会保存原图':'已关闭「保存大图」：预览作品时不再保存原图');};
     $('show-test').onchange=async()=>{const on=$('show-test').checked,next=clone(data);next.showTestSlots=on;delete next.fixedTestSlots;await save(next,on?'已开启「显示测试风格图」：卡片最右 2 格固定留给测试风格 1、2，顶部也会出现「测试风格图」菜单':'已关闭「显示测试风格图」：卡片 5 格全归作品图，顶部「测试风格图」菜单一并收起（已生成的测试图仍留在数据里）');};
+    /* 书钉上限：拖的时候只更新数字，松手才落盘——不然拖一次要写十几次盘。 */
+    $('pin-limit').oninput=()=>{$('pin-limit-value').textContent=$('pin-limit').value;};
+    $('pin-limit').onchange=async()=>{
+      const wanted=pinLimitOf({pinLimit:Number($('pin-limit').value)}),next=clone(data);next.pinLimit=wanted;
+      /* 上限调小到比现有书钉还少时，**不动已有的书钉**（用户可能只是临时收紧）：
+         只是从此不能再钉新的，直到他自己取消到限额以内。 */
+      const kept=pinnedArtists().length;
+      await save(next,kept>wanted?`书钉上限已设为 ${wanted}；当前还钉着 ${kept} 个，取消到 ${wanted} 个以内之前不能再钉新的。`:`书钉上限已设为 ${wanted}。`);
+    };
     $('auto-open-works').onchange=async()=>{const next=clone(data),on=$('auto-open-works').checked;next.autoOpenWorks=on;await save(next,on?'已开启「编辑画师时自动展开 danbooru 作品」：进入编辑态就会按名字读取站点作品':'已关闭「编辑画师时自动展开 danbooru 作品」：需要时自己点「展开读取」');};
     $('gen-check').onclick=()=>checkExtension();
     $('history-date').onchange=async()=>{const date=$('history-date').value;if(!/^\d{4}-\d{2}-\d{2}$/.test(date)){ $('history-date').value=data.cutoffDate;return;}const next=clone(data);next.cutoffDate=date;await save(next,'已保存截至日期；下次保存画师时会按新日期更新该画师的数量。');};

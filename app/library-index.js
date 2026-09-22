@@ -38,15 +38,17 @@
        写成数字判断会把没读到的当成 0 张；不知道不等于少。
        例图空缺——格子里只要有一个空着就算，**测试风格图也算占一格**：卡片固定就是 5 格，
        开「固定测试风格图」只是把最右两格留给测试风格 1、2，格子总数不变。
-       所以判据是「works 条数 < 格数」，两种设置下都是 5。 */
-    const fewWorks=special.has('low-works'),noWorks=special.has('no-works');
+       所以判据是「works 条数 < 格数」，两种设置下都是 5。
+       画风拟合——按画师卡片上那个按钮标的：标过的才算命中。它是"我认可这张参考图能代表画风"，
+       与评分、分类都无关，所以放在特殊筛选里，而不是又一个评分维度。 */
+    const fewWorks=special.has('low-works'),noWorks=special.has('no-works'),styleFit=special.has('style-fit');
     const knownCount=value=>value!==null&&value!==undefined&&value!=='';
     const hasFewWorks=a=>knownCount(a.counts?.total)&&Number(a.counts.total)<50;
     const hasEmptySlot=a=>(a.works||[]).length<slots;
     /* 每组筛选都有正选与反选两面：notXxx 是「排除这些」。未知的特殊筛选 key 不排除任何人。 */
-    const SPECIAL_PREDICATES={'low-works':hasFewWorks,'no-works':hasEmptySlot};
+    const SPECIAL_PREDICATES={'low-works':hasFewWorks,'no-works':hasEmptySlot,'style-fit':a=>a.styleFit===true};
     const excluded=(set,hit)=>[...set].every(key=>!hit(key));
-    return sorted.get(key).filter(({artist:a,search})=>(category==='全部'||(category==='待判断'?!a.category:a.category===category))&&(!notCategory||(notCategory==='待判断'?!!a.category:a.category!==notCategory))&&activeTags.every(t=>a.tags.includes(t))&&excluded(notTags,t=>a.tags.includes(t))&&(!scores.size||scores.has(a.score||0))&&(!notScores.size||!notScores.has(a.score||0))&&(!fewWorks||hasFewWorks(a))&&(!noWorks||hasEmptySlot(a))&&excluded(notSpecial,key=>SPECIAL_PREDICATES[key]?.(a)===true)&&words.every(word=>search.includes(word))).map(entry=>entry.artist);
+    return sorted.get(key).filter(({artist:a,search})=>(category==='全部'||(category==='待判断'?!a.category:a.category===category))&&(!notCategory||(notCategory==='待判断'?!!a.category:a.category!==notCategory))&&activeTags.every(t=>a.tags.includes(t))&&excluded(notTags,t=>a.tags.includes(t))&&(!scores.size||scores.has(a.score||0))&&(!notScores.size||!notScores.has(a.score||0))&&(!fewWorks||hasFewWorks(a))&&(!noWorks||hasEmptySlot(a))&&(!styleFit||SPECIAL_PREDICATES['style-fit'](a))&&excluded(notSpecial,key=>SPECIAL_PREDICATES[key]?.(a)===true)&&words.every(word=>search.includes(word))).map(entry=>entry.artist);
    },
    clear(){source=null;length=0;entries=[];stats=null;sorted.clear();}
   };
