@@ -40,7 +40,10 @@
   $('empty-action').textContent=!connected?'打开数据文件夹':total?'清除全部筛选':'识别添加画师';
  }
  function init({saveEditor}){
-  // 浮动书钉贴在实际筛选栏下方；筛选展开、换行、窗口缩放都可能改变它的高度。
+  if(initialized)return;initialized=true;
+  /* 浮动书钉贴在实际筛选栏下方；筛选展开、换行、窗口缩放都可能改变它的高度。
+     这一段必须待在初始化守卫**之后**：放在前面的话，重复 init() 会再叠一个 ResizeObserver
+     和一个 resize 监听（同文件其它 window 监听都在守卫之后，这里以前是唯一的例外）。 */
   const pinBar=$('pinned-bar'),header=document.querySelector('.app-header'),controls=document.querySelector('.library-controls'),statusBar=document.querySelector('.status-bar');
   const placePins=()=>{
    if(!pinBar)return;
@@ -49,7 +52,6 @@
   };
   if(typeof ResizeObserver==='function'){const observer=new ResizeObserver(placePins);for(const node of [header,controls,statusBar])if(node)observer.observe(node);}
   window.addEventListener('resize',placePins);placePins();
-  if(initialized)return;initialized=true;
   const motionPreference=matchMedia('(prefers-reduced-motion: reduce)');motionPreference.addEventListener('change',event=>{if(event.matches)document.getAnimations().forEach(animation=>animation.cancel());});
   const densityKey='artist-library.density';
   const setDensity=value=>{const compact=value==='compact';document.documentElement.dataset.density=compact?'compact':'comfortable';$('density-toggle').setAttribute('aria-pressed',String(compact));$('density-toggle').textContent=compact?'舒适视图':'紧凑视图';};

@@ -1863,9 +1863,18 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
   function bind(img,uid,work,group,size='thumb',error){
     if(typeof size==='function'){error=size;size='thumb';}
     const existing=bindings.get(img),sourceKey=key(uid,work,size);
-    // 同一图片节点在卡片局部更新时会再次申请绑定；引用和分组未变就保留 Blob 与加载任务。
+    /* 同一图片节点在卡片局部更新时会再次申请绑定；引用、分组、尺寸、来源都没变就保留
+       Blob 与在途加载，不必重新取图。 */
     if(existing&&existing.uid===uid&&existing.group===group&&existing.size===size&&existing.sourceKey===sourceKey){
-      existing.work=work;existing.error=error;return;
+      existing.work=work;existing.error=error;
+      /* 但**必须重新观察一次**（先撤再挂）。不相交状态没变时 IntersectionObserver 不会回调，
+         而作品格是跨卡片复用节点的：占位被回收时它们会被逐张解绑（record 已删，走不到这里），
+         卡片被工作池搬回来时又会重新 bind——如果这次恰好命中了上面的快路径，
+         不重新观察就等于少了"再确认一次可见性"的机会，那张图可能一直停在有绑定、没 src。
+         重新 observe 不会取消在途加载、也不会丢掉已经显示的图：
+         show() 对已有 objectUrl 的记录本来就是空操作。 */
+      observer.unobserve(img);observer.observe(img);
+      return;
     }
     if(existing){observer.unobserve(img);existing.controller?.abort();if(existing.objectUrl)URL.revokeObjectURL(existing.objectUrl);bindings.delete(img);}
     const record={img,uid,work,group,size,error,sourceKey};bindings.set(img,record);img.decoding='async';img.onerror=()=>{if(record.objectUrl){img.classList.add('image-failed');img.title='图片内容无法解码';}};observer.observe(img);
@@ -2713,7 +2722,10 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
   $('empty-action').textContent=!connected?'打开数据文件夹':total?'清除全部筛选':'识别添加画师';
  }
  function init({saveEditor}){
-  // 浮动书钉贴在实际筛选栏下方；筛选展开、换行、窗口缩放都可能改变它的高度。
+  if(initialized)return;initialized=true;
+  /* 浮动书钉贴在实际筛选栏下方；筛选展开、换行、窗口缩放都可能改变它的高度。
+     这一段必须待在初始化守卫**之后**：放在前面的话，重复 init() 会再叠一个 ResizeObserver
+     和一个 resize 监听（同文件其它 window 监听都在守卫之后，这里以前是唯一的例外）。 */
   const pinBar=$('pinned-bar'),header=document.querySelector('.app-header'),controls=document.querySelector('.library-controls'),statusBar=document.querySelector('.status-bar');
   const placePins=()=>{
    if(!pinBar)return;
@@ -2722,7 +2734,6 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
   };
   if(typeof ResizeObserver==='function'){const observer=new ResizeObserver(placePins);for(const node of [header,controls,statusBar])if(node)observer.observe(node);}
   window.addEventListener('resize',placePins);placePins();
-  if(initialized)return;initialized=true;
   const motionPreference=matchMedia('(prefers-reduced-motion: reduce)');motionPreference.addEventListener('change',event=>{if(event.matches)document.getAnimations().forEach(animation=>animation.cancel());});
   const densityKey='artist-library.density';
   const setDensity=value=>{const compact=value==='compact';document.documentElement.dataset.density=compact?'compact':'comfortable';$('density-toggle').setAttribute('aria-pressed',String(compact));$('density-toggle').textContent=compact?'舒适视图':'紧凑视图';};

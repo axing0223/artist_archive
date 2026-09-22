@@ -56,9 +56,18 @@
   function bind(img,uid,work,group,size='thumb',error){
     if(typeof size==='function'){error=size;size='thumb';}
     const existing=bindings.get(img),sourceKey=key(uid,work,size);
-    // 同一图片节点在卡片局部更新时会再次申请绑定；引用和分组未变就保留 Blob 与加载任务。
+    /* 同一图片节点在卡片局部更新时会再次申请绑定；引用、分组、尺寸、来源都没变就保留
+       Blob 与在途加载，不必重新取图。 */
     if(existing&&existing.uid===uid&&existing.group===group&&existing.size===size&&existing.sourceKey===sourceKey){
-      existing.work=work;existing.error=error;return;
+      existing.work=work;existing.error=error;
+      /* 但**必须重新观察一次**（先撤再挂）。不相交状态没变时 IntersectionObserver 不会回调，
+         而作品格是跨卡片复用节点的：占位被回收时它们会被逐张解绑（record 已删，走不到这里），
+         卡片被工作池搬回来时又会重新 bind——如果这次恰好命中了上面的快路径，
+         不重新观察就等于少了"再确认一次可见性"的机会，那张图可能一直停在有绑定、没 src。
+         重新 observe 不会取消在途加载、也不会丢掉已经显示的图：
+         show() 对已有 objectUrl 的记录本来就是空操作。 */
+      observer.unobserve(img);observer.observe(img);
+      return;
     }
     if(existing){observer.unobserve(img);existing.controller?.abort();if(existing.objectUrl)URL.revokeObjectURL(existing.objectUrl);bindings.delete(img);}
     const record={img,uid,work,group,size,error,sourceKey};bindings.set(img,record);img.decoding='async';img.onerror=()=>{if(record.objectUrl){img.classList.add('image-failed');img.title='图片内容无法解码';}};observer.observe(img);
