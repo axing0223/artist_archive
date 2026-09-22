@@ -659,13 +659,14 @@
            （例如「厚涂」），永远不等于「全部」——于是反选任意分类时「全部」仍被当成正常选中，
            aria-pressed 被错写成 true。反过来，正选了某个分类时它也不该继续亮着。
            所以：「全部」的选中 = 既没正选任何分类、也没排除任何分类；
-           只有"排除了某一类"时它是 mixed（点它可恢复），并给一道红下划线作提示。 */
+           只有"排除了某一类"时它是 mixed（点它可恢复）。
+           **它不跟着变红**：红色只属于"被排除的那一类"，给「全部」上红色会被读成"全部被排除了"。 */
         const isAll=c==='全部';
         const anyFilter=!!state.notCategory||(state.category!=='全部'&&!!state.category);
         const on=isAll?!anyFilter:c===state.category;
         const off=isAll?false:c===state.notCategory;
         const mixed=isAll&&!!state.notCategory;
-        const b=btn(c,()=>{cycleCategory(c);render();focusFirstArtist();},on?'active':off?'is-excluded':mixed?'has-excluded':'');b.dataset.filterKey='category:'+c;b.setAttribute('aria-pressed',on?'true':off||mixed?'mixed':'false');b.title=mixed?`已排除「${state.notCategory}」：点「全部」恢复`:(isAll?'显示全部分类':off?'排除这一类':'只显示这一类');b.append(el('span','n',counts.get(c)||0));return b;
+        const b=btn(c,()=>{cycleCategory(c);render();focusFirstArtist();},on?'active':off?'is-excluded':'');b.dataset.filterKey='category:'+c;b.setAttribute('aria-pressed',on?'true':off||mixed?'mixed':'false');b.title=mixed?`已排除「${state.notCategory}」：点「全部」恢复`:(isAll?'显示全部分类':off?'排除这一类':'只显示这一类');b.append(el('span','n',counts.get(c)||0));return b;
       }));
       /* 标签按钮自己的 aria-pressed 同理：以前 off 时写的是 false，而"已排除"该是 mixed。 */
       $('tags').replaceChildren(...data.tags.map(t=>{const on=state.tags.has(t),off=state.notTags.has(t),b=btn(t,()=>{cycleFilter(t,state.tags,state.notTags);render();},on?'active':off?'is-excluded':'');b.dataset.filterKey='tag:'+t;b.setAttribute('aria-pressed',on?'true':off?'mixed':'false');b.title=off?'排除这个标签（再点一次取消排除）':'只看这个标签';return b;}));

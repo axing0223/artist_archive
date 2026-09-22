@@ -769,12 +769,15 @@ test('分类三态：反选某一类时「全部」要表示"有东西被排除"
   assert.equal(byText('厚涂')['aria-pressed'],'true','正选的分类是选中态');
   assert.equal(all()['aria-pressed'],'false','正选分类时「全部」不该继续显示选中');
   assert.equal(String(all().className).includes('active'),false,'「全部」的高亮要交给被选中的那一类');
-  /* ③ 再点一次进反选：全部要变成 mixed，并给出"有东西被排除"的提示 */
+  /* ③ 再点一次进反选：全部要变成 mixed，但**不能跟着变红**——红色只属于被排除的那一类，
+     给「全部」上红色会被读成"全部被排除了"（用户就是这么误读的）。 */
   byText('厚涂').onclick();
   assert.equal(byText('厚涂')['aria-pressed'],'mixed','第二次点击进反选，按钮自己表达 mixed');
+  assert.equal(String(byText('厚涂').className).includes('is-excluded'),true,'被排除的那一类才是红色反选态');
   assert.equal(all()['aria-pressed'],'mixed','反选任意分类时「全部」必须表示"部分被排除"，不能是 true');
-  assert.equal(String(all().className).includes('has-excluded'),true,'顺手给一道红下划线，让"被排除了"看得见');
-  assert.equal(String(all().className).includes('active'),false,'它不是"全部选中"');
+  assert.equal(String(all().className).includes('is-excluded'),false,'「全部」不能是红色反选态');
+  assert.equal(String(all().className).includes('active'),false,'它也不是"全部选中"');
+  assert.equal(String(all().className).trim(),'','「全部」在反选态下不该挂任何状态类');
   assert.match(String(all().title),/已排除/,'悬停要说明当前排除了什么、怎么恢复');
   /* ④ 第三次回到不选 */
   byText('厚涂').onclick();
