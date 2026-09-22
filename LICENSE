@@ -1,23 +1,32 @@
-# 许可证：尚未选定
+MIT License
 
-**这是一个占位文件。** 作者还没有为这个项目选定开源许可证，所以在选定之前，
-默认保留所有权利（All rights reserved）：代码可以阅读、可以自己本地使用，
-但**尚未授予再分发或再许可的权限**。
+Copyright (c) 2026 画师库作者
 
-## 需要作者做的一件事
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-从下面挑一个，然后把本文件替换成它的正文（或直接删掉本文件并另建 `LICENSE`）：
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
 
-| 许可证 | 适合什么情况 | 一句话 |
-|---|---|---|
-| **MIT** | 想让别人随便用、随便改、随便发，只要保留版权声明 | 最宽松、最常见 |
-| **Apache-2.0** | 同上，但额外有专利授权条款 | 公司/商用友好 |
-| **AGPL-3.0** | 想确保改了之后也必须开源（含"作为网络服务提供"） | 最强 copyleft |
-| **专有（保持现状）** | 暂时不想让别人用 | 就把这份文件留下 |
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 
-## 选定前请注意两件事
+---
 
-1. **`图片取图扩展/` 只是一个扩展，不含任何第三方库**——没有 `node_modules`、没有打包进来的依赖，
-   所以许可证选择不会被第三方条款限制。
-2. **图片来源不适用本许可证**：你在画师库里收藏的作品图、测试风格图，版权属于各自的作者，
-   本项目的许可证只覆盖**代码与文档**，不覆盖你的数据，也不覆盖任何第三方作品。
+## 这个许可证覆盖什么
+
+- **覆盖**：本仓库的**代码与文档**（`app/`、`画师库.html`、`图片取图扩展/`、
+  `工具/`、各份 `.md` 说明）。你可以自由使用、修改、再发布、商用，
+  只需要保留上面的版权声明与这段许可声明。
+- **不覆盖**：你在画师库里收藏的**作品图、测试风格图**——那些的版权属于各自的作者，
+  与这份许可证无关；你自己的数据（`数据/` 文件夹里的 JSON 与图片）也完全属于你自己。
+- **不含第三方代码**：`图片取图扩展/` 没有打包任何第三方库，所以不存在额外的许可条款。

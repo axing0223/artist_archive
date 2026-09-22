@@ -1912,7 +1912,6 @@ html[data-density=compact] .artist:not(.is-editing) .description{color:var(--mut
    /* 下面的函数体保持原来的两格缩进没重排：这次只是把它整体挪进 create() 里，
       重排三百行会把 diff 撑爆、也容易改错；本项目没有格式化工具，缩进不是门禁。 */
    let observer,resize,current=[],make=null,keyOf=null,patch=null,uids=[];
-   const 实例名=(window.__画廊数=(window.__画廊数||0)+1)===1?"列表":"书钉";
    const mounted=new Map(),heights=new Map(),pinned=new Set(),slots=new Map(),painted=new Map(),near=new Set();
   /* 系统里关了动效就一个都不放，宁可少点花活也别让人难受。 */
   const calm=()=>typeof matchMedia==='function'&&matchMedia('(prefers-reduced-motion: reduce)').matches;
